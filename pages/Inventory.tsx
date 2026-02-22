@@ -784,7 +784,7 @@ const Inventory: React.FC = () => {
       {/* --- MODAL: CONFIRMAR ELIMINAÇÃO DE PRODUTO --- */}
       {deleteConfirmation.isOpen && deleteConfirmation.product && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[99] flex items-center justify-center p-4 animate-fade-in">
-           <div className="bg-white dark:bg-slate-800 rounded-3xl p-8 w-full max-w-sm shadow-2xl relative text-center border-t-8 border-red-500">
+           <div className="bg-white dark:bg-[#0d1b2a] rounded-3xl p-8 w-full max-w-sm shadow-2xl relative text-center border-t-8 border-red-500">
               <div className="w-20 h-20 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-6 text-red-600 dark:text-red-400 animate-pulse">
                  <AlertTriangle size={40} />
               </div>
@@ -802,7 +802,7 @@ const Inventory: React.FC = () => {
                  </button>
                  <button 
                    onClick={() => setDeleteConfirmation({isOpen: false, product: null})}
-                   className="w-full py-4 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold rounded-xl hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+                   className="w-full py-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
                  >
                    Cancelar
                  </button>
@@ -814,7 +814,7 @@ const Inventory: React.FC = () => {
       {/* --- MODAL: ADICIONAR EQUIPAMENTO --- */}
       {showAddEquipModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-fade-in">
-           <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 w-full max-w-sm shadow-2xl relative">
+           <div className="bg-white dark:bg-[#0d1b2a] rounded-3xl p-6 w-full max-w-sm shadow-2xl relative">
               <h3 className="text-lg font-bold text-[#003366] dark:text-white mb-4">Adicionar Item/Mobília</h3>
               <div className="space-y-4">
                  <input 
@@ -822,17 +822,17 @@ const Inventory: React.FC = () => {
                    placeholder="Nome (Ex: Mesa de Plástico)"
                    value={newEquipName}
                    onChange={(e) => setNewEquipName(e.target.value)}
-                   className="w-full p-3 bg-slate-50 dark:bg-slate-700 rounded-xl border-none soft-ui-inset dark:text-white"
+                   className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border-none soft-ui-inset dark:text-white"
                  />
                  <input 
                    type="number" 
                    placeholder="Quantidade Atual"
                    value={newEquipQty}
                    onChange={(e) => setNewEquipQty(e.target.value)}
-                   className="w-full p-3 bg-slate-50 dark:bg-slate-700 rounded-xl border-none soft-ui-inset dark:text-white"
+                   className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border-none soft-ui-inset dark:text-white"
                  />
                  <div className="flex gap-3">
-                    <button onClick={() => setShowAddEquipModal(false)} className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 font-bold rounded-xl">Cancelar</button>
+                    <button onClick={() => setShowAddEquipModal(false)} className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-300 font-bold rounded-xl">Cancelar</button>
                     <button onClick={handleAddEquipment} className="flex-1 py-3 bg-[#003366] text-white font-bold rounded-xl">Adicionar</button>
                  </div>
               </div>
@@ -843,8 +843,8 @@ const Inventory: React.FC = () => {
       {/* --- MODAL: CONTAGEM DE INVENTÁRIO --- */}
       {showCountModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[70] flex items-center justify-center p-4 animate-fade-in">
-           <div className="bg-white dark:bg-slate-800 rounded-3xl w-full max-w-md shadow-2xl relative flex flex-col max-h-[85vh]">
-              <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center">
+           <div className="bg-white dark:bg-[#0d1b2a] rounded-3xl w-full max-w-md shadow-2xl relative flex flex-col max-h-[85vh]">
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
                  <h3 className="text-xl font-black text-[#003366] dark:text-white">Contagem Mensal</h3>
                  <button onClick={() => setShowCountModal(false)} className="text-slate-400 hover:text-red-500"><X size={24} /></button>
               </div>
@@ -852,7 +852,7 @@ const Inventory: React.FC = () => {
               <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
                  <p className="text-sm text-slate-500 dark:text-slate-400 mb-2">Insira a quantidade física real contada hoje.</p>
                  {equipments.map(eq => (
-                    <div key={eq.id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700/50 rounded-xl border border-slate-100 dark:border-slate-700">
+                    <div key={eq.id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
                         <span className="font-bold text-slate-700 dark:text-white w-1/3">{eq.name}</span>
                         <div className="flex items-center gap-4">
                            <div className="text-right">
@@ -865,7 +865,7 @@ const Inventory: React.FC = () => {
                                 type="number" 
                                 value={countValues[eq.id] ?? ''}
                                 onChange={(e) => handleCountChange(eq.id, e.target.value)}
-                                className="w-full p-2 text-center font-bold text-[#003366] bg-white dark:bg-slate-600 dark:text-white border border-blue-100 dark:border-slate-500 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                className="w-full p-2 text-center font-bold text-[#003366] bg-white dark:bg-slate-700 dark:text-white border border-blue-100 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                               />
                            </div>
                         </div>
@@ -873,7 +873,7 @@ const Inventory: React.FC = () => {
                  ))}
               </div>
 
-              <div className="p-6 border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
+              <div className="p-6 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-[#0d1b2a]">
                  <button 
                    onClick={processInventoryCount}
                    className="w-full py-4 bg-[#003366] text-white font-bold rounded-xl shadow-lg hover:scale-[1.02] active:scale-95 transition-all"
@@ -888,7 +888,7 @@ const Inventory: React.FC = () => {
       {/* --- MODAL: JUSTIFICATIVA DE PERDAS --- */}
       {showJustificationModal && (
         <div className="fixed inset-0 bg-red-900/40 backdrop-blur-md z-[80] flex items-center justify-center p-4 animate-fade-in">
-           <div className="bg-white dark:bg-slate-800 rounded-3xl w-full max-w-sm shadow-2xl relative p-6 border-l-8 border-red-500">
+           <div className="bg-white dark:bg-[#0d1b2a] rounded-3xl w-full max-w-sm shadow-2xl relative p-6 border-l-8 border-red-500">
               <div className="flex items-start gap-4 mb-4">
                  <div className="bg-red-100 dark:bg-red-900/30 p-3 rounded-full text-red-600 dark:text-red-400">
                     <AlertTriangle size={24} />
@@ -913,7 +913,7 @@ const Inventory: React.FC = () => {
                 value={justificationText}
                 onChange={(e) => setJustificationText(e.target.value)}
                 placeholder="Explique o motivo (Quebra, Perda, Roubo, etc)..."
-                className="w-full p-3 bg-slate-50 dark:bg-slate-700 rounded-xl border border-slate-200 dark:border-slate-600 h-24 mb-4 focus:ring-2 focus:ring-red-500 outline-none resize-none dark:text-white"
+                className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 h-24 mb-4 focus:ring-2 focus:ring-red-500 outline-none resize-none dark:text-white"
               />
 
               <div className="space-y-3">
@@ -926,7 +926,7 @@ const Inventory: React.FC = () => {
                 </button>
                 <button 
                     onClick={handleBackToEditCount}
-                    className="w-full py-3 text-slate-500 dark:text-slate-400 font-bold rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-all text-sm"
+                    className="w-full py-3 text-slate-500 dark:text-slate-400 font-bold rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all text-sm"
                 >
                     Voltar e Corrigir
                 </button>
@@ -938,8 +938,8 @@ const Inventory: React.FC = () => {
       {/* --- MODAL: HISTÓRICO DE CONTAGENS --- */}
       {showHistoryModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4 animate-fade-in">
-           <div className="bg-white dark:bg-slate-800 rounded-3xl w-full max-w-lg shadow-2xl relative flex flex-col max-h-[85vh]">
-              <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center">
+           <div className="bg-white dark:bg-[#0d1b2a] rounded-3xl w-full max-w-lg shadow-2xl relative flex flex-col max-h-[85vh]">
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
                  <h3 className="text-xl font-bold text-[#003366] dark:text-white flex items-center gap-2">
                     <History size={24} /> Histórico de Contagens
                  </h3>
@@ -951,7 +951,7 @@ const Inventory: React.FC = () => {
                     <p className="text-center text-slate-400 py-10 italic">Nenhum histórico disponível.</p>
                  ) : (
                     inventoryHistory.map((log) => (
-                        <div key={log.id} className="border border-slate-100 dark:border-slate-700 rounded-2xl p-4 bg-slate-50 dark:bg-slate-700/50">
+                        <div key={log.id} className="border border-slate-100 dark:border-slate-800 rounded-2xl p-4 bg-slate-50 dark:bg-slate-800/50">
                             <div className="flex justify-between items-start mb-2">
                                 <div>
                                     <p className="font-bold text-[#003366] dark:text-white">{log.date}</p>
@@ -961,7 +961,7 @@ const Inventory: React.FC = () => {
                                     {log.status}
                                 </span>
                             </div>
-                            <div className="flex justify-between items-center text-sm border-t border-slate-200 dark:border-slate-600 pt-2 mt-2">
+                            <div className="flex justify-between items-center text-sm border-t border-slate-200 dark:border-slate-700 pt-2 mt-2">
                                 <span className="text-slate-500 dark:text-slate-400">Total Equipamentos:</span>
                                 <span className="font-bold dark:text-white">{log.totalItems}</span>
                             </div>
@@ -992,16 +992,16 @@ const Inventory: React.FC = () => {
       {/* ... (Date Edit Modal - Admin only) ... */}
       {showDateEditModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4 animate-fade-in">
-           <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 w-full max-w-sm shadow-2xl">
+           <div className="bg-white dark:bg-[#0d1b2a] rounded-3xl p-6 w-full max-w-sm shadow-2xl">
               <h3 className="text-lg font-bold text-[#003366] dark:text-white mb-4">Agendar Próxima Contagem</h3>
               <input 
                 type="date"
                 value={nextInventoryDate}
                 onChange={(e) => setNextInventoryDate(e.target.value)}
-                className="w-full p-3 bg-slate-50 dark:bg-slate-700 rounded-xl border border-slate-200 dark:border-slate-600 mb-4 font-bold text-slate-700 dark:text-white focus:ring-2 focus:ring-[#003366] outline-none"
+                className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 mb-4 font-bold text-slate-700 dark:text-white focus:ring-2 focus:ring-[#003366] outline-none"
               />
               <div className="flex gap-3">
-                 <button onClick={() => setShowDateEditModal(false)} className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 font-bold rounded-xl">Cancelar</button>
+                 <button onClick={() => setShowDateEditModal(false)} className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-300 font-bold rounded-xl">Cancelar</button>
                  <button onClick={handleUpdateNextDate} className="flex-1 py-3 bg-[#003366] text-white font-bold rounded-xl">Salvar</button>
               </div>
            </div>
@@ -1011,7 +1011,7 @@ const Inventory: React.FC = () => {
       {/* Product Modal */}
       {productModal.isOpen && productModal.data && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 w-full max-w-md animate-fade-in shadow-2xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-white dark:bg-[#0d1b2a] rounded-3xl p-6 w-full max-w-md animate-fade-in shadow-2xl max-h-[90vh] overflow-y-auto">
             <h2 className="text-2xl font-bold text-[#003366] dark:text-white mb-6">
               {productModal.data.id ? 'Editar Produto' : 'Novo Produto'}
             </h2>
@@ -1022,7 +1022,7 @@ const Inventory: React.FC = () => {
                   type="text"
                   value={productModal.data.name}
                   onChange={e => setProductModal({ ...productModal, data: { ...productModal.data, name: e.target.value } })}
-                  className="w-full p-3 bg-slate-50 dark:bg-slate-700 rounded-xl border-none soft-ui-inset dark:text-white"
+                  className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border-none soft-ui-inset dark:text-white"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -1031,7 +1031,7 @@ const Inventory: React.FC = () => {
                    <select 
                      value={productModal.data.packType || 'Grade'}
                      onChange={e => setProductModal({ ...productModal, data: { ...productModal.data, packType: e.target.value } })}
-                     className="w-full p-3 bg-slate-50 dark:bg-slate-700 rounded-xl border-none soft-ui-inset text-sm dark:text-white"
+                     className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border-none soft-ui-inset text-sm dark:text-white"
                    >
                      <option value="Grade">Grade</option>
                      <option value="Caixa">Caixa</option>
@@ -1045,7 +1045,7 @@ const Inventory: React.FC = () => {
                      type="number"
                      value={productModal.data.packSize}
                      onChange={e => setProductModal({ ...productModal, data: { ...productModal.data, packSize: parseInt(e.target.value) } })}
-                     className="w-full p-3 bg-slate-50 dark:bg-slate-700 rounded-xl border-none soft-ui-inset dark:text-white"
+                     className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border-none soft-ui-inset dark:text-white"
                    />
                 </div>
               </div>
@@ -1056,7 +1056,7 @@ const Inventory: React.FC = () => {
                     type="number"
                     value={productModal.data.stock}
                     onChange={e => setProductModal({ ...productModal, data: { ...productModal.data, stock: e.target.value } })}
-                    className="w-full p-3 bg-slate-50 dark:bg-slate-700 rounded-xl border-none soft-ui-inset font-bold dark:text-white"
+                    className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border-none soft-ui-inset font-bold dark:text-white"
                   />
                 </div>
                 <div>
@@ -1065,7 +1065,7 @@ const Inventory: React.FC = () => {
                     type="number"
                     value={productModal.data.minStock}
                     onChange={e => setProductModal({ ...productModal, data: { ...productModal.data, minStock: e.target.value } })}
-                    className="w-full p-3 bg-slate-50 dark:bg-slate-700 rounded-xl border-none soft-ui-inset dark:text-white"
+                    className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border-none soft-ui-inset dark:text-white"
                   />
                 </div>
               </div>
@@ -1075,13 +1075,13 @@ const Inventory: React.FC = () => {
                 <div className="flex gap-2">
                    <button 
                      onClick={() => handleAddStock(productModal.data.packSize)}
-                     className="flex-1 py-2 bg-white dark:bg-slate-700 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 font-bold rounded-lg text-xs hover:bg-blue-50 dark:hover:bg-slate-600 active:scale-95 transition-all"
+                     className="flex-1 py-2 bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 font-bold rounded-lg text-xs hover:bg-blue-50 dark:hover:bg-slate-700 active:scale-95 transition-all"
                    >
                       +1 {productModal.data.packType}
                    </button>
                    <button 
                      onClick={() => handleAddStock(productModal.data.packSize / 2)}
-                     className="flex-1 py-2 bg-white dark:bg-slate-700 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 font-bold rounded-lg text-xs hover:bg-blue-50 dark:hover:bg-slate-600 active:scale-95 transition-all"
+                     className="flex-1 py-2 bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 font-bold rounded-lg text-xs hover:bg-blue-50 dark:hover:bg-slate-700 active:scale-95 transition-all"
                    >
                       +1/2 {productModal.data.packType}
                    </button>
@@ -1091,7 +1091,7 @@ const Inventory: React.FC = () => {
               <div className="flex gap-4 mt-6">
                 <button 
                   onClick={() => setProductModal({ isOpen: false, data: null })}
-                  className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 font-bold rounded-xl"
+                  className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-300 font-bold rounded-xl"
                 >
                   Cancelar
                 </button>
@@ -1110,7 +1110,7 @@ const Inventory: React.FC = () => {
       {/* Category Manager */}
       {categoryModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 w-full max-w-sm animate-fade-in shadow-2xl">
+          <div className="bg-white dark:bg-[#0d1b2a] rounded-3xl p-6 w-full max-w-sm animate-fade-in shadow-2xl">
              <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-bold text-[#003366] dark:text-white">Categorias</h2>
                 <button onClick={() => setCategoryModal(false)} className="text-slate-400"><X size={20} /></button>
@@ -1121,7 +1121,7 @@ const Inventory: React.FC = () => {
                  placeholder="Nova..."
                  value={newCategoryName}
                  onChange={(e) => setNewCategoryName(e.target.value)}
-                 className="flex-1 p-3 bg-slate-50 dark:bg-slate-700 rounded-xl border-none soft-ui-inset text-sm dark:text-white"
+                 className="flex-1 p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border-none soft-ui-inset text-sm dark:text-white"
                />
                <button 
                  onClick={handleAddCategory}
@@ -1133,7 +1133,7 @@ const Inventory: React.FC = () => {
              
              <div className="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar">
                 {categories.map(cat => (
-                  <div key={cat} className="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-700 rounded-xl border border-slate-100 dark:border-slate-600">
+                  <div key={cat} className="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700">
                      <span className="font-bold text-slate-700 dark:text-white text-sm">{cat}</span>
                      {cat !== 'Geral' && (
                         <button onClick={() => handleRemoveCategory(cat)} className="text-red-400 hover:text-red-600 p-1">

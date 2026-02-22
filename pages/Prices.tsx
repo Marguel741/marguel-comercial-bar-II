@@ -170,8 +170,8 @@ const Prices: React.FC = () => {
 
         {showSimulationModal && (
             <div className="fixed inset-0 bg-black/70 z-[60] flex items-center justify-center p-4">
-                <div className="bg-[#F8FAFC] dark:bg-slate-900 w-full max-w-5xl h-[90vh] rounded-[32px] shadow-2xl flex flex-col overflow-hidden">
-                    <div className="bg-white dark:bg-slate-800 p-6 border-b dark:border-slate-700 flex justify-between items-center">
+                <div className="bg-[#F8FAFC] dark:bg-[#0d1b2a] w-full max-w-5xl h-[90vh] rounded-[32px] shadow-2xl flex flex-col overflow-hidden">
+                    <div className="bg-white dark:bg-[#0d1b2a] p-6 border-b dark:border-slate-800 flex justify-between items-center">
                         <h2 className="text-2xl font-bold text-[#003366] dark:text-white">Simulador</h2>
                         <button onClick={() => setShowSimulationModal(false)}><X size={24} className="text-slate-400"/></button>
                     </div>
@@ -180,7 +180,7 @@ const Prices: React.FC = () => {
                         {simulationStep === 'select' ? (
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                 {filteredSimulationProducts.map(p => (
-                                    <div key={p.id} className="p-4 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+                                    <div key={p.id} className="p-4 bg-white dark:bg-[#0d1b2a] rounded-xl border border-slate-200 dark:border-slate-800">
                                         <p className="font-bold text-sm text-[#003366] dark:text-white truncate">{p.name}</p>
                                         <div className="flex justify-between items-end mt-2">
                                             <span className="text-xs text-slate-500">{getPackCost(p).toLocaleString()} Kz</span>
@@ -216,7 +216,7 @@ const Prices: React.FC = () => {
                         )}
                     </div>
 
-                    <div className="p-6 bg-white dark:bg-slate-800 border-t dark:border-slate-700 flex justify-between items-center">
+                    <div className="p-6 bg-white dark:bg-[#0d1b2a] border-t dark:border-slate-800 flex justify-between items-center">
                         <div className="font-black text-2xl text-[#003366] dark:text-white">{calculateSimulationTotal().toLocaleString()} Kz</div>
                         <div className="flex gap-3">
                             {simulationStep === 'summary' && (

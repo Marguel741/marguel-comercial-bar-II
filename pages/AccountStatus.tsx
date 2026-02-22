@@ -289,12 +289,12 @@ const AccountStatus: React.FC = () => {
       {/* --- MODAL: HISTÓRICO --- */}
       {showHistoryModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
-           <div className="bg-[#F8FAFC] dark:bg-slate-900 w-full max-w-2xl h-[80vh] rounded-[32px] shadow-2xl flex flex-col overflow-hidden relative">
-              <div className="p-6 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
+           <div className="bg-[#F8FAFC] dark:bg-[#0d1b2a] w-full max-w-2xl h-[80vh] rounded-[32px] shadow-2xl flex flex-col overflow-hidden relative">
+              <div className="p-6 bg-white dark:bg-[#0d1b2a] border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
                  <h2 className="text-xl font-bold text-[#003366] dark:text-white flex items-center gap-2">
                     <History size={24} /> Movimentos Recentes
                  </h2>
-                 <button onClick={() => setShowHistoryModal(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full text-slate-400 hover:text-red-500">
+                 <button onClick={() => setShowHistoryModal(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 hover:text-red-500">
                     <X size={24} />
                  </button>
               </div>
@@ -302,7 +302,7 @@ const AccountStatus: React.FC = () => {
               <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
                  <div className="space-y-3">
                     {transactions.map((t) => (
-                       <div key={t.id} className="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm flex justify-between items-center">
+                       <div key={t.id} className="bg-white dark:bg-[#0d1b2a] p-4 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm flex justify-between items-center">
                           <div className="flex items-center gap-4">
                              <div className={`p-3 rounded-xl ${t.type === 'entrada' ? 'bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400' : 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400'}`}>
                                 {t.type === 'entrada' ? <ArrowDownLeft size={20} /> : <ArrowUpRight size={20} />}

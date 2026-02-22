@@ -70,8 +70,7 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    const timer = setTimeout(() => setShowSplash(false), 2000);
-    return () => clearTimeout(timer);
+    // Splash screen is now handled by video end event
   }, []);
 
   const login = async (email: string, pass: string) => {
@@ -103,7 +102,7 @@ const App: React.FC = () => {
     }
   };
 
-  if (showSplash) return <SplashScreen />;
+  if (showSplash) return <SplashScreen onComplete={() => setShowSplash(false)} />;
 
   return (
     <ThemeProvider>

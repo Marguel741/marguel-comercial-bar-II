@@ -13,7 +13,7 @@ const SoftCard: React.FC<SoftCardProps> = ({ children, className = '', onClick, 
     <div 
       id={id}
       onClick={onClick}
-      className={`soft-ui p-6 transition-all duration-300 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-100 ${onClick ? 'cursor-pointer hover:scale-[1.01] active:scale-[0.99]' : ''} ${className}`}
+      className={`soft-ui p-6 transition-all duration-300 dark:bg-[#0d1b2a] dark:border-slate-800 dark:text-slate-100 ${onClick ? 'cursor-pointer hover:scale-[1.01] active:scale-[0.99]' : ''} ${className}`}
     >
       {children}
     </div>
