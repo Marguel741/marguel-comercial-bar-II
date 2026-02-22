@@ -1,0 +1,8 @@
+{
+  "name": "Copy of Marguel Comercial Bar",
+  "description": "A comprehensive, high-security internal management system for Marguel Comercial Bar, featuring inventory, sales tracking, financial reports, and internal communication.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
