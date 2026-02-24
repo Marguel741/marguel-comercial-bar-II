@@ -6,6 +6,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { useAuth } from '../App';
 import { useProducts } from '../contexts/ProductContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { useLayout } from '../contexts/LayoutContext';
 import { UserRole } from '../types';
 
 const Dashboard: React.FC = () => {
@@ -13,6 +14,7 @@ const Dashboard: React.FC = () => {
   const { user, logout, switchUser } = useAuth();
   const { salesReports, systemDate, products, expenses } = useProducts();
   const { theme, setTheme } = useTheme();
+  const { toggleSidebar } = useLayout();
   
   const [expandedAlerts, setExpandedAlerts] = useState<string[]>([]);
   const [customAlerts, setCustomAlerts] = useState<any[]>([]);
@@ -236,13 +238,16 @@ const Dashboard: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 pb-24 font-sans">
       {/* Header */}
-      <header className="flex justify-between items-center px-6 py-6 bg-white dark:bg-[#0a192f] sticky top-0 z-10 shadow-sm md:shadow-none md:static">
+      <header className="flex justify-between items-center px-6 py-6 bg-white dark:bg-[#0a192f] sticky top-0 z-50 shadow-sm md:shadow-none md:relative">
         <div className="flex items-center gap-4">
-            <button className="p-2 bg-[#003366] rounded-xl text-white">
+            <button 
+                onClick={toggleSidebar}
+                className="p-2 bg-[#003366] rounded-xl text-white hover:bg-[#004080] transition-colors active:scale-95"
+            >
                 <Menu size={24} />
             </button>
             <div>
-                <h1 className="text-lg font-bold text-slate-800 dark:text-white">Dashboard</h1>
+                <h1 className="text-lg font-bold text-slate-800 dark:text-white">Página Inicial</h1>
             </div>
         </div>
         <div className="flex items-center gap-4">
@@ -265,8 +270,8 @@ const Dashboard: React.FC = () => {
                 {/* Notifications Dropdown */}
                 {showNotifications && (
                     <>
-                        <div className="fixed inset-0 z-40 bg-black/5 backdrop-blur-[1px]" onClick={() => setShowNotifications(false)}></div>
-                        <div className="fixed left-4 right-4 top-20 md:absolute md:top-full md:left-auto md:right-0 md:mt-3 md:w-80 bg-white dark:bg-[#0a192f] rounded-2xl shadow-xl border border-slate-100 dark:border-slate-700 p-4 z-50 animate-fade-in origin-top-right">
+                        <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm" onClick={() => setShowNotifications(false)}></div>
+                        <div className="fixed left-4 right-4 top-20 md:absolute md:top-full md:left-auto md:right-0 md:mt-3 md:w-80 bg-white dark:bg-[#0a192f] rounded-2xl shadow-xl border border-slate-100 dark:border-slate-700 p-4 z-[70] animate-fade-in origin-top-right">
                             <div className="flex justify-between items-center mb-3">
                                 <h4 className="font-bold text-slate-800 dark:text-white">Notificações</h4>
                                 <button onClick={() => setShowNotifications(false)} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full dark:text-white"><X size={16} /></button>
@@ -319,8 +324,8 @@ const Dashboard: React.FC = () => {
                 {/* User Menu Dropdown */}
                 {showUserMenu && (
                     <>
-                        <div className="fixed inset-0 z-40 bg-black/5 backdrop-blur-[1px]" onClick={() => setShowUserMenu(false)}></div>
-                        <div className="absolute right-0 top-12 w-64 bg-white dark:bg-[#0a192f] rounded-2xl shadow-xl border border-slate-100 dark:border-slate-700 p-2 z-50 animate-fade-in origin-top-right">
+                        <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm" onClick={() => setShowUserMenu(false)}></div>
+                        <div className="absolute right-0 top-12 w-64 bg-white dark:bg-[#0a192f] rounded-2xl shadow-2xl border border-slate-100 dark:border-white/10 p-2 z-[70] animate-fade-in origin-top-right">
                             <div className="p-3 border-b border-slate-100 dark:border-slate-700 mb-2">
                                 <p className="font-bold text-slate-800 dark:text-white">{user?.name}</p>
                                 <p className="text-xs text-slate-500 dark:text-slate-400">{user?.role}</p>

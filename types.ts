@@ -57,6 +57,14 @@ export interface PriceHistoryLog {
   date: string;
 }
 
+export interface SavedProposal {
+  id: string;
+  name: string;
+  date: string;
+  items: Record<string, number>;
+  total: number;
+}
+
 export interface PurchaseRecord {
   id: string;
   name: string;

@@ -12,6 +12,7 @@ import UserManagement from './pages/UserManagement';
 import DirectService from './pages/DirectService';
 import GlobalCalendar from './pages/GlobalCalendar';
 import TestCycle from './pages/TestCycle'; // Importação da nova página
+import SplashGenerator from './pages/SplashGenerator';
 import Sidebar from './components/Sidebar';
 import { User, UserRole } from './types';
 import { ProductProvider } from './contexts/ProductContext';
@@ -125,6 +126,7 @@ const App: React.FC = () => {
                     <Route path="/account" element={<AccountStatus />} />
                     <Route path="/users" element={<UserManagement />} />
                     <Route path="/test-cycle" element={<TestCycle />} />
+                    <Route path="/generate-splash" element={<SplashGenerator />} />
                     <Route path="*" element={<Navigate to="/" />} />
                   </Routes>
                 </div>

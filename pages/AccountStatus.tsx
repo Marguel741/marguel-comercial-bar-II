@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Landmark, Wallet, CreditCard, History, PlusCircle, X, ArrowUpRight, ArrowDownLeft, Calendar, Wifi, Chip, TrendingUp, TrendingDown, MinusCircle, FileText } from 'lucide-react';
+import { Landmark, Wallet, CreditCard, History, PlusCircle, X, ArrowUpRight, ArrowDownLeft, Calendar, Wifi, TrendingUp, TrendingDown, MinusCircle, FileText } from 'lucide-react';
 import SoftCard from '../components/SoftCard';
 import { useLayout } from '../contexts/LayoutContext';
 import { useProducts } from '../contexts/ProductContext';

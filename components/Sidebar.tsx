@@ -23,7 +23,6 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../App';
 import { UserRole } from '../types';
-import { MGLogo } from '../constants';
 import { useLayout } from '../contexts/LayoutContext';
 import { useProducts } from '../contexts/ProductContext';
 
@@ -38,7 +37,7 @@ const Sidebar: React.FC = () => {
   const STANDARD_ROLES = [UserRole.PROPRIETARIO, UserRole.ADMIN_GERAL, UserRole.GERENTE, UserRole.COLABORADOR_EFETIVO, UserRole.FUNCIONARIO];
 
   const navItems = [
-    { to: '/', icon: LayoutDashboard, label: 'Dashboard', roles: ALL_ROLES },
+    { to: '/', icon: LayoutDashboard, label: 'Página Inicial', roles: ALL_ROLES },
     { to: '/direct-service', icon: MonitorPlay, label: 'Atendimento Directo', roles: HIGH_LEVEL_ROLES },
     { to: '/sales', icon: ShoppingCart, label: 'Controle de Vendas', roles: STANDARD_ROLES },
     { to: '/calendar', icon: CalendarRange, label: 'Calendário Marguel', roles: HIGH_LEVEL_ROLES },
@@ -85,6 +84,13 @@ const Sidebar: React.FC = () => {
   const canViewUsers = user?.role === UserRole.PROPRIETARIO || user?.role === UserRole.ADMIN_GERAL;
   const isDev = user?.role === UserRole.PROPRIETARIO || user?.role === UserRole.ADMIN_GERAL; 
 
+  const getInitials = (name?: string) => {
+    if (!name) return 'AG';
+    const parts = name.split(' ');
+    if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  };
+
   return (
     <>
       {mode === 'hidden' && (
@@ -105,9 +111,18 @@ const Sidebar: React.FC = () => {
 
         <div className={`absolute left-0 top-0 bottom-0 w-[280px] bg-[#F8FAFC] dark:bg-slate-900 shadow-2xl flex flex-col transition-transform duration-300 ${mode === 'mini' ? 'translate-x-0' : '-translate-x-full'}`}>
           <div className="bg-[#003366] p-6 text-white rounded-br-[32px] shadow-lg relative z-10 shrink-0">
-             <div className="flex justify-between items-start mb-6">
-                <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center backdrop-blur-md border border-white/20" onClick={handleAppRefresh}>
-                   <MGLogo className="w-6 h-6 text-white" />
+             <div className="flex justify-between items-center mb-6">
+                <div className="flex flex-col items-center cursor-pointer hover:scale-105 transition-all duration-300 group" onClick={handleAppRefresh}>
+                   <div className="relative flex items-center justify-center">
+                      <span className="font-sans font-black text-3xl tracking-tighter text-[#E3007E] relative z-10" style={{ filter: 'drop-shadow(0 0 12px rgba(227, 0, 126, 0.4))' }}>MG</span>
+                      <div className="absolute inset-0 blur-xl bg-[#E3007E]/10 rounded-full animate-pulse"></div>
+                   </div>
+                   <div className="w-10 h-[1px] bg-[#E3007E]/50 mt-0.5 shadow-[0_0_5px_rgba(227,0,126,0.2)]"></div>
+                   <div className="flex items-center gap-1.5 mt-1 opacity-70">
+                      <div className="w-1 h-1 rotate-45 border border-[#E3007E]/60"></div>
+                      <div className="w-5 h-[0.5px] bg-[#E3007E]/30"></div>
+                      <div className="w-1 h-1 rotate-45 border border-[#E3007E]/60"></div>
+                   </div>
                 </div>
                 <button onClick={() => setSidebarMode('hidden')} className="p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors">
                   <X size={20} />
@@ -115,8 +130,8 @@ const Sidebar: React.FC = () => {
              </div>
              
              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center text-[#003366] font-bold text-lg shadow-inner">
-                   {user?.name ? user.name.charAt(0).toUpperCase() : <UserCircle size={24} />}
+                <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center text-[#003366] font-bold text-lg shadow-inner shrink-0">
+                   {getInitials(user?.name)}
                 </div>
                 <div className="overflow-hidden">
                    <p className="font-bold text-lg leading-tight truncate">{user?.name}</p>
@@ -195,8 +210,17 @@ const Sidebar: React.FC = () => {
         bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 h-full flex-col transition-all duration-300 ease-in-out relative z-50 overflow-hidden
       `}>
         <div className="flex flex-col items-center pt-6 pb-2 gap-4">
-          <div className="w-12 h-12 text-[#003366] dark:text-blue-400 cursor-pointer hover:scale-110 transition-transform duration-300" onClick={handleAppRefresh}>
-            <MGLogo className="w-full h-full" />
+          <div className="flex flex-col items-center cursor-pointer hover:scale-110 transition-all duration-300 group" onClick={handleAppRefresh}>
+             <div className="relative flex items-center justify-center">
+                <span className="font-sans font-black text-3xl tracking-tighter text-[#E3007E] relative z-10" style={{ filter: 'drop-shadow(0 0 12px rgba(227, 0, 126, 0.4))' }}>MG</span>
+                <div className="absolute inset-0 blur-xl bg-[#E3007E]/10 rounded-full animate-pulse"></div>
+             </div>
+             <div className="w-10 h-[1px] bg-[#E3007E]/50 mt-0.5 shadow-[0_0_5px_rgba(227,0,126,0.2)]"></div>
+             <div className="flex items-center gap-1.5 mt-1 opacity-70">
+                <div className="w-1 h-1 rotate-45 border border-[#E3007E]/60"></div>
+                <div className="w-5 h-[0.5px] bg-[#E3007E]/30"></div>
+                <div className="w-1 h-1 rotate-45 border border-[#E3007E]/60"></div>
+             </div>
           </div>
           <button onClick={togglePin} className={`p-2 rounded-xl transition-all ${isPinned ? 'bg-[#003366] text-white shadow-md' : 'bg-slate-50 dark:bg-slate-700 text-slate-400 hover:text-[#003366] dark:hover:text-blue-400'}`}>
             {isPinned ? <Pin size={18} className="fill-current" /> : <PinOff size={18} />}
