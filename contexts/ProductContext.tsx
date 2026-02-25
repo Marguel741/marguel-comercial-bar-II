@@ -74,6 +74,7 @@ interface ProductContextType {
   removeCategory: (category: string) => void;
   addPurchase: (items: Record<string, number>, source: 'Prices' | 'Inventory' | 'Sales', completedBy: string, attachments?: string[]) => void;
   getPurchasesByDate: (dateStr: string) => Record<string, number>;
+  getTodayPurchases: () => Record<string, number>;
   processTransaction: (type: 'deposit' | 'withdraw', account: 'main' | 'savings', amount: number, description: string) => void;
   addSalesReport: (report: SalesReport) => void;
 }
@@ -300,6 +301,8 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     return totals;
   };
 
+  const getTodayPurchases = () => getPurchasesByDate(getSystemDateStr());
+
   const addSalesReport = (report: SalesReport) => {
     setSalesReports(prev => [report, ...prev]);
   };
@@ -311,7 +314,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       setSystemDate, toggleDayLock, isDayLocked,
       addExpense, deleteExpense, updateExpense,
       addInventoryLog, addProduct, updateProduct, deleteProduct, addCategory, removeCategory,
-      addPurchase, getPurchasesByDate, processTransaction, 
+      addPurchase, getPurchasesByDate, getTodayPurchases, processTransaction, 
       addSalesReport
     }}>
       {children}

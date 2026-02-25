@@ -16,6 +16,7 @@ import SplashGenerator from './pages/SplashGenerator';
 import Sidebar from './components/Sidebar';
 import { User, UserRole } from './types';
 import { ProductProvider } from './contexts/ProductContext';
+import { FinanceProvider } from './contexts/FinanceContext';
 import { LayoutProvider } from './contexts/LayoutContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 
@@ -109,30 +110,32 @@ const App: React.FC = () => {
     <ThemeProvider>
       <AuthContext.Provider value={{ user, login, logout, isLoading, switchUser }}>
         <ProductProvider>
-          <LayoutProvider>
-            <Router>
-              <div className="flex h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-300 overflow-hidden">
-                <Sidebar />
-                <div id="main-content" className="flex-1 overflow-y-auto custom-scrollbar relative">
-                  <Routes>
-                    <Route path="/login" element={<Navigate to="/" />} />
-                    <Route path="/" element={<Dashboard />} />
-                    <Route path="/direct-service" element={<DirectService />} />
-                    <Route path="/calendar" element={<GlobalCalendar />} />
-                    <Route path="/sales" element={<Sales />} />
-                    <Route path="/inventory" element={<Inventory />} />
-                    <Route path="/prices" element={<Prices />} />
-                    <Route path="/expenses" element={<Expenses />} />
-                    <Route path="/account" element={<AccountStatus />} />
-                    <Route path="/users" element={<UserManagement />} />
-                    <Route path="/test-cycle" element={<TestCycle />} />
-                    <Route path="/generate-splash" element={<SplashGenerator />} />
-                    <Route path="*" element={<Navigate to="/" />} />
-                  </Routes>
+          <FinanceProvider>
+            <LayoutProvider>
+              <Router>
+                <div className="flex h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-300 overflow-hidden">
+                  <Sidebar />
+                  <div id="main-content" className="flex-1 overflow-y-auto custom-scrollbar relative">
+                    <Routes>
+                      <Route path="/login" element={<Navigate to="/" />} />
+                      <Route path="/" element={<Dashboard />} />
+                      <Route path="/direct-service" element={<DirectService />} />
+                      <Route path="/calendar" element={<GlobalCalendar />} />
+                      <Route path="/sales" element={<Sales />} />
+                      <Route path="/inventory" element={<Inventory />} />
+                      <Route path="/prices" element={<Prices />} />
+                      <Route path="/expenses" element={<Expenses />} />
+                      <Route path="/account" element={<AccountStatus />} />
+                      <Route path="/users" element={<UserManagement />} />
+                      <Route path="/test-cycle" element={<TestCycle />} />
+                      <Route path="/generate-splash" element={<SplashGenerator />} />
+                      <Route path="*" element={<Navigate to="/" />} />
+                    </Routes>
+                  </div>
                 </div>
-              </div>
-            </Router>
-          </LayoutProvider>
+              </Router>
+            </LayoutProvider>
+          </FinanceProvider>
         </ProductProvider>
       </AuthContext.Provider>
     </ThemeProvider>
