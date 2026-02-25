@@ -166,4 +166,24 @@ export interface SalesReport {
     initial: Record<string, string>;
     final: Record<string, string>;
   };
+  // Extended fields for detailed reporting
+  dateISO?: string;
+  displayDate?: string;
+  weekday?: string;
+  generatedAt?: string;
+  totals?: {
+    expected: number;
+    lifted: number;
+    discrepancy: number;
+    soldStock: number;
+  };
+  financials?: {
+    cash: number;
+    transfer: number;
+    ticket: number;
+    lunch: number;
+    justification: string;
+  };
+  topProducts?: { name: string; qty: number; total: number }[];
+  itemsSnapshot?: any[];
 }

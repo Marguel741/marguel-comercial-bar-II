@@ -48,9 +48,11 @@ const Dashboard: React.FC = () => {
     const productSales: Record<string, number> = {};
     
     salesReports.forEach(report => {
-      report.itemsSummary.forEach(item => {
-        productSales[item.name] = (productSales[item.name] || 0) + item.qty;
-      });
+      if (report.itemsSummary) {
+        report.itemsSummary.forEach(item => {
+          productSales[item.name] = (productSales[item.name] || 0) + item.qty;
+        });
+      }
     });
 
     return Object.entries(productSales)
@@ -90,7 +92,7 @@ const Dashboard: React.FC = () => {
                 name: weekDayMap[d.getDay()],
                 fullName: d.toLocaleDateString('pt-AO', { weekday: 'long', day: 'numeric', month: 'long' }),
                 date: dateStr,
-                sales: report ? report.totalLifted : 0,
+                sales: report ? (report.totalLifted || report.totals?.lifted || 0) : 0,
                 expenses: dayExpenses,
                 details: {
                     report,
@@ -113,7 +115,7 @@ const Dashboard: React.FC = () => {
                 name: d.getDate().toString(),
                 fullName: d.toLocaleDateString('pt-AO', { weekday: 'long', day: 'numeric', month: 'long' }),
                 date: dateStr,
-                sales: report ? report.totalLifted : 0,
+                sales: report ? (report.totalLifted || report.totals?.lifted || 0) : 0,
                 expenses: dayExpenses,
                 details: {
                     report,
@@ -130,8 +132,8 @@ const Dashboard: React.FC = () => {
             const year = d.getFullYear();
             
             const monthSales = salesReports.reduce((acc, r) => {
-                const pd = parseDateStr(r.date);
-                return (pd.m === month && pd.y === year) ? acc + r.totalLifted : acc;
+                const pd = parseDateStr(r.date || r.displayDate || '');
+                return (pd.m === month && pd.y === year) ? acc + (r.totalLifted || r.totals?.lifted || 0) : acc;
             }, 0);
 
             const monthExpenses = expenses.reduce((acc, e) => {
@@ -183,13 +185,14 @@ const Dashboard: React.FC = () => {
     }
 
     // Financial Alerts
-    const recentDiscrepancy = salesReports.find(r => r.discrepancy !== 0);
+    const recentDiscrepancy = salesReports.find(r => (r.discrepancy || r.totals?.discrepancy || 0) !== 0);
     if (recentDiscrepancy) {
+         const discrepancyVal = recentDiscrepancy.discrepancy || recentDiscrepancy.totals?.discrepancy || 0;
          list.push({
             id: `disc-${recentDiscrepancy.id}`,
             type: 'CRITICO',
             title: 'Divergência Financeira',
-            message: `Divergência de ${recentDiscrepancy.discrepancy.toLocaleString()} Kz em ${recentDiscrepancy.date}`,
+            message: `Divergência de ${discrepancyVal.toLocaleString()} Kz em ${recentDiscrepancy.date || recentDiscrepancy.displayDate}`,
             icon: TrendingDown,
             color: 'red'
         });
@@ -197,7 +200,7 @@ const Dashboard: React.FC = () => {
 
     // Closing Alert
     const todayStr = systemDate.toLocaleDateString('pt-AO');
-    const hasReportToday = salesReports.some(r => r.date === todayStr);
+    const hasReportToday = salesReports.some(r => (r.date || r.displayDate) === todayStr);
     if (!hasReportToday) {
          list.push({
             id: 'no-close',
@@ -398,7 +401,7 @@ const Dashboard: React.FC = () => {
             <div className="relative z-10">
                 <p className="text-blue-200 text-sm mb-1">Total Vendido Ontem</p>
                 <h3 className="text-4xl font-bold mb-2">
-                    {yesterdayReport ? `${yesterdayReport.totalLifted.toLocaleString('pt-AO')} Kz` : '0 Kz'}
+                    {yesterdayReport ? `${(yesterdayReport.totalLifted || yesterdayReport.totals?.lifted || 0).toLocaleString('pt-AO')} Kz` : '0 Kz'}
                 </h3>
                 <p className="text-blue-200 text-sm">
                     {yesterdayReport ? 'Valor confirmado' : 'Aguardando fecho'}
@@ -568,9 +571,9 @@ const Dashboard: React.FC = () => {
                             <p className="text-2xl font-black text-[#003366] dark:text-blue-400 mb-2">{selectedChartDay.sales.toLocaleString()} Kz</p>
                             {selectedChartDay.details?.report ? (
                                 <div className="text-sm space-y-1 text-slate-500 dark:text-slate-400">
-                                    <p>Cash: <span className="font-medium">{selectedChartDay.details.report.cash.toLocaleString()} Kz</span></p>
-                                    <p>TPA: <span className="font-medium">{selectedChartDay.details.report.tpa.toLocaleString()} Kz</span></p>
-                                    <p>Transferência: <span className="font-medium">{selectedChartDay.details.report.transfer.toLocaleString()} Kz</span></p>
+                                    <p>Cash: <span className="font-medium">{(selectedChartDay.details.report.cash || selectedChartDay.details.report.financials?.cash || 0).toLocaleString()} Kz</span></p>
+                                    <p>TPA: <span className="font-medium">{(selectedChartDay.details.report.tpa || selectedChartDay.details.report.financials?.ticket || 0).toLocaleString()} Kz</span></p>
+                                    <p>Transferência: <span className="font-medium">{(selectedChartDay.details.report.transfer || selectedChartDay.details.report.financials?.transfer || 0).toLocaleString()} Kz</span></p>
                                 </div>
                             ) : (
                                 <p className="text-sm text-slate-400 italic">Sem fecho registrado.</p>
@@ -609,7 +612,7 @@ const Dashboard: React.FC = () => {
                     </div>
                 </div>
                 <h4 className="text-lg font-bold text-slate-800 dark:text-white pl-2">
-                    {yesterdayReport ? `${yesterdayReport.cash.toLocaleString('pt-AO')} Kz` : '0 Kz'}
+                    {yesterdayReport ? `${(yesterdayReport.cash || yesterdayReport.financials?.cash || 0).toLocaleString('pt-AO')} Kz` : '0 Kz'}
                 </h4>
             </div>
             <div className="bg-white dark:bg-[#0a192f] p-5 rounded-[2rem] shadow-sm relative overflow-hidden">
@@ -621,7 +624,7 @@ const Dashboard: React.FC = () => {
                     </div>
                 </div>
                 <h4 className="text-lg font-bold text-slate-800 dark:text-white pl-2">
-                    {yesterdayReport ? `${yesterdayReport.tpa.toLocaleString('pt-AO')} Kz` : '0 Kz'}
+                    {yesterdayReport ? `${(yesterdayReport.tpa || yesterdayReport.financials?.ticket || 0).toLocaleString('pt-AO')} Kz` : '0 Kz'}
                 </h4>
             </div>
         </div>

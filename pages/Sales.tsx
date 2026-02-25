@@ -41,10 +41,20 @@ interface DailyReport {
   topProducts: { name: string; qty: number; total: number }[];
   itemsSnapshot: any[];
   closedBy: string;
+  
+  // Compatibility fields for Dashboard
+  date?: string;
+  itemsSummary?: { name: string; qty: number; total: number }[];
+  totalLifted?: number;
+  cash?: number;
+  tpa?: number;
+  transfer?: number;
+  lunchExpense?: number;
+  discrepancy?: number;
 }
 
 const Sales: React.FC = () => {
-  const { products, addProduct, updateProduct, getTodayPurchases, addPurchase } = useProducts();
+  const { products, addProduct, updateProduct, getTodayPurchases, addPurchase, salesReports: contextSalesReports, addSalesReport } = useProducts();
   const { sidebarMode, triggerHaptic } = useLayout();
   const { user } = useAuth();
   const { addTransaction } = useFinance();
@@ -84,21 +94,11 @@ const Sales: React.FC = () => {
   const [isDayClosed, setIsDayClosed] = useState(false);
   const [showCloseModal, setShowCloseModal] = useState(false);
 
-  const [salesReports, setSalesReports] = useState<DailyReport[]>(() => {
-    try {
-      const saved = localStorage.getItem('mg_sales_reports');
-      return saved ? JSON.parse(saved) : [];
-    } catch (e) {
-      return [];
-    }
-  });
+  // Use context reports, cast to DailyReport[] if needed
+  const salesReports = contextSalesReports as unknown as DailyReport[];
   
   const [historyFilter, setHistoryFilter] = useState<'day' | 'week' | 'month' | 'quarter' | 'semester' | 'year' | 'all'>('week');
   const [viewHistoryReport, setViewHistoryReport] = useState<DailyReport | null>(null);
-
-  useEffect(() => {
-    localStorage.setItem('mg_sales_reports', JSON.stringify(salesReports));
-  }, [salesReports]);
 
   const [toast, setToast] = useState<{show: boolean, message: string}>({ show: false, message: '' });
 
@@ -293,10 +293,24 @@ const Sales: React.FC = () => {
       },
       topProducts: calculatedData.salesChartData.slice(0, 5).map(i => ({ name: i.name, qty: i.Quantidade, total: i.Total })),
       itemsSnapshot: calculatedData.items.filter(i => i.soldQty !== 0),
-      closedBy: user?.name || 'Sistema'
+      closedBy: user?.name || 'Sistema',
+      
+      // Compatibility fields for Dashboard
+      date: reportTimestamp.toLocaleDateString('pt-AO'),
+      itemsSummary: calculatedData.items.filter(i => i.soldQty > 0).map(i => ({
+          name: i.name,
+          qty: i.soldQty,
+          total: i.revenue
+      })),
+      totalLifted: totalLifted,
+      cash: declaredCash,
+      tpa: declaredTicket,
+      transfer: declaredTransfer,
+      lunchExpense: lunchExpense,
+      discrepancy: discrepancy
     };
 
-    setSalesReports(prev => [newReport, ...prev]);
+    addSalesReport(newReport as any);
     
     setSyncState({ status: 'success', step: 'Dia Fechado e Stock Atualizado!', progress: 100 });
     triggerHaptic('success');
@@ -320,8 +334,34 @@ const Sales: React.FC = () => {
     return 'Fechar o Dia';
   };
 
+  const getReportData = (report: any) => {
+      if (report.totals) return report; // New format
+      
+      // Old format (SalesReport)
+      return {
+          ...report,
+          displayDate: report.date, 
+          totals: {
+              soldStock: report.totalExpected || 0,
+              lifted: report.totalLifted || 0,
+              discrepancy: report.discrepancy || 0,
+              expected: report.totalExpected || 0
+          },
+          financials: {
+              cash: report.cash || 0,
+              transfer: report.transfer || 0,
+              ticket: report.tpa || 0,
+              lunch: report.lunchExpense || 0,
+              justification: report.notes || ''
+          },
+          topProducts: report.itemsSummary || [],
+          itemsSnapshot: [] 
+      };
+  };
+
   if (isDayClosed || viewHistoryReport) {
-    const reportData = viewHistoryReport || salesReports[0];
+    const rawReport = viewHistoryReport || salesReports[0];
+    const reportData = getReportData(rawReport);
     return (
         <div ref={pageTopRef} className="p-4 md:p-8 space-y-8 animate-fade-in pb-32 bg-[#F8FAFC] dark:bg-slate-900 min-h-screen">
             <div className="max-w-5xl mx-auto print:max-w-none">
