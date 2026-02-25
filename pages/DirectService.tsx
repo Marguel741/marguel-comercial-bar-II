@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Search, ShoppingCart, Plus, Minus, Trash2, CheckCircle, Wallet, CreditCard, ArrowRightLeft, X, History, Clock, Eye, Wifi, WifiOff, Cloud, Loader2, Check } from 'lucide-react';
+import { Search, ShoppingCart, Plus, Minus, Trash2, CheckCircle, Wallet, CreditCard, ArrowRightLeft, X, History, Clock, Eye, Wifi, WifiOff, Cloud, Loader2, Check, Filter } from 'lucide-react';
 import { useProducts } from '../contexts/ProductContext';
 import { useLayout } from '../contexts/LayoutContext';
 import { useAuth } from '../App';
@@ -21,6 +21,64 @@ interface DirectSale {
   statusSync: 'pending' | 'synced';
 }
 
+// IndexedDB Helpers
+const DB_NAME = 'MarguelDirectSalesDB';
+const STORE_NAME = 'sales';
+const DB_VERSION = 1;
+
+const openDB = (): Promise<IDBDatabase> => {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+    request.onupgradeneeded = (event) => {
+      const db = (event.target as IDBOpenDBRequest).result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+        store.createIndex('statusSync', 'statusSync', { unique: false });
+        store.createIndex('timestamp', 'timestamp', { unique: false });
+      }
+    };
+  });
+};
+
+const dbAddSale = async (sale: DirectSale) => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    const request = store.add(sale);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+};
+
+const dbGetAllSales = async (): Promise<DirectSale[]> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readonly');
+    const store = tx.objectStore(STORE_NAME);
+    const request = store.getAll();
+    request.onsuccess = () => {
+        const results = request.result as DirectSale[];
+        results.sort((a, b) => b.timestamp - a.timestamp);
+        resolve(results);
+    };
+    request.onerror = () => reject(request.error);
+  });
+};
+
+const dbUpdateSale = async (sale: DirectSale) => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    const request = store.put(sale);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+};
+
 const DirectService: React.FC = () => {
   const { products, categories, updateProduct, processTransaction, addSalesReport } = useProducts();
   const { triggerHaptic, sidebarMode } = useLayout();
@@ -41,10 +99,14 @@ const DirectService: React.FC = () => {
 
   // History State
   const [showHistory, setShowHistory] = useState(false);
-  const [directSales, setDirectSales] = useState<DirectSale[]>(() => {
-      const saved = localStorage.getItem('mg_direct_sales');
-      return saved ? JSON.parse(saved) : [];
-  });
+  const [directSales, setDirectSales] = useState<DirectSale[]>([]);
+  const [historyFilterDate, setHistoryFilterDate] = useState('');
+  const [historyFilterUser, setHistoryFilterUser] = useState('');
+
+  // Load from DB
+  useEffect(() => {
+      dbGetAllSales().then(setDirectSales).catch(console.error);
+  }, []);
 
   // Initialize Device ID
   useEffect(() => {
@@ -56,18 +118,13 @@ const DirectService: React.FC = () => {
       setDeviceId(storedDeviceId);
   }, []);
 
-  // Persist Sales
-  useEffect(() => {
-      localStorage.setItem('mg_direct_sales', JSON.stringify(directSales));
-  }, [directSales]);
-
-  // Network Listeners (Manual Sync UX)
+  // Network Listeners & Auto-Sync
   useEffect(() => {
       const handleOnline = () => {
           setIsOnline(true);
           setNetworkToast({
               show: true,
-              message: "Você está online. As vendas poderão ser sincronizadas manualmente.",
+              message: "Conexão restabelecida. Tentando sincronizar...",
               type: 'success'
           });
           setTimeout(() => setNetworkToast(prev => ({ ...prev, show: false })), 5000);
@@ -92,10 +149,10 @@ const DirectService: React.FC = () => {
       };
   }, []);
 
-  const syncPendingSales = useCallback(async () => {
+  const syncPendingSales = useCallback(async (isManual = false) => {
       const pendingSales = directSales.filter(s => s.statusSync === 'pending');
       if (pendingSales.length === 0) {
-          alert("Não há vendas pendentes para sincronizar.");
+          if (isManual) alert("Não há vendas pendentes para sincronizar.");
           return;
       }
 
@@ -107,11 +164,16 @@ const DirectService: React.FC = () => {
 
           const serverTime = Date.now();
           
-          setDirectSales(prev => prev.map(sale => 
-              sale.statusSync === 'pending' 
-                  ? { ...sale, statusSync: 'synced', serverTimestamp: serverTime } 
-                  : sale
-          ));
+          const updatedSales = await Promise.all(pendingSales.map(async (sale) => {
+              const updated = { ...sale, statusSync: 'synced' as const, serverTimestamp: serverTime };
+              await dbUpdateSale(updated);
+              return updated;
+          }));
+
+          setDirectSales(prev => prev.map(s => {
+              const updated = updatedSales.find(u => u.id === s.id);
+              return updated || s;
+          }));
           
           setNetworkToast({
               show: true,
@@ -126,6 +188,17 @@ const DirectService: React.FC = () => {
           setIsSyncing(false);
       }
   }, [directSales]);
+
+  // Auto-sync Effect
+  useEffect(() => {
+      if (isOnline && !isSyncing) {
+          const hasPending = directSales.some(s => s.statusSync === 'pending');
+          if (hasPending) {
+              const timer = setTimeout(() => syncPendingSales(false), 1000);
+              return () => clearTimeout(timer);
+          }
+      }
+  }, [isOnline, directSales, isSyncing, syncPendingSales]);
 
   // Filtering
   const filteredProducts = useMemo(() => {
@@ -176,7 +249,13 @@ const DirectService: React.FC = () => {
     return total;
   }, [cart, products]);
 
-  const handleCheckout = () => {
+  const handleCheckout = async () => {
+    // Validation
+    if (Object.keys(cart).length === 0) {
+        alert("O carrinho está vazio.");
+        return;
+    }
+
     triggerHaptic('success');
     
     // 1. Create Sale Record (Independent History)
@@ -203,19 +282,42 @@ const DirectService: React.FC = () => {
         })
     };
 
-    // 2. Save to Local History ONLY (No Global Sync)
-    setDirectSales(prev => [newSale, ...prev]);
-
-    // NOTE: Stock update and Global Transaction removed to ensure isolation 
-    // from Account Status and Global Cash Close as requested.
-    
-    // Reset
-    setCart({});
-    setShowCheckout(false);
-    setAmountPaid('');
-    // Could add a toast or success modal here
-    alert('Venda registrada! ' + (isOnline ? 'Sincronize manualmente quando desejar.' : 'Salva localmente (Offline).'));
+    // 2. Save to IndexedDB
+    try {
+        await dbAddSale(newSale);
+        setDirectSales(prev => [newSale, ...prev]);
+        
+        // Reset
+        setCart({});
+        setShowCheckout(false);
+        setAmountPaid('');
+        
+        alert('Venda registrada! ' + (isOnline ? 'Sincronize manualmente quando desejar.' : 'Salva localmente (Offline).'));
+    } catch (error) {
+        console.error("Failed to save sale", error);
+        alert("Erro ao salvar venda. Tente novamente.");
+    }
   };
+
+  const filteredHistory = useMemo(() => {
+      return directSales.filter(sale => {
+          let matchDate = true;
+          if (historyFilterDate) {
+              // Convert YYYY-MM-DD to DD/MM/YYYY for simple string match if needed, 
+              // or just check if sale.date includes the parts. 
+              // sale.date is DD/MM/YYYY. historyFilterDate is YYYY-MM-DD.
+              const [y, m, d] = historyFilterDate.split('-');
+              const formattedFilter = `${d}/${m}/${y}`;
+              matchDate = sale.date === formattedFilter;
+          }
+          
+          const matchUser = historyFilterUser 
+              ? sale.attendant.toLowerCase().includes(historyFilterUser.toLowerCase()) 
+              : true;
+              
+          return matchDate && matchUser;
+      });
+  }, [directSales, historyFilterDate, historyFilterUser]);
 
   return (
     <div className="h-screen flex flex-col md:flex-row overflow-hidden bg-slate-50 dark:bg-slate-900 relative">
@@ -234,22 +336,47 @@ const DirectService: React.FC = () => {
       {showHistory && (
           <div className="absolute inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
               <div className="bg-white dark:bg-slate-800 w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col max-h-[80vh]">
-                  <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center">
-                      <h2 className="text-xl font-bold text-[#003366] dark:text-white flex items-center gap-2">
-                          <History size={24} /> Histórico de Vendas Diretas
-                      </h2>
-                      <button onClick={() => setShowHistory(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors">
-                          <X size={20} className="text-slate-500" />
-                      </button>
+                  <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex flex-col gap-4">
+                      <div className="flex justify-between items-center">
+                          <h2 className="text-xl font-bold text-[#003366] dark:text-white flex items-center gap-2">
+                              <History size={24} /> Histórico de Vendas Diretas
+                          </h2>
+                          <button onClick={() => setShowHistory(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors">
+                              <X size={20} className="text-slate-500" />
+                          </button>
+                      </div>
+                      
+                      {/* Filters */}
+                      <div className="flex gap-2">
+                          <div className="relative flex-1">
+                              <Clock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                              <input 
+                                  type="date" 
+                                  value={historyFilterDate}
+                                  onChange={e => setHistoryFilterDate(e.target.value)}
+                                  className="w-full pl-9 pr-3 py-2 text-sm bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 dark:text-white"
+                              />
+                          </div>
+                          <div className="relative flex-1">
+                              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                              <input 
+                                  type="text" 
+                                  placeholder="Filtrar por atendente..."
+                                  value={historyFilterUser}
+                                  onChange={e => setHistoryFilterUser(e.target.value)}
+                                  className="w-full pl-9 pr-3 py-2 text-sm bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 dark:text-white"
+                              />
+                          </div>
+                      </div>
                   </div>
                   <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-4">
-                      {directSales.length === 0 ? (
+                      {filteredHistory.length === 0 ? (
                           <div className="text-center py-10 text-slate-400">
                               <History size={48} className="mx-auto mb-4 opacity-20" />
-                              <p>Nenhuma venda registrada neste histórico.</p>
+                              <p>Nenhuma venda encontrada.</p>
                           </div>
                       ) : (
-                          directSales.map(sale => (
+                          filteredHistory.map(sale => (
                               <div key={sale.id} className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
                                   <div className="flex justify-between items-start mb-3">
                                       <div>
@@ -307,7 +434,7 @@ const DirectService: React.FC = () => {
               <div className="flex items-center gap-4">
                   {/* Offline/Online Indicator */}
                   <button 
-                      onClick={() => isOnline && syncPendingSales()}
+                      onClick={() => isOnline && syncPendingSales(true)}
                       disabled={!isOnline || isSyncing}
                       className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
                       isOnline 
