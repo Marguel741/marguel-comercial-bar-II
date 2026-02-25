@@ -1,9 +1,20 @@
-import React, { useState, useMemo } from 'react';
-import { Search, ShoppingCart, Plus, Minus, Trash2, CheckCircle, Wallet, CreditCard, ArrowRightLeft, X } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Search, ShoppingCart, Plus, Minus, Trash2, CheckCircle, Wallet, CreditCard, ArrowRightLeft, X, History, Clock, Eye } from 'lucide-react';
 import { useProducts } from '../contexts/ProductContext';
 import { useLayout } from '../contexts/LayoutContext';
 import { useAuth } from '../App';
 import SoftCard from '../components/SoftCard';
+
+interface DirectSale {
+  id: string;
+  date: string;
+  time: string;
+  timestamp: number;
+  attendant: string;
+  total: number;
+  items: { name: string; qty: number; price: number }[];
+  paymentMethod: 'cash' | 'tpa' | 'transfer';
+}
 
 const DirectService: React.FC = () => {
   const { products, categories, updateProduct, processTransaction, addSalesReport } = useProducts();
@@ -16,6 +27,17 @@ const DirectService: React.FC = () => {
   const [showCheckout, setShowCheckout] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'tpa' | 'transfer'>('cash');
   const [amountPaid, setAmountPaid] = useState('');
+  
+  // History State
+  const [showHistory, setShowHistory] = useState(false);
+  const [directSales, setDirectSales] = useState<DirectSale[]>(() => {
+      const saved = localStorage.getItem('mg_direct_sales');
+      return saved ? JSON.parse(saved) : [];
+  });
+
+  useEffect(() => {
+      localStorage.setItem('mg_direct_sales', JSON.stringify(directSales));
+  }, [directSales]);
 
   // Filtering
   const filteredProducts = useMemo(() => {
@@ -69,41 +91,113 @@ const DirectService: React.FC = () => {
   const handleCheckout = () => {
     triggerHaptic('success');
     
-    // 1. Update Stock
-    Object.entries(cart).forEach(([id, qty]) => {
-        const p = products.find(prod => prod.id === id);
-        if (p) {
-            updateProduct(id, { stock: p.stock - Number(qty) });
-        }
-    });
+    // 1. Create Sale Record (Independent History)
+    const newSale: DirectSale = {
+        id: Date.now().toString(),
+        date: new Date().toLocaleDateString('pt-AO'),
+        time: new Date().toLocaleTimeString('pt-AO'),
+        timestamp: Date.now(),
+        attendant: user?.name || 'Desconhecido',
+        total: cartTotal,
+        paymentMethod: paymentMethod,
+        items: Object.entries(cart).map(([id, qty]) => {
+            const p = products.find(prod => prod.id === id);
+            return {
+                name: p?.name || 'Item Desconhecido',
+                qty: Number(qty),
+                price: p?.sellPrice || 0
+            };
+        })
+    };
 
-    // 2. Add Transaction (Optional: Usually direct sales go to daily cash sheet, but let's add to balance for real-time view)
-    processTransaction(
-        'deposit',
-        'main',
-        cartTotal,
-        `Venda Directa - ${Object.keys(cart).length} itens`
-    );
+    // 2. Save to Local History ONLY (No Global Sync)
+    setDirectSales(prev => [newSale, ...prev]);
 
+    // NOTE: Stock update and Global Transaction removed to ensure isolation 
+    // from Account Status and Global Cash Close as requested.
+    
     // Reset
     setCart({});
     setShowCheckout(false);
     setAmountPaid('');
     // Could add a toast or success modal here
-    alert('Venda realizada com sucesso!');
+    alert('Venda registrada no Histórico Local!');
   };
 
   return (
-    <div className="h-screen flex flex-col md:flex-row overflow-hidden bg-slate-50 dark:bg-slate-900">
+    <div className="h-screen flex flex-col md:flex-row overflow-hidden bg-slate-50 dark:bg-slate-900 relative">
       
+      {/* History Modal */}
+      {showHistory && (
+          <div className="absolute inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+              <div className="bg-white dark:bg-slate-800 w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col max-h-[80vh]">
+                  <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center">
+                      <h2 className="text-xl font-bold text-[#003366] dark:text-white flex items-center gap-2">
+                          <History size={24} /> Histórico de Vendas Diretas
+                      </h2>
+                      <button onClick={() => setShowHistory(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors">
+                          <X size={20} className="text-slate-500" />
+                      </button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-4">
+                      {directSales.length === 0 ? (
+                          <div className="text-center py-10 text-slate-400">
+                              <History size={48} className="mx-auto mb-4 opacity-20" />
+                              <p>Nenhuma venda registrada neste histórico.</p>
+                          </div>
+                      ) : (
+                          directSales.map(sale => (
+                              <div key={sale.id} className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
+                                  <div className="flex justify-between items-start mb-3">
+                                      <div>
+                                          <div className="flex items-center gap-2 mb-1">
+                                              <span className="font-bold text-[#003366] dark:text-white text-lg">{sale.total.toLocaleString()} Kz</span>
+                                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                                                  sale.paymentMethod === 'cash' ? 'bg-green-100 text-green-600' :
+                                                  sale.paymentMethod === 'tpa' ? 'bg-blue-100 text-blue-600' :
+                                                  'bg-purple-100 text-purple-600'
+                                              }`}>{sale.paymentMethod}</span>
+                                          </div>
+                                          <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+                                              <span className="flex items-center gap-1"><Clock size={12} /> {sale.date} às {sale.time}</span>
+                                              <span>•</span>
+                                              <span>{sale.attendant}</span>
+                                          </div>
+                                      </div>
+                                  </div>
+                                  <div className="space-y-1 pl-4 border-l-2 border-slate-200 dark:border-slate-600">
+                                      {sale.items.map((item, idx) => (
+                                          <div key={idx} className="flex justify-between text-sm">
+                                              <span className="text-slate-600 dark:text-slate-300">{item.qty}x {item.name}</span>
+                                              <span className="text-slate-400">{(item.qty * item.price).toLocaleString()} Kz</span>
+                                          </div>
+                                      ))}
+                                  </div>
+                              </div>
+                          ))
+                      )}
+                  </div>
+              </div>
+          </div>
+      )}
+
       {/* LEFT: Product Grid */}
       <div className="flex-1 flex flex-col h-full overflow-hidden">
         {/* Header & Filters */}
         <div className="p-4 bg-white dark:bg-slate-800 shadow-sm z-10 space-y-4">
            <div className="flex justify-between items-center">
-              <h1 className="text-2xl font-bold text-[#003366] dark:text-white">Atendimento Directo</h1>
-              <div className="text-sm font-medium text-slate-500 dark:text-slate-400">
-                 Operador: <span className="text-[#003366] dark:text-white font-bold">{user?.name?.split(' ')[0]}</span>
+              {/* UI FIX: Added ml-20 to prevent overlap with Menu button */}
+              <h1 className="text-2xl font-bold text-[#003366] dark:text-white ml-20">Atendimento Directo</h1>
+              <div className="flex items-center gap-4">
+                  <button 
+                    onClick={() => setShowHistory(true)}
+                    className="p-2 bg-slate-100 dark:bg-slate-700 text-[#003366] dark:text-blue-400 rounded-lg hover:bg-slate-200 transition-colors flex items-center gap-2 text-sm font-bold"
+                  >
+                      <History size={18} /> <span className="hidden md:inline">Histórico</span>
+                  </button>
+                  <div className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                     Operador: <span className="text-[#003366] dark:text-white font-bold">{user?.name?.split(' ')[0]}</span>
+                  </div>
               </div>
            </div>
            
@@ -160,6 +254,67 @@ const DirectService: React.FC = () => {
                     </div>
                  </div>
               ))}
+           </div>
+
+           {/* Recent History Section */}
+           <div className="mt-8 mb-8">
+              <div className="flex justify-between items-end mb-4 px-2">
+                  <div>
+                      <h3 className="font-bold text-lg text-[#003366] dark:text-white">Histórico Recente</h3>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">Últimos registos</p>
+                  </div>
+                  <button 
+                    onClick={() => setShowHistory(true)}
+                    className="text-sm font-bold text-[#003366] dark:text-blue-400 hover:underline"
+                  >
+                    Ver Relatório Completo
+                  </button>
+              </div>
+
+              <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
+                  {directSales.length === 0 ? (
+                      <div className="p-8 text-center text-slate-400 italic">
+                          Nenhuma venda registrada.
+                      </div>
+                  ) : (
+                      <div className="divide-y divide-slate-100 dark:divide-slate-700">
+                          {directSales.slice(0, 5).map(sale => (
+                              <div key={sale.id} className="p-4 flex justify-between items-center hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                                  <div className="flex items-center gap-4">
+                                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                                          sale.paymentMethod === 'cash' ? 'bg-green-100 text-green-600' :
+                                          sale.paymentMethod === 'tpa' ? 'bg-blue-100 text-blue-600' :
+                                          'bg-purple-100 text-purple-600'
+                                      }`}>
+                                          <Clock size={18} />
+                                      </div>
+                                      <div>
+                                          <p className="font-bold text-slate-800 dark:text-white text-sm">Venda Directa</p>
+                                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                                              {sale.date} • {sale.time} • {sale.attendant}
+                                          </p>
+                                      </div>
+                                  </div>
+                                  <div className="text-right">
+                                      <p className="font-bold text-[#003366] dark:text-white">{sale.total.toLocaleString()} Kz</p>
+                                      <p className="text-[10px] uppercase font-bold text-slate-400">{sale.paymentMethod}</p>
+                                  </div>
+                              </div>
+                          ))}
+                      </div>
+                  )}
+                  
+                  {directSales.length > 0 && (
+                      <div className="p-3 bg-slate-50 dark:bg-slate-700/30 border-t border-slate-100 dark:border-slate-700 text-center">
+                          <button 
+                            onClick={() => setShowHistory(true)}
+                            className="text-xs font-bold text-slate-500 hover:text-[#003366] dark:text-slate-400 dark:hover:text-white transition-colors"
+                          >
+                              Ver todos os registos
+                          </button>
+                      </div>
+                  )}
+              </div>
            </div>
 
            {/* Footer */}

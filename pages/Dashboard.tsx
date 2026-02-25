@@ -27,6 +27,7 @@ const Dashboard: React.FC = () => {
   const [newAlertTitle, setNewAlertTitle] = useState('');
   const [newAlertMsg, setNewAlertMsg] = useState('');
   const [newAlertType, setNewAlertType] = useState<'CRITICO' | 'SUAVE' | 'INFO' | 'SUCCESS'>('INFO');
+  const [expandedNotificationIds, setExpandedNotificationIds] = useState<string[]>([]);
 
   const isAdmin = user?.role === UserRole.ADMIN_GERAL || user?.role === UserRole.PROPRIETARIO;
 
@@ -218,6 +219,10 @@ const Dashboard: React.FC = () => {
     return list;
   }, [products, salesReports, systemDate, customAlerts]);
 
+  const toggleNotificationExpand = (id: string) => {
+    setExpandedNotificationIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+  };
+
   const toggleAlertExpand = (id: string) => {
     setExpandedAlerts(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
   };
@@ -279,33 +284,51 @@ const Dashboard: React.FC = () => {
                                 <h4 className="font-bold text-slate-800 dark:text-white">Notificações</h4>
                                 <button onClick={() => setShowNotifications(false)} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full dark:text-white"><X size={16} /></button>
                             </div>
-                            <div className="max-h-64 overflow-y-auto custom-scrollbar space-y-2">
+                            <div className="max-h-64 overflow-y-auto custom-scrollbar space-y-2 p-1">
                                 {alerts.length === 0 ? (
                                     <p className="text-slate-400 text-xs italic text-center py-4">Nenhuma notificação.</p>
                                 ) : (
-                                    alerts.map(alert => (
-                                        <div key={alert.id} className={`p-3 rounded-xl border ${
-                                            alert.color === 'red' ? 'bg-red-50 border-red-100 dark:bg-red-900/20 dark:border-red-900/30' :
-                                            alert.color === 'amber' ? 'bg-amber-50 border-amber-100 dark:bg-amber-900/20 dark:border-amber-900/30' :
-                                            alert.color === 'green' ? 'bg-green-50 border-green-100 dark:bg-green-900/20 dark:border-green-900/30' :
-                                            'bg-blue-50 border-blue-100 dark:bg-blue-900/20 dark:border-blue-900/30'
-                                        }`}>
-                                            <div className="flex gap-3">
-                                                <div className={`mt-1 min-w-[24px] h-6 rounded-full flex items-center justify-center ${
-                                                    alert.color === 'red' ? 'bg-red-100 text-red-500 dark:bg-red-900/50 dark:text-red-400' :
-                                                    alert.color === 'amber' ? 'bg-amber-100 text-amber-500 dark:bg-amber-900/50 dark:text-amber-400' :
-                                                    alert.color === 'green' ? 'bg-green-100 text-green-500 dark:bg-green-900/50 dark:text-green-400' :
-                                                    'bg-blue-100 text-blue-500 dark:bg-blue-900/50 dark:text-blue-400'
-                                                }`}>
-                                                    <alert.icon size={12} />
+                                    alerts.map(alert => {
+                                        const isExpanded = expandedNotificationIds.includes(alert.id);
+                                        return (
+                                            <div key={alert.id} className={`p-3 rounded-xl border transition-all ${
+                                                alert.color === 'red' ? 'bg-red-50 border-red-100 dark:bg-red-900/20 dark:border-red-900/30' :
+                                                alert.color === 'amber' ? 'bg-amber-50 border-amber-100 dark:bg-amber-900/20 dark:border-amber-900/30' :
+                                                alert.color === 'green' ? 'bg-green-50 border-green-100 dark:bg-green-900/20 dark:border-green-900/30' :
+                                                'bg-blue-50 border-blue-100 dark:bg-blue-900/20 dark:border-blue-900/30'
+                                            }`}>
+                                                <div className="flex gap-3">
+                                                    <div className={`mt-1 min-w-[24px] h-6 rounded-full flex items-center justify-center ${
+                                                        alert.color === 'red' ? 'bg-red-100 text-red-500 dark:bg-red-900/50 dark:text-red-400' :
+                                                        alert.color === 'amber' ? 'bg-amber-100 text-amber-500 dark:bg-amber-900/50 dark:text-amber-400' :
+                                                        alert.color === 'green' ? 'bg-green-100 text-green-500 dark:bg-green-900/50 dark:text-green-400' :
+                                                        'bg-blue-100 text-blue-500 dark:bg-blue-900/50 dark:text-blue-400'
+                                                    }`}>
+                                                        <alert.icon size={12} />
+                                                    </div>
+                                                    <div className="flex-1">
+                                                        <h5 className="font-bold text-xs text-slate-800 dark:text-white">{alert.title}</h5>
+                                                        <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight">{alert.message}</p>
+                                                    </div>
+                                                    {alert.details && (
+                                                        <button onClick={(e) => { e.stopPropagation(); toggleNotificationExpand(alert.id); }} className="p-1 hover:bg-black/5 dark:hover:bg-white/10 rounded-full h-fit">
+                                                            {isExpanded ? <ChevronUp size={14} className="text-slate-500" /> : <ChevronDown size={14} className="text-slate-500" />}
+                                                        </button>
+                                                    )}
                                                 </div>
-                                                <div>
-                                                    <h5 className="font-bold text-xs text-slate-800 dark:text-white">{alert.title}</h5>
-                                                    <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight">{alert.message}</p>
-                                                </div>
+                                                {isExpanded && alert.details && (
+                                                    <div className="mt-2 pt-2 border-t border-black/5 dark:border-white/10 text-[10px] space-y-1">
+                                                        {alert.details.map((detail: string, idx: number) => (
+                                                            <div key={idx} className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
+                                                                <div className="w-1 h-1 rounded-full bg-current opacity-50"></div>
+                                                                {detail}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
                                             </div>
-                                        </div>
-                                    ))
+                                        );
+                                    })
                                 )}
                             </div>
                         </div>
