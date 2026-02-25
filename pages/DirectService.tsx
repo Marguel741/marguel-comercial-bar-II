@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { Search, ShoppingCart, Plus, Minus, Trash2, CheckCircle, Wallet, CreditCard, ArrowRightLeft, X, History, Clock, Eye } from 'lucide-react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { Search, ShoppingCart, Plus, Minus, Trash2, CheckCircle, Wallet, CreditCard, ArrowRightLeft, X, History, Clock, Eye, Wifi, WifiOff, Cloud, Loader2, Check } from 'lucide-react';
 import { useProducts } from '../contexts/ProductContext';
 import { useLayout } from '../contexts/LayoutContext';
 import { useAuth } from '../App';
@@ -7,13 +7,18 @@ import SoftCard from '../components/SoftCard';
 
 interface DirectSale {
   id: string;
+  uuid: string; // Unique Immutable ID
   date: string;
   time: string;
   timestamp: number;
+  serverTimestamp?: number; // Audit
   attendant: string;
+  userId: string; // Audit
+  deviceId?: string; // Audit
   total: number;
   items: { name: string; qty: number; price: number }[];
   paymentMethod: 'cash' | 'tpa' | 'transfer';
+  statusSync: 'pending' | 'synced';
 }
 
 const DirectService: React.FC = () => {
@@ -28,6 +33,12 @@ const DirectService: React.FC = () => {
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'tpa' | 'transfer'>('cash');
   const [amountPaid, setAmountPaid] = useState('');
   
+  // Offline / Sync State
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [deviceId, setDeviceId] = useState('');
+  const [networkToast, setNetworkToast] = useState<{show: boolean, message: string, type: 'success' | 'warning'}>({ show: false, message: '', type: 'success' });
+
   // History State
   const [showHistory, setShowHistory] = useState(false);
   const [directSales, setDirectSales] = useState<DirectSale[]>(() => {
@@ -35,8 +46,85 @@ const DirectService: React.FC = () => {
       return saved ? JSON.parse(saved) : [];
   });
 
+  // Initialize Device ID
+  useEffect(() => {
+      let storedDeviceId = localStorage.getItem('mg_device_id');
+      if (!storedDeviceId) {
+          storedDeviceId = crypto.randomUUID();
+          localStorage.setItem('mg_device_id', storedDeviceId);
+      }
+      setDeviceId(storedDeviceId);
+  }, []);
+
+  // Persist Sales
   useEffect(() => {
       localStorage.setItem('mg_direct_sales', JSON.stringify(directSales));
+  }, [directSales]);
+
+  // Network Listeners (Manual Sync UX)
+  useEffect(() => {
+      const handleOnline = () => {
+          setIsOnline(true);
+          setNetworkToast({
+              show: true,
+              message: "Você está online. As vendas poderão ser sincronizadas manualmente.",
+              type: 'success'
+          });
+          setTimeout(() => setNetworkToast(prev => ({ ...prev, show: false })), 5000);
+      };
+
+      const handleOffline = () => {
+          setIsOnline(false);
+          setNetworkToast({
+              show: true,
+              message: "Você está offline. As vendas serão armazenadas localmente.",
+              type: 'warning'
+          });
+          setTimeout(() => setNetworkToast(prev => ({ ...prev, show: false })), 5000);
+      };
+
+      window.addEventListener('online', handleOnline);
+      window.addEventListener('offline', handleOffline);
+
+      return () => {
+          window.removeEventListener('online', handleOnline);
+          window.removeEventListener('offline', handleOffline);
+      };
+  }, []);
+
+  const syncPendingSales = useCallback(async () => {
+      const pendingSales = directSales.filter(s => s.statusSync === 'pending');
+      if (pendingSales.length === 0) {
+          alert("Não há vendas pendentes para sincronizar.");
+          return;
+      }
+
+      setIsSyncing(true);
+      
+      try {
+          // SIMULATION: Send to backend API
+          await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate network delay
+
+          const serverTime = Date.now();
+          
+          setDirectSales(prev => prev.map(sale => 
+              sale.statusSync === 'pending' 
+                  ? { ...sale, statusSync: 'synced', serverTimestamp: serverTime } 
+                  : sale
+          ));
+          
+          setNetworkToast({
+              show: true,
+              message: "Sincronização concluída com sucesso!",
+              type: 'success'
+          });
+          setTimeout(() => setNetworkToast(prev => ({ ...prev, show: false })), 3000);
+      } catch (error) {
+          console.error("Sync failed", error);
+          alert("Erro ao sincronizar. Verifique sua conexão.");
+      } finally {
+          setIsSyncing(false);
+      }
   }, [directSales]);
 
   // Filtering
@@ -94,12 +182,17 @@ const DirectService: React.FC = () => {
     // 1. Create Sale Record (Independent History)
     const newSale: DirectSale = {
         id: Date.now().toString(),
+        uuid: crypto.randomUUID(), // Immutable
         date: new Date().toLocaleDateString('pt-AO'),
         time: new Date().toLocaleTimeString('pt-AO'),
         timestamp: Date.now(),
+        serverTimestamp: undefined, // Will be set on sync
         attendant: user?.name || 'Desconhecido',
+        userId: user?.id || 'unknown',
+        deviceId: deviceId,
         total: cartTotal,
         paymentMethod: paymentMethod,
+        statusSync: 'pending', // Default offline state
         items: Object.entries(cart).map(([id, qty]) => {
             const p = products.find(prod => prod.id === id);
             return {
@@ -121,12 +214,22 @@ const DirectService: React.FC = () => {
     setShowCheckout(false);
     setAmountPaid('');
     // Could add a toast or success modal here
-    alert('Venda registrada no Histórico Local!');
+    alert('Venda registrada! ' + (isOnline ? 'Sincronize manualmente quando desejar.' : 'Salva localmente (Offline).'));
   };
 
   return (
     <div className="h-screen flex flex-col md:flex-row overflow-hidden bg-slate-50 dark:bg-slate-900 relative">
       
+      {/* Network Toast */}
+      {networkToast.show && (
+        <div className={`absolute top-4 left-1/2 -translate-x-1/2 z-[60] px-6 py-3 rounded-full shadow-xl flex items-center gap-3 animate-fade-in ${
+            networkToast.type === 'success' ? 'bg-green-600 text-white' : 'bg-amber-500 text-white'
+        }`}>
+            {networkToast.type === 'success' ? <Wifi size={20} /> : <WifiOff size={20} />}
+            <span className="font-bold text-sm">{networkToast.message}</span>
+        </div>
+      )}
+
       {/* History Modal */}
       {showHistory && (
           <div className="absolute inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
@@ -157,6 +260,19 @@ const DirectService: React.FC = () => {
                                                   sale.paymentMethod === 'tpa' ? 'bg-blue-100 text-blue-600' :
                                                   'bg-purple-100 text-purple-600'
                                               }`}>{sale.paymentMethod}</span>
+                                              
+                                              {/* Sync Status Badge */}
+                                              <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                                  sale.statusSync === 'synced' 
+                                                    ? 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-600' 
+                                                    : 'bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800'
+                                              }`}>
+                                                  {sale.statusSync === 'synced' ? (
+                                                      <><Cloud size={10} /> Sincronizado</>
+                                                  ) : (
+                                                      <><WifiOff size={10} /> Pendente</>
+                                                  )}
+                                              </div>
                                           </div>
                                           <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
                                               <span className="flex items-center gap-1"><Clock size={12} /> {sale.date} às {sale.time}</span>
@@ -189,11 +305,36 @@ const DirectService: React.FC = () => {
               {/* UI FIX: Added ml-20 to prevent overlap with Menu button */}
               <h1 className="text-2xl font-bold text-[#003366] dark:text-white ml-20">Atendimento Directo</h1>
               <div className="flex items-center gap-4">
+                  {/* Offline/Online Indicator */}
+                  <button 
+                      onClick={() => isOnline && syncPendingSales()}
+                      disabled={!isOnline || isSyncing}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                      isOnline 
+                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 hover:bg-green-200 cursor-pointer' 
+                        : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 cursor-not-allowed'
+                  }`}>
+                      {isSyncing ? (
+                          <Loader2 size={14} className="animate-spin" />
+                      ) : isOnline ? (
+                          <Wifi size={14} />
+                      ) : (
+                          <WifiOff size={14} />
+                      )}
+                      <span className="hidden md:inline">
+                          {isSyncing ? 'Sincronizando...' : isOnline ? 'Online (Sincronizar)' : 'Offline'}
+                      </span>
+                  </button>
+
                   <button 
                     onClick={() => setShowHistory(true)}
-                    className="p-2 bg-slate-100 dark:bg-slate-700 text-[#003366] dark:text-blue-400 rounded-lg hover:bg-slate-200 transition-colors flex items-center gap-2 text-sm font-bold"
+                    className="p-2 bg-slate-100 dark:bg-slate-700 text-[#003366] dark:text-blue-400 rounded-lg hover:bg-slate-200 transition-colors flex items-center gap-2 text-sm font-bold relative"
                   >
-                      <History size={18} /> <span className="hidden md:inline">Histórico</span>
+                      <History size={18} /> 
+                      <span className="hidden md:inline">Histórico</span>
+                      {directSales.some(s => s.statusSync === 'pending') && (
+                          <span className="absolute -top-1 -right-1 w-3 h-3 bg-amber-500 rounded-full border-2 border-white dark:border-slate-800"></span>
+                      )}
                   </button>
                   <div className="text-sm font-medium text-slate-500 dark:text-slate-400">
                      Operador: <span className="text-[#003366] dark:text-white font-bold">{user?.name?.split(' ')[0]}</span>
@@ -290,9 +431,14 @@ const DirectService: React.FC = () => {
                                       </div>
                                       <div>
                                           <p className="font-bold text-slate-800 dark:text-white text-sm">Venda Directa</p>
-                                          <p className="text-xs text-slate-500 dark:text-slate-400">
-                                              {sale.date} • {sale.time} • {sale.attendant}
-                                          </p>
+                                          <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                                              <span>{sale.date} • {sale.time}</span>
+                                              {sale.statusSync === 'pending' && (
+                                                  <span className="text-amber-500 flex items-center gap-0.5 font-bold" title="Pendente de sincronização">
+                                                      <WifiOff size={10} />
+                                                  </span>
+                                              )}
+                                          </div>
                                       </div>
                                   </div>
                                   <div className="text-right">
