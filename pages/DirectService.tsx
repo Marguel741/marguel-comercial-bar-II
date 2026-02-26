@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Search, ShoppingCart, Plus, Minus, Trash2, CheckCircle, Wallet, CreditCard, ArrowRightLeft, X, History, Clock, Eye, Wifi, WifiOff, Cloud, Loader2, Check, Filter, AlertCircle, Tag } from 'lucide-react';
 import { useProducts } from '../contexts/ProductContext';
 import { useLayout } from '../contexts/LayoutContext';
@@ -6,6 +6,7 @@ import { useAuth } from '../App';
 import SoftCard from '../components/SoftCard';
 import { dbAddSale, dbGetAllSales, dbUpdateSale, DirectSale } from '../src/services/db';
 import { processSync, serverTimeOffset } from '../src/services/syncService';
+import { roundKz, formatKz } from '../src/utils';
 
 interface Product {
   id: string;
@@ -44,6 +45,8 @@ const DirectService: React.FC = () => {
   const [historyFilterUser, setHistoryFilterUser] = useState('');
   const [isInitializing, setIsInitializing] = useState(true);
   const [historyLimit, setHistoryLimit] = useState(50);
+  
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
       if (products.length > 0) setIsInitializing(false);
@@ -214,14 +217,14 @@ const DirectService: React.FC = () => {
       const p = productMap.get(id);
       if (!p) return;
       
-      const quantity = Math.round(Number(qty));
-      const itemTotal = Math.round(quantity * p.sellPrice);
-      standardTotal = Math.round(standardTotal + itemTotal);
+      const quantity = roundKz(Number(qty));
+      const itemTotal = roundKz(quantity * p.sellPrice);
+      standardTotal = roundKz(standardTotal + itemTotal);
 
       if (p.category === 'Cervejas') {
         beerQty += quantity;
       } else {
-        nonBeerTotal = Math.round(nonBeerTotal + itemTotal);
+        nonBeerTotal = roundKz(nonBeerTotal + itemTotal);
       }
     });
 
@@ -229,13 +232,13 @@ const DirectService: React.FC = () => {
     const packs = Math.floor(beerQty / 3);
     const singles = beerQty % 3;
     
-    const packsValue = Math.round(packs * 1000);
-    const singlesValue = Math.round(singles * 350);
+    const packsValue = roundKz(packs * 1000);
+    const singlesValue = roundKz(singles * 350);
     
-    const beerPromoTotal = Math.round(packsValue + singlesValue);
+    const beerPromoTotal = roundKz(packsValue + singlesValue);
     
-    const finalTotal = Math.round(nonBeerTotal + beerPromoTotal);
-    const discount = Math.round(standardTotal - finalTotal);
+    const finalTotal = roundKz(nonBeerTotal + beerPromoTotal);
+    const discount = roundKz(standardTotal - finalTotal);
 
     return { total: finalTotal, discount: Math.max(0, discount) };
   }, [productMap]);
@@ -254,15 +257,15 @@ const DirectService: React.FC = () => {
     }
 
     // Integrity Check (Pre-Transaction Validation)
-    const expected = calculateTransaction(cart);
-    if (expected.total !== cartTotal) {
-         console.error("Integrity Error: Calculated", expected.total, "State", cartTotal);
+    const safetyCheck = calculateTransaction(cart);
+    if (safetyCheck.total !== cartTotal) {
+         console.error("Integrity Error: Calculated", safetyCheck.total, "State", cartTotal);
+         setCart(prev => ({...prev})); // Force recalculation
          setNetworkToast({
             show: true,
-            message: "Erro de validação de preço. Recalculando...",
+            message: "Inconsistência de preço detectada. Valor atualizado. Tente novamente.",
             type: 'warning'
         });
-        // Force re-render/update if needed, but return for safety
         return;
     }
 
@@ -284,7 +287,7 @@ const DirectService: React.FC = () => {
         totalDiscount: cartCalculations.discount > 0 ? cartCalculations.discount : undefined, // Global discount (Footer deduction)
         paymentMethod: paymentMethod,
         statusSync: 'pending', // Default offline state
-        isSyncTime: true,
+        isSyncTime: serverTimeOffset !== 0,
         items: Object.entries(cart).map(([id, qty]) => {
             const p = productMap.get(id);
             return {
@@ -405,7 +408,7 @@ const DirectService: React.FC = () => {
                       {/* Summary Banner */}
                       <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-xl border border-blue-100 dark:border-blue-800 flex justify-between items-center text-sm">
                           <span className="text-blue-800 dark:text-blue-300 font-medium">Vendas Válidas: <strong>{historySummary.count}</strong></span>
-                          <span className="text-blue-800 dark:text-blue-300 font-bold text-lg">{historySummary.total.toLocaleString()} Kz</span>
+                          <span className="text-blue-800 dark:text-blue-300 font-bold text-lg">{formatKz(historySummary.total)}</span>
                       </div>
                       
                       {/* Filters */}
@@ -455,7 +458,7 @@ const DirectService: React.FC = () => {
                                           <div className="flex-1">
                                               <div className="flex items-center gap-2 mb-1 flex-wrap">
                                                   <span className={`font-bold text-[#003366] dark:text-white text-lg ${sale.statusSync === 'cancelled' ? 'line-through decoration-slate-400' : ''}`}>
-                                                      {sale.total.toLocaleString()} Kz
+                                                      {formatKz(sale.total)}
                                                   </span>
                                                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
                                                       sale.paymentMethod === 'cash' ? 'bg-green-100 text-green-600' :
@@ -519,7 +522,7 @@ const DirectService: React.FC = () => {
                                           {sale.items.map((item, idx) => (
                                               <div key={idx} className="flex justify-between text-sm">
                                                   <span className="text-slate-600 dark:text-slate-300">{item.qty}x {item.name}</span>
-                                                  <span className="text-slate-400">{(item.qty * item.price).toLocaleString()} Kz</span>
+                                                  <span className="text-slate-400">{formatKz(item.qty * item.price)}</span>
                                               </div>
                                           ))}
                                       </div>
@@ -594,14 +597,15 @@ const DirectService: React.FC = () => {
                  <input 
                    type="text" 
                    placeholder="Buscar produto..."
+                   ref={searchInputRef}
                    value={searchTerm}
                    onChange={e => setSearchTerm(e.target.value)}
                    className="w-full pl-10 pr-10 py-3 rounded-xl bg-slate-100 dark:bg-slate-700 border-none outline-none focus:ring-2 focus:ring-[#003366] dark:text-white"
                  />
                  {searchTerm.length > 0 && (
                      <button 
-                       onClick={() => setSearchTerm('')}
-                       className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-white p-1 rounded-full hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+                       onClick={() => { setSearchTerm(''); searchInputRef.current?.focus(); }}
+                       className="absolute right-3 top-1/2 -translate-y-1/2 z-10 text-slate-400 hover:text-slate-600 dark:hover:text-white p-1 rounded-full hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors animate-in fade-in zoom-in duration-200"
                      >
                          <X size={16} />
                      </button>
@@ -653,7 +657,7 @@ const DirectService: React.FC = () => {
                            <p className="text-[10px] text-slate-400 uppercase mt-1">{p.packType === 'Unidade' ? 'Un' : 'Pack'}</p>
                         </div>
                         <div className="flex justify-between items-end">
-                           <span className="font-black text-[#003366] dark:text-blue-400">{p.sellPrice.toLocaleString()} Kz</span>
+                           <span className="font-black text-[#003366] dark:text-blue-400">{formatKz(p.sellPrice)}</span>
                            {cart[p.id] > 0 && (
                               <span className="bg-[#003366] text-white text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full shadow-lg">
                                  {cart[p.id]}
@@ -710,7 +714,7 @@ const DirectService: React.FC = () => {
                                       </div>
                                   </div>
                                   <div className="text-right">
-                                      <p className="font-bold text-[#003366] dark:text-white">{sale.total.toLocaleString()} Kz</p>
+                                      <p className="font-bold text-[#003366] dark:text-white">{formatKz(sale.total)}</p>
                                       <p className="text-[10px] uppercase font-bold text-slate-400">{sale.paymentMethod}</p>
                                   </div>
                               </div>
@@ -770,7 +774,7 @@ const DirectService: React.FC = () => {
                   <div key={id} className="flex justify-between items-center">
                      <div className="flex-1">
                         <p className="font-bold text-slate-800 dark:text-white text-sm">{p.name}</p>
-                        <p className="text-xs text-slate-400">{(p.sellPrice * Number(qty)).toLocaleString()} Kz</p>
+                        <p className="text-xs text-slate-400">{formatKz(p.sellPrice * Number(qty))}</p>
                      </div>
                      <div className="flex items-center gap-3 bg-slate-100 dark:bg-slate-700 rounded-lg p-1">
                         <button onClick={(e) => { e.stopPropagation(); removeFromCart(id); }} className="w-6 h-6 flex items-center justify-center bg-white dark:bg-slate-600 rounded shadow-sm text-slate-600 dark:text-white"><Minus size={12} /></button>
@@ -786,12 +790,12 @@ const DirectService: React.FC = () => {
             <div className="flex flex-col gap-2 mb-4">
                <div className="flex justify-between items-center">
                   <span className="text-slate-500 dark:text-slate-400 font-bold uppercase text-xs">Total a Pagar</span>
-                  <span className="text-2xl font-black text-[#003366] dark:text-white">{cartTotal.toLocaleString()} Kz</span>
+                  <span className="text-2xl font-black text-[#003366] dark:text-white">{formatKz(cartTotal)}</span>
                </div>
                {cartCalculations.discount > 0 && (
                   <div className="self-end bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 animate-fade-in">
                      <Tag size={12} />
-                     Promoção Mix & Match: -{cartCalculations.discount.toLocaleString()} Kz
+                     Promoção Mix & Match: -{formatKz(cartCalculations.discount)}
                   </div>
                )}
             </div>
