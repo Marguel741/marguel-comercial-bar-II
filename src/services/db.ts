@@ -27,11 +27,47 @@ const DB_NAME = 'MarguelDirectSalesDB';
 const STORE_NAME = 'sales';
 const DB_VERSION = 1;
 
-export const openDB = (): Promise<IDBDatabase> => {
+let dbInstance: IDBDatabase | null = null;
+
+export const openDB = (retries = 3): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
+    if (dbInstance) {
+      resolve(dbInstance);
+      return;
+    }
+
     const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(request.result);
+
+    request.onerror = () => {
+      if (retries > 0) {
+        console.warn(`DB Connection failed. Retrying... (${retries} left)`);
+        setTimeout(() => {
+            openDB(retries - 1).then(resolve).catch(reject);
+        }, 500);
+      } else {
+        const error = new Error("CRITICAL: Failed to open IndexedDB after 3 attempts.");
+        if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('db-critical-error', { detail: error }));
+        }
+        reject(error);
+      }
+    };
+
+    request.onsuccess = () => {
+      dbInstance = request.result;
+      
+      dbInstance.onversionchange = () => {
+          dbInstance?.close();
+          dbInstance = null;
+      };
+      
+      dbInstance.onclose = () => {
+          dbInstance = null;
+      };
+
+      resolve(dbInstance);
+    };
+
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {

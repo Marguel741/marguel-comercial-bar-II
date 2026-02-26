@@ -5,6 +5,7 @@ import { useLayout } from '../contexts/LayoutContext';
 import { useAuth } from '../App';
 import SoftCard from '../components/SoftCard';
 import { dbAddSale, dbGetAllSales, dbUpdateSale, DirectSale } from '../src/services/db';
+import { processSync } from '../src/services/syncService';
 
 interface Product {
   id: string;
@@ -42,12 +43,18 @@ const DirectService: React.FC = () => {
   const [historyFilterDate, setHistoryFilterDate] = useState('');
   const [historyFilterUser, setHistoryFilterUser] = useState('');
   const [isInitializing, setIsInitializing] = useState(true);
+  const [historyLimit, setHistoryLimit] = useState(50);
 
   useEffect(() => {
       if (products.length > 0) setIsInitializing(false);
       const timer = setTimeout(() => setIsInitializing(false), 2000);
       return () => clearTimeout(timer);
   }, [products]);
+
+  // Reset pagination
+  useEffect(() => {
+      setHistoryLimit(50);
+  }, [showHistory, historyFilterDate, historyFilterUser]);
 
   // Load from DB
   useEffect(() => {
@@ -70,6 +77,8 @@ const DirectService: React.FC = () => {
 
   // Network Listeners & Auto-Sync
   useEffect(() => {
+      let timeoutId: NodeJS.Timeout;
+
       const handleOnline = () => {
           setIsOnline(true);
           setNetworkToast({
@@ -77,7 +86,8 @@ const DirectService: React.FC = () => {
               message: "Conexão restabelecida. Tentando sincronizar...",
               type: 'success'
           });
-          setTimeout(() => setNetworkToast(prev => ({ ...prev, show: false })), 5000);
+          if (timeoutId) clearTimeout(timeoutId);
+          timeoutId = setTimeout(() => setNetworkToast(prev => ({ ...prev, show: false })), 5000);
       };
 
       const handleOffline = () => {
@@ -87,7 +97,8 @@ const DirectService: React.FC = () => {
               message: "Você está offline. As vendas serão armazenadas localmente.",
               type: 'warning'
           });
-          setTimeout(() => setNetworkToast(prev => ({ ...prev, show: false })), 5000);
+          if (timeoutId) clearTimeout(timeoutId);
+          timeoutId = setTimeout(() => setNetworkToast(prev => ({ ...prev, show: false })), 5000);
       };
 
       window.addEventListener('online', handleOnline);
@@ -96,6 +107,7 @@ const DirectService: React.FC = () => {
       return () => {
           window.removeEventListener('online', handleOnline);
           window.removeEventListener('offline', handleOffline);
+          if (timeoutId) clearTimeout(timeoutId);
       };
   }, []);
 
@@ -113,35 +125,31 @@ const DirectService: React.FC = () => {
 
       setIsSyncing(true);
       
-      for (const sale of pendingSales) {
-          try {
-              // SIMULATION: Send to backend API
-              await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate network delay
-
-              const serverTime = Date.now();
-              const updated = { ...sale, statusSync: 'synced' as const, serverTimestamp: serverTime, syncError: undefined };
-              
-              await dbUpdateSale(updated);
-              
-              // Update state incrementally
-              setDirectSales(prev => prev.map(s => s.id === sale.id ? updated : s));
-          } catch (error) {
-              console.error("Sync failed for sale", sale.id, error);
-              const errorSale = { ...sale, syncError: "Erro de conexão" };
-              await dbUpdateSale(errorSale);
-              setDirectSales(prev => prev.map(s => s.id === sale.id ? errorSale : s));
-          }
-      }
-      
-      setIsSyncing(false);
-
-      if (isManual) {
-          setNetworkToast({
-              show: true,
-              message: "Sincronização finalizada.",
-              type: 'success'
+      try {
+          // Call External Service
+          const results = await processSync(pendingSales);
+          
+          // Batch DB Update
+          await Promise.all(results.map(sale => dbUpdateSale(sale)));
+          
+          // Single Batch State Update (O(N))
+          setDirectSales(prev => {
+              const updatesMap = new Map(results.map(s => [s.id, s]));
+              return prev.map(s => updatesMap.get(s.id) || s);
           });
-          setTimeout(() => setNetworkToast(prev => ({ ...prev, show: false })), 3000);
+
+          if (isManual) {
+              setNetworkToast({
+                  show: true,
+                  message: "Sincronização finalizada.",
+                  type: 'success'
+              });
+              setTimeout(() => setNetworkToast(prev => ({ ...prev, show: false })), 3000);
+          }
+      } catch (error) {
+          console.error("Sync process failed", error);
+      } finally {
+          setIsSyncing(false);
       }
   }, [directSales, isSyncing]);
 
@@ -247,10 +255,20 @@ const DirectService: React.FC = () => {
         setCart({});
         setShowCheckout(false);
         
-        alert('Venda registrada! ' + (isOnline ? 'Sincronize manualmente quando desejar.' : 'Salva localmente (Offline).'));
+        setNetworkToast({
+            show: true,
+            message: isOnline ? 'Venda registrada e sincronizada!' : 'Venda salva localmente (Offline).',
+            type: 'success'
+        });
+        setTimeout(() => setNetworkToast(prev => ({ ...prev, show: false })), 4000);
     } catch (error) {
         console.error("Failed to save sale", error);
-        alert("Erro ao salvar venda. Tente novamente.");
+        setNetworkToast({
+            show: true,
+            message: "Erro ao salvar venda. Tente novamente.",
+            type: 'warning'
+        });
+        setTimeout(() => setNetworkToast(prev => ({ ...prev, show: false })), 4000);
     }
   };
 
@@ -366,89 +384,108 @@ const DirectService: React.FC = () => {
                   </div>
                   <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-4">
                       {filteredHistory.length === 0 ? (
-                          <div className="text-center py-10 text-slate-400">
+                          <div className="text-center py-10 text-slate-400 flex flex-col items-center">
                               <History size={48} className="mx-auto mb-4 opacity-20" />
                               <p>Nenhuma venda encontrada.</p>
+                              {(historyFilterDate || historyFilterUser) && (
+                                  <button 
+                                      onClick={() => { setHistoryFilterDate(''); setHistoryFilterUser(''); }}
+                                      className="mt-4 text-blue-600 font-bold hover:underline"
+                                  >
+                                      Limpar Filtros
+                                  </button>
+                              )}
                           </div>
                       ) : (
-                          filteredHistory.map(sale => (
-                              <div key={sale.id} className={`bg-slate-50 dark:bg-slate-700/50 p-4 rounded-xl border transition-all ${
-                                  sale.statusSync === 'cancelled' ? 'opacity-60 grayscale border-slate-100 dark:border-slate-700' : 'border-slate-100 dark:border-slate-700'
-                              }`}>
-                                  <div className="flex justify-between items-start mb-3">
-                                      <div className="flex-1">
-                                          <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                              <span className={`font-bold text-[#003366] dark:text-white text-lg ${sale.statusSync === 'cancelled' ? 'line-through decoration-slate-400' : ''}`}>
-                                                  {sale.total.toLocaleString()} Kz
-                                              </span>
-                                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
-                                                  sale.paymentMethod === 'cash' ? 'bg-green-100 text-green-600' :
-                                                  sale.paymentMethod === 'tpa' ? 'bg-blue-100 text-blue-600' :
-                                                  'bg-purple-100 text-purple-600'
-                                              }`}>{sale.paymentMethod}</span>
-                                              
-                                              {/* Sync Status Badge */}
-                                              <div 
-                                                title={sale.syncError || (sale.statusSync === 'pending' ? 'Aguardando sincronização' : '')}
-                                                className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border cursor-help transition-colors ${
-                                                  sale.statusSync === 'synced' 
-                                                    ? 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800' 
-                                                    : sale.statusSync === 'cancelled'
-                                                    ? 'bg-slate-200 text-slate-500 border-slate-300 dark:bg-slate-800 dark:text-slate-500'
-                                                    : sale.syncError
-                                                    ? 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400'
-                                                    : 'bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800'
-                                              }`}>
-                                                  {sale.statusSync === 'synced' ? (
-                                                      <><Check size={10} /> Sincronizado</>
-                                                  ) : sale.statusSync === 'cancelled' ? (
-                                                      <><X size={10} /> Anulado</>
-                                                  ) : sale.syncError ? (
-                                                      <><AlertCircle size={10} /> Erro</>
-                                                  ) : (
-                                                      <><WifiOff size={10} /> Pendente</>
-                                                  )}
+                          <>
+                              {filteredHistory.slice(0, historyLimit).map(sale => (
+                                  <div key={sale.id} className={`bg-slate-50 dark:bg-slate-700/50 p-4 rounded-xl border transition-all ${
+                                      sale.statusSync === 'cancelled' ? 'opacity-60 grayscale border-slate-100 dark:border-slate-700' : 'border-slate-100 dark:border-slate-700'
+                                  }`}>
+                                      <div className="flex justify-between items-start mb-3">
+                                          <div className="flex-1">
+                                              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                                  <span className={`font-bold text-[#003366] dark:text-white text-lg ${sale.statusSync === 'cancelled' ? 'line-through decoration-slate-400' : ''}`}>
+                                                      {sale.total.toLocaleString()} Kz
+                                                  </span>
+                                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                                                      sale.paymentMethod === 'cash' ? 'bg-green-100 text-green-600' :
+                                                      sale.paymentMethod === 'tpa' ? 'bg-blue-100 text-blue-600' :
+                                                      'bg-purple-100 text-purple-600'
+                                                  }`}>{sale.paymentMethod}</span>
+                                                  
+                                                  {/* Sync Status Badge */}
+                                                  <div 
+                                                    title={sale.syncError || (sale.statusSync === 'pending' ? 'Aguardando sincronização' : '')}
+                                                    className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border cursor-help transition-colors ${
+                                                      sale.statusSync === 'synced' 
+                                                        ? 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800' 
+                                                        : sale.statusSync === 'cancelled'
+                                                        ? 'bg-slate-200 text-slate-500 border-slate-300 dark:bg-slate-800 dark:text-slate-500'
+                                                        : sale.syncError
+                                                        ? 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400'
+                                                        : 'bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800'
+                                                  }`}>
+                                                      {sale.statusSync === 'synced' ? (
+                                                          <><Check size={10} /> Sincronizado</>
+                                                      ) : sale.statusSync === 'cancelled' ? (
+                                                          <><X size={10} /> Anulado</>
+                                                      ) : sale.syncError ? (
+                                                          <><AlertCircle size={10} /> Erro</>
+                                                      ) : (
+                                                          <><WifiOff size={10} /> Pendente</>
+                                                      )}
+                                                  </div>
+                                              </div>
+                                              <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400 mt-1">
+                                                  <span className="flex items-center gap-1"><Clock size={12} /> {sale.date} às {sale.time}</span>
+                                                  <span>•</span>
+                                                  <span>{sale.attendant}</span>
                                               </div>
                                           </div>
-                                          <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400 mt-1">
-                                              <span className="flex items-center gap-1"><Clock size={12} /> {sale.date} às {sale.time}</span>
-                                              <span>•</span>
-                                              <span>{sale.attendant}</span>
+                                          
+                                          {/* Actions */}
+                                          <div className="flex gap-2 ml-2">
+                                              {sale.syncError && sale.statusSync !== 'cancelled' && (
+                                                  <button 
+                                                    onClick={() => handleRetrySync(sale)} 
+                                                    className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors" 
+                                                    title="Tentar sincronizar novamente"
+                                                  >
+                                                      <ArrowRightLeft size={16} />
+                                                  </button>
+                                              )}
+                                              {sale.statusSync !== 'cancelled' && sale.statusSync !== 'synced' && (
+                                                  <button 
+                                                    onClick={() => handleCancelSale(sale)} 
+                                                    className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors" 
+                                                    title="Anular Venda (Auditável)"
+                                                  >
+                                                      <Trash2 size={16} />
+                                                  </button>
+                                              )}
                                           </div>
                                       </div>
-                                      
-                                      {/* Actions */}
-                                      <div className="flex gap-2 ml-2">
-                                          {sale.syncError && sale.statusSync !== 'cancelled' && (
-                                              <button 
-                                                onClick={() => handleRetrySync(sale)} 
-                                                className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors" 
-                                                title="Tentar sincronizar novamente"
-                                              >
-                                                  <ArrowRightLeft size={16} />
-                                              </button>
-                                          )}
-                                          {sale.statusSync !== 'cancelled' && sale.statusSync !== 'synced' && (
-                                              <button 
-                                                onClick={() => handleCancelSale(sale)} 
-                                                className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors" 
-                                                title="Anular Venda (Auditável)"
-                                              >
-                                                  <Trash2 size={16} />
-                                              </button>
-                                          )}
+                                      <div className="space-y-1 pl-4 border-l-2 border-slate-200 dark:border-slate-600">
+                                          {sale.items.map((item, idx) => (
+                                              <div key={idx} className="flex justify-between text-sm">
+                                                  <span className="text-slate-600 dark:text-slate-300">{item.qty}x {item.name}</span>
+                                                  <span className="text-slate-400">{(item.qty * item.price).toLocaleString()} Kz</span>
+                                              </div>
+                                          ))}
                                       </div>
                                   </div>
-                                  <div className="space-y-1 pl-4 border-l-2 border-slate-200 dark:border-slate-600">
-                                      {sale.items.map((item, idx) => (
-                                          <div key={idx} className="flex justify-between text-sm">
-                                              <span className="text-slate-600 dark:text-slate-300">{item.qty}x {item.name}</span>
-                                              <span className="text-slate-400">{(item.qty * item.price).toLocaleString()} Kz</span>
-                                          </div>
-                                      ))}
-                                  </div>
-                              </div>
-                          ))
+                              ))}
+                              
+                              {filteredHistory.length > historyLimit && (
+                                  <button 
+                                      onClick={() => setHistoryLimit(prev => prev + 50)}
+                                      className="w-full py-3 text-sm font-bold text-slate-500 hover:text-[#003366] dark:text-slate-400 dark:hover:text-white transition-colors bg-slate-50 dark:bg-slate-700/30 rounded-xl"
+                                  >
+                                      Carregar mais...
+                                  </button>
+                              )}
+                          </>
                       )}
                   </div>
               </div>
@@ -549,10 +586,10 @@ const DirectService: React.FC = () => {
            ) : (
                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 pb-24 md:pb-4">
                   {filteredProducts.map(p => (
-                     <div 
+                     <SoftCard 
                        key={p.id} 
                        onClick={() => addToCart(p)}
-                       className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 cursor-pointer hover:border-blue-400 dark:hover:border-blue-500 transition-all active:scale-95 flex flex-col justify-between h-32 relative group"
+                       className="h-32 flex flex-col justify-between relative group !p-4 hover:border-blue-400 dark:hover:border-blue-500 border border-slate-100 dark:border-slate-700 shadow-sm"
                      >
                         <div>
                            <h3 className="font-bold text-slate-800 dark:text-white text-sm line-clamp-2">{p.name}</h3>
@@ -566,7 +603,7 @@ const DirectService: React.FC = () => {
                               </span>
                            )}
                         </div>
-                     </div>
+                     </SoftCard>
                   ))}
                </div>
            )}
@@ -647,7 +684,7 @@ const DirectService: React.FC = () => {
                    <div className="text-xs tracking-[0.5px]">
                        <span className="font-extrabold text-[#E3007E]" style={{ textShadow: '0px 0px 5px rgba(227, 0, 126, 0.7)' }}>DC - Comercial</span>
                        <span className="text-[#6B7280] font-normal mx-1">&</span>
-                       <span className="font-extrabold text-[#E3007E]" style={{ textShadow: '0px 0px 5px rgba(227, 0, 126, 0.7)' }}>Marguel CGPS Lda</span>
+                       <span className="font-extrabold text-[#E3007E]" style={{ textShadow: '0px 0px 5px rgba(227, 0, 126, 0.7)' }}>Marguel CGPS (SU) Lda</span>
                    </div>
                </div>
            </footer>
