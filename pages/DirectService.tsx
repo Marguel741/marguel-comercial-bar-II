@@ -1,9 +1,10 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Search, ShoppingCart, Plus, Minus, Trash2, CheckCircle, Wallet, CreditCard, ArrowRightLeft, X, History, Clock, Eye, Wifi, WifiOff, Cloud, Loader2, Check, Filter } from 'lucide-react';
+import { Search, ShoppingCart, Plus, Minus, Trash2, CheckCircle, Wallet, CreditCard, ArrowRightLeft, X, History, Clock, Eye, Wifi, WifiOff, Cloud, Loader2, Check, Filter, AlertCircle } from 'lucide-react';
 import { useProducts } from '../contexts/ProductContext';
 import { useLayout } from '../contexts/LayoutContext';
 import { useAuth } from '../App';
 import SoftCard from '../components/SoftCard';
+import { dbAddSale, dbGetAllSales, dbUpdateSale, DirectSale } from '../src/services/db';
 
 interface Product {
   id: string;
@@ -12,87 +13,6 @@ interface Product {
   category: string;
   packType: string;
 }
-
-interface CartItem {
-  name: string;
-  qty: number;
-  price: number;
-}
-
-interface DirectSale {
-  id: string;
-  uuid: string; // Unique Immutable ID
-  date: string;
-  time: string;
-  timestamp: number;
-  serverTimestamp?: number; // Audit
-  attendant: string;
-  userId: string; // Audit
-  deviceId?: string; // Audit
-  total: number;
-  items: CartItem[];
-  paymentMethod: 'cash' | 'tpa' | 'transfer';
-  statusSync: 'pending' | 'synced';
-  syncError?: string;
-}
-
-// IndexedDB Helpers
-const DB_NAME = 'MarguelDirectSalesDB';
-const STORE_NAME = 'sales';
-const DB_VERSION = 1;
-
-const openDB = (): Promise<IDBDatabase> => {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(request.result);
-    request.onupgradeneeded = (event) => {
-      const db = (event.target as IDBOpenDBRequest).result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
-        store.createIndex('statusSync', 'statusSync', { unique: false });
-        store.createIndex('timestamp', 'timestamp', { unique: false });
-      }
-    };
-  });
-};
-
-const dbAddSale = async (sale: DirectSale) => {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    const store = tx.objectStore(STORE_NAME);
-    const request = store.add(sale);
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-};
-
-const dbGetAllSales = async (): Promise<DirectSale[]> => {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readonly');
-    const store = tx.objectStore(STORE_NAME);
-    const request = store.getAll();
-    request.onsuccess = () => {
-        const results = request.result as DirectSale[];
-        results.sort((a, b) => b.timestamp - a.timestamp);
-        resolve(results);
-    };
-    request.onerror = () => reject(request.error);
-  });
-};
-
-const dbUpdateSale = async (sale: DirectSale) => {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    const store = tx.objectStore(STORE_NAME);
-    const request = store.put(sale);
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-};
 
 const DirectService: React.FC = () => {
   const { products, categories, updateProduct, processTransaction, addSalesReport } = useProducts();
@@ -121,10 +41,21 @@ const DirectService: React.FC = () => {
   const [directSales, setDirectSales] = useState<DirectSale[]>([]);
   const [historyFilterDate, setHistoryFilterDate] = useState('');
   const [historyFilterUser, setHistoryFilterUser] = useState('');
+  const [isInitializing, setIsInitializing] = useState(true);
+
+  useEffect(() => {
+      if (products.length > 0) setIsInitializing(false);
+      const timer = setTimeout(() => setIsInitializing(false), 2000);
+      return () => clearTimeout(timer);
+  }, [products]);
 
   // Load from DB
   useEffect(() => {
-      dbGetAllSales().then(setDirectSales).catch(console.error);
+      let isMounted = true;
+      dbGetAllSales(40).then(sales => {
+          if (isMounted) setDirectSales(sales);
+      }).catch(console.error);
+      return () => { isMounted = false; };
   }, []);
 
   // Initialize Device ID
@@ -169,44 +100,50 @@ const DirectService: React.FC = () => {
   }, []);
 
   const syncPendingSales = useCallback(async (isManual = false) => {
+      if (isSyncing) return; // Sync Lock
+
       const pendingSales = directSales.filter(s => s.statusSync === 'pending');
       if (pendingSales.length === 0) {
-          if (isManual) alert("Não há vendas pendentes para sincronizar.");
+          if (isManual) {
+              setNetworkToast({ show: true, message: "Não há vendas pendentes.", type: 'success' });
+              setTimeout(() => setNetworkToast(prev => ({ ...prev, show: false })), 3000);
+          }
           return;
       }
 
       setIsSyncing(true);
       
-      try {
-          // SIMULATION: Send to backend API
-          await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate network delay
+      for (const sale of pendingSales) {
+          try {
+              // SIMULATION: Send to backend API
+              await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate network delay
 
-          const serverTime = Date.now();
-          
-          const updatedSales = await Promise.all(pendingSales.map(async (sale) => {
-              const updated = { ...sale, statusSync: 'synced' as const, serverTimestamp: serverTime };
+              const serverTime = Date.now();
+              const updated = { ...sale, statusSync: 'synced' as const, serverTimestamp: serverTime, syncError: undefined };
+              
               await dbUpdateSale(updated);
-              return updated;
-          }));
+              
+              // Update state incrementally
+              setDirectSales(prev => prev.map(s => s.id === sale.id ? updated : s));
+          } catch (error) {
+              console.error("Sync failed for sale", sale.id, error);
+              const errorSale = { ...sale, syncError: "Erro de conexão" };
+              await dbUpdateSale(errorSale);
+              setDirectSales(prev => prev.map(s => s.id === sale.id ? errorSale : s));
+          }
+      }
+      
+      setIsSyncing(false);
 
-          setDirectSales(prev => prev.map(s => {
-              const updated = updatedSales.find(u => u.id === s.id);
-              return updated || s;
-          }));
-          
+      if (isManual) {
           setNetworkToast({
               show: true,
-              message: "Sincronização concluída com sucesso!",
+              message: "Sincronização finalizada.",
               type: 'success'
           });
           setTimeout(() => setNetworkToast(prev => ({ ...prev, show: false })), 3000);
-      } catch (error) {
-          console.error("Sync failed", error);
-          alert("Erro ao sincronizar. Verifique sua conexão.");
-      } finally {
-          setIsSyncing(false);
       }
-  }, [directSales]);
+  }, [directSales, isSyncing]);
 
   // Auto-sync Effect
   useEffect(() => {
@@ -317,16 +254,40 @@ const DirectService: React.FC = () => {
     }
   };
 
+  const handleRetrySync = async (sale: DirectSale) => {
+      setIsSyncing(true);
+      try {
+          // Simulation of retry
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          const updated = { ...sale, statusSync: 'synced' as const, serverTimestamp: Date.now(), syncError: undefined };
+          await dbUpdateSale(updated);
+          setDirectSales(prev => prev.map(s => s.id === sale.id ? updated : s));
+          setNetworkToast({ show: true, message: "Sincronizado com sucesso!", type: 'success' });
+          setTimeout(() => setNetworkToast(prev => ({ ...prev, show: false })), 3000);
+      } catch (e) {
+          console.error(e);
+          alert("Erro ao sincronizar.");
+      } finally {
+          setIsSyncing(false);
+      }
+  };
+
+  const handleCancelSale = async (sale: DirectSale) => {
+      if (!confirm("Tem certeza que deseja anular esta venda?")) return;
+      
+      const updated = { ...sale, statusSync: 'cancelled' as const };
+      await dbUpdateSale(updated);
+      setDirectSales(prev => prev.map(s => s.id === sale.id ? updated : s));
+  };
+
   const filteredHistory = useMemo(() => {
       return directSales.filter(sale => {
           let matchDate = true;
           if (historyFilterDate) {
-              // Convert YYYY-MM-DD to DD/MM/YYYY for simple string match if needed, 
-              // or just check if sale.date includes the parts. 
-              // sale.date is DD/MM/YYYY. historyFilterDate is YYYY-MM-DD.
-              const [y, m, d] = historyFilterDate.split('-');
-              const formattedFilter = `${d}/${m}/${y}`;
-              matchDate = sale.date === formattedFilter;
+              const [y, m, d] = historyFilterDate.split('-').map(Number);
+              const start = new Date(y, m - 1, d, 0, 0, 0, 0).getTime();
+              const end = new Date(y, m - 1, d, 23, 59, 59, 999).getTime();
+              matchDate = sale.timestamp >= start && sale.timestamp <= end;
           }
           
           const matchUser = historyFilterUser 
@@ -337,12 +298,22 @@ const DirectService: React.FC = () => {
       });
   }, [directSales, historyFilterDate, historyFilterUser]);
 
+  const historySummary = useMemo(() => {
+      return filteredHistory.reduce((acc, sale) => {
+          if (sale.statusSync !== 'cancelled') {
+              acc.count++;
+              acc.total += sale.total;
+          }
+          return acc;
+      }, { count: 0, total: 0 });
+  }, [filteredHistory]);
+
   return (
     <div className="h-screen flex flex-col md:flex-row overflow-hidden bg-slate-50 dark:bg-slate-900 relative">
       
       {/* Network Toast */}
       {networkToast.show && (
-        <div className={`absolute top-4 left-1/2 -translate-x-1/2 z-[60] px-6 py-3 rounded-full shadow-xl flex items-center gap-3 animate-fade-in ${
+        <div className={`absolute top-4 left-1/2 -translate-x-1/2 z-[60] px-6 py-3 rounded-full shadow-xl flex items-center gap-3 animate-fade-in pointer-events-none ${
             networkToast.type === 'success' ? 'bg-green-600 text-white' : 'bg-amber-500 text-white'
         }`}>
             {networkToast.type === 'success' ? <Wifi size={20} /> : <WifiOff size={20} />}
@@ -362,6 +333,12 @@ const DirectService: React.FC = () => {
                           <button onClick={() => setShowHistory(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors">
                               <X size={20} className="text-slate-500" />
                           </button>
+                      </div>
+                      
+                      {/* Summary Banner */}
+                      <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-xl border border-blue-100 dark:border-blue-800 flex justify-between items-center text-sm">
+                          <span className="text-blue-800 dark:text-blue-300 font-medium">Vendas Válidas: <strong>{historySummary.count}</strong></span>
+                          <span className="text-blue-800 dark:text-blue-300 font-bold text-lg">{historySummary.total.toLocaleString()} Kz</span>
                       </div>
                       
                       {/* Filters */}
@@ -395,11 +372,15 @@ const DirectService: React.FC = () => {
                           </div>
                       ) : (
                           filteredHistory.map(sale => (
-                              <div key={sale.id} className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
+                              <div key={sale.id} className={`bg-slate-50 dark:bg-slate-700/50 p-4 rounded-xl border transition-all ${
+                                  sale.statusSync === 'cancelled' ? 'opacity-60 grayscale border-slate-100 dark:border-slate-700' : 'border-slate-100 dark:border-slate-700'
+                              }`}>
                                   <div className="flex justify-between items-start mb-3">
-                                      <div>
-                                          <div className="flex items-center gap-2 mb-1">
-                                              <span className="font-bold text-[#003366] dark:text-white text-lg">{sale.total.toLocaleString()} Kz</span>
+                                      <div className="flex-1">
+                                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                              <span className={`font-bold text-[#003366] dark:text-white text-lg ${sale.statusSync === 'cancelled' ? 'line-through decoration-slate-400' : ''}`}>
+                                                  {sale.total.toLocaleString()} Kz
+                                              </span>
                                               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
                                                   sale.paymentMethod === 'cash' ? 'bg-green-100 text-green-600' :
                                                   sale.paymentMethod === 'tpa' ? 'bg-blue-100 text-blue-600' :
@@ -407,23 +388,55 @@ const DirectService: React.FC = () => {
                                               }`}>{sale.paymentMethod}</span>
                                               
                                               {/* Sync Status Badge */}
-                                              <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                              <div 
+                                                title={sale.syncError || (sale.statusSync === 'pending' ? 'Aguardando sincronização' : '')}
+                                                className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border cursor-help transition-colors ${
                                                   sale.statusSync === 'synced' 
-                                                    ? 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-600' 
+                                                    ? 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800' 
+                                                    : sale.statusSync === 'cancelled'
+                                                    ? 'bg-slate-200 text-slate-500 border-slate-300 dark:bg-slate-800 dark:text-slate-500'
+                                                    : sale.syncError
+                                                    ? 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400'
                                                     : 'bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800'
                                               }`}>
                                                   {sale.statusSync === 'synced' ? (
-                                                      <><Cloud size={10} /> Sincronizado</>
+                                                      <><Check size={10} /> Sincronizado</>
+                                                  ) : sale.statusSync === 'cancelled' ? (
+                                                      <><X size={10} /> Anulado</>
+                                                  ) : sale.syncError ? (
+                                                      <><AlertCircle size={10} /> Erro</>
                                                   ) : (
                                                       <><WifiOff size={10} /> Pendente</>
                                                   )}
                                               </div>
                                           </div>
-                                          <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+                                          <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400 mt-1">
                                               <span className="flex items-center gap-1"><Clock size={12} /> {sale.date} às {sale.time}</span>
                                               <span>•</span>
                                               <span>{sale.attendant}</span>
                                           </div>
+                                      </div>
+                                      
+                                      {/* Actions */}
+                                      <div className="flex gap-2 ml-2">
+                                          {sale.syncError && sale.statusSync !== 'cancelled' && (
+                                              <button 
+                                                onClick={() => handleRetrySync(sale)} 
+                                                className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors" 
+                                                title="Tentar sincronizar novamente"
+                                              >
+                                                  <ArrowRightLeft size={16} />
+                                              </button>
+                                          )}
+                                          {sale.statusSync !== 'cancelled' && sale.statusSync !== 'synced' && (
+                                              <button 
+                                                onClick={() => handleCancelSale(sale)} 
+                                                className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors" 
+                                                title="Anular Venda (Auditável)"
+                                              >
+                                                  <Trash2 size={16} />
+                                              </button>
+                                          )}
                                       </div>
                                   </div>
                                   <div className="space-y-1 pl-4 border-l-2 border-slate-200 dark:border-slate-600">
@@ -455,10 +468,12 @@ const DirectService: React.FC = () => {
                       onClick={() => isOnline && syncPendingSales(true)}
                       disabled={!isOnline || isSyncing}
                       className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
-                      isOnline 
-                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 hover:bg-green-200 cursor-pointer' 
-                        : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 cursor-not-allowed'
-                  }`}>
+                          !isOnline 
+                              ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 cursor-not-allowed'
+                              : isSyncing
+                                  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 opacity-50 cursor-wait'
+                                  : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 hover:bg-green-200 cursor-pointer'
+                      }`}>
                       {isSyncing ? (
                           <Loader2 size={14} className="animate-spin" />
                       ) : isOnline ? (
@@ -519,28 +534,42 @@ const DirectService: React.FC = () => {
 
         {/* Grid */}
         <div className="flex-1 overflow-y-auto p-4 custom-scrollbar bg-slate-50 dark:bg-slate-900">
-           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 pb-24 md:pb-4">
-              {filteredProducts.map(p => (
-                 <div 
-                   key={p.id} 
-                   onClick={() => addToCart(p)}
-                   className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 cursor-pointer hover:border-blue-400 dark:hover:border-blue-500 transition-all active:scale-95 flex flex-col justify-between h-32 relative group"
-                 >
-                    <div>
-                       <h3 className="font-bold text-slate-800 dark:text-white text-sm line-clamp-2">{p.name}</h3>
-                       <p className="text-[10px] text-slate-400 uppercase mt-1">{p.packType === 'Unidade' ? 'Un' : 'Pack'}</p>
-                    </div>
-                    <div className="flex justify-between items-end">
-                       <span className="font-black text-[#003366] dark:text-blue-400">{p.sellPrice.toLocaleString()} Kz</span>
-                       {cart[p.id] > 0 && (
-                          <span className="bg-[#003366] text-white text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full shadow-lg">
-                             {cart[p.id]}
-                          </span>
-                       )}
-                    </div>
-                 </div>
-              ))}
-           </div>
+           {isInitializing ? (
+               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 pb-24 md:pb-4">
+                   {[...Array(10)].map((_, i) => (
+                       <div key={i} className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 h-32 animate-pulse flex flex-col justify-between">
+                           <div>
+                               <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-3/4 mb-2"></div>
+                               <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-1/2"></div>
+                           </div>
+                           <div className="h-6 bg-slate-200 dark:bg-slate-700 rounded w-1/3"></div>
+                       </div>
+                   ))}
+               </div>
+           ) : (
+               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 pb-24 md:pb-4">
+                  {filteredProducts.map(p => (
+                     <div 
+                       key={p.id} 
+                       onClick={() => addToCart(p)}
+                       className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 cursor-pointer hover:border-blue-400 dark:hover:border-blue-500 transition-all active:scale-95 flex flex-col justify-between h-32 relative group"
+                     >
+                        <div>
+                           <h3 className="font-bold text-slate-800 dark:text-white text-sm line-clamp-2">{p.name}</h3>
+                           <p className="text-[10px] text-slate-400 uppercase mt-1">{p.packType === 'Unidade' ? 'Un' : 'Pack'}</p>
+                        </div>
+                        <div className="flex justify-between items-end">
+                           <span className="font-black text-[#003366] dark:text-blue-400">{p.sellPrice.toLocaleString()} Kz</span>
+                           {cart[p.id] > 0 && (
+                              <span className="bg-[#003366] text-white text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full shadow-lg">
+                                 {cart[p.id]}
+                              </span>
+                           )}
+                        </div>
+                     </div>
+                  ))}
+               </div>
+           )}
 
            {/* Recent History Section */}
            <div className="mt-8 mb-8">
@@ -668,9 +697,14 @@ const DirectService: React.FC = () => {
             {!showCheckout ? (
                <button 
                  onClick={() => setShowCheckout(true)}
-                 className="w-full py-4 bg-[#003366] text-white font-bold rounded-xl shadow-lg hover:scale-[1.02] active:scale-95 transition-all"
+                 disabled={isInitializing || productMap.size === 0}
+                 className={`w-full py-4 font-bold rounded-xl shadow-lg transition-all ${
+                     isInitializing || productMap.size === 0 
+                     ? 'bg-slate-300 text-slate-500 cursor-not-allowed' 
+                     : 'bg-[#003366] text-white hover:scale-[1.02] active:scale-95'
+                 }`}
                >
-                 Finalizar Venda
+                 {isInitializing ? 'Carregando...' : 'Finalizar Venda'}
                </button>
             ) : (
                <div className="space-y-3 animate-slide-up">
