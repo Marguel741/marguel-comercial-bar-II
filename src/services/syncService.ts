@@ -1,5 +1,7 @@
 import { DirectSale } from './db';
 
+export let serverTimeOffset = 0;
+
 // const API_URL = 'https://api.example.com/v1/sales/sync'; // Placeholder for real API
 
 export const processSync = async (sales: DirectSale[]): Promise<DirectSale[]> => {

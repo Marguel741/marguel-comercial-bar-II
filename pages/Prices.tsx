@@ -32,7 +32,7 @@ const Prices: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Todos');
   const [toast, setToast] = useState<{ show: boolean, message: string }>({ show: false, message: '' });
-  const [editingPrices, setEditingPrices] = useState<Record<string, { buy?: number, sell?: number }>>({});
+  const [editingPrices, setEditingPrices] = useState<Record<string, { buy?: number, sell?: number, promoQty?: number, promoPrice?: number, isPromoActive?: boolean }>>({});
   
   const [priceHistory, setPriceHistory] = useState<PriceHistoryLog[]>(() => {
     try {
@@ -136,6 +136,35 @@ const Prices: React.FC = () => {
     setEditingPrices(prev => ({ ...prev, [productId]: { ...prev[productId], [field]: isNaN(numValue) ? 0 : numValue } }));
   };
 
+  const handlePromoChange = (productId: string, field: 'qty' | 'price', value: string) => {
+    if (!canManagePrices) return;
+    const numValue = parseFloat(value);
+    setEditingPrices(prev => ({ 
+      ...prev, 
+      [productId]: { 
+        ...prev[productId], 
+        [field === 'qty' ? 'promoQty' : 'promoPrice']: isNaN(numValue) ? 0 : numValue 
+      } 
+    }));
+  };
+
+  const togglePromo = (productId: string) => {
+    if (!canManagePrices) return;
+    setEditingPrices(prev => {
+      const product = products.find(p => p.id === productId);
+      const currentEdit = prev[productId]?.isPromoActive;
+      const currentVal = currentEdit !== undefined ? currentEdit : !!product?.isPromoActive;
+      
+      return {
+        ...prev,
+        [productId]: {
+          ...prev[productId],
+          isPromoActive: !currentVal
+        }
+      };
+    });
+  };
+
   const handlePackPriceChange = (productId: string, packSize: number, packPriceStr: string) => {
     if (!canManagePrices) return;
     const packPrice = parseFloat(packPriceStr);
@@ -162,6 +191,23 @@ const Prices: React.FC = () => {
     const finalUpdates: any = {};
     if (updates.buy !== undefined) finalUpdates.buyPrice = updates.buy;
     if (updates.sell !== undefined) finalUpdates.sellPrice = updates.sell;
+    if (updates.promoQty !== undefined) finalUpdates.promoQty = updates.promoQty;
+    if (updates.promoPrice !== undefined) finalUpdates.promoPrice = updates.promoPrice;
+    if (updates.isPromoActive !== undefined) finalUpdates.isPromoActive = updates.isPromoActive;
+
+    // Validation: Promo Price < Unit Price * Qty
+    if (finalUpdates.isPromoActive || (currentProduct.isPromoActive && finalUpdates.isPromoActive !== false)) {
+        const qty = finalUpdates.promoQty || currentProduct.promoQty || 0;
+        const price = finalUpdates.promoPrice || currentProduct.promoPrice || 0;
+        const unitPrice = finalUpdates.sellPrice || currentProduct.sellPrice || 0;
+        
+        if (qty > 1 && price >= (unitPrice * qty)) {
+            triggerHaptic('error');
+            showToast("Erro: O preço promocional deve ser menor que o preço normal multiplicado pela quantidade.");
+            return;
+        }
+    }
+
     updateProduct(productId, finalUpdates);
     showToast(`Preços de ${productName} atualizados!`);
     setEditingPrices(prev => {
@@ -460,6 +506,7 @@ const Prices: React.FC = () => {
                       Preço Compra <span className="text-slate-400 font-normal">(Grade/Caixa)</span>
                     </th>
                     <th className="p-6 font-bold text-[#003366] dark:text-white text-xs uppercase tracking-wider">Preço Venda (Unitário)</th>
+                    <th className="p-6 font-bold text-[#003366] dark:text-white text-xs uppercase tracking-wider">Promoção (Mix & Match)</th>
                     <th className="p-6 font-bold text-[#003366] dark:text-white text-xs uppercase tracking-wider">Lucro Estimado</th>
                     <th className="p-6 font-bold text-[#003366] dark:text-white text-xs uppercase tracking-wider text-center">Ações</th>
                   </tr>
@@ -471,7 +518,7 @@ const Prices: React.FC = () => {
                       const displayBuy = currentEdit.buy !== undefined ? currentEdit.buy : p.buyPrice;
                       const displaySell = currentEdit.sell !== undefined ? currentEdit.sell : p.sellPrice;
                       const profit = displaySell - displayBuy;
-                      const hasChanged = currentEdit.buy !== undefined || currentEdit.sell !== undefined;
+                      const hasChanged = currentEdit.buy !== undefined || currentEdit.sell !== undefined || currentEdit.promoQty !== undefined || currentEdit.promoPrice !== undefined || currentEdit.isPromoActive !== undefined;
                       const packSize = p.packSize && p.packSize > 1 ? p.packSize : 1;
                       const displayPackBuy = displayBuy * packSize;
 
@@ -542,6 +589,53 @@ const Prices: React.FC = () => {
                               {packSize > 1 && <div className="text-[10px] h-[15px]"></div>}
                             </div>
                           </td>
+                          {/* PROMO CONFIG */}
+                          <td className="p-6">
+                              <div className="flex flex-col gap-2 min-w-[200px]">
+                                  <div className="flex items-center justify-between">
+                                      <span className="text-[10px] font-bold uppercase text-slate-400">Ativar Promo</span>
+                                      <button 
+                                          onClick={() => togglePromo(p.id)}
+                                          disabled={!canManagePrices || isLocked}
+                                          className={`w-10 h-5 rounded-full p-1 transition-colors ${
+                                              (currentEdit.isPromoActive !== undefined ? currentEdit.isPromoActive : p.isPromoActive) 
+                                              ? 'bg-green-500' 
+                                              : 'bg-slate-300 dark:bg-slate-600'
+                                          }`}
+                                      >
+                                          <div className={`w-3 h-3 bg-white rounded-full shadow-md transform transition-transform ${
+                                              (currentEdit.isPromoActive !== undefined ? currentEdit.isPromoActive : p.isPromoActive) 
+                                              ? 'translate-x-5' 
+                                              : 'translate-x-0'
+                                          }`} />
+                                      </button>
+                                  </div>
+                                  <div className={`flex gap-2 ${(currentEdit.isPromoActive !== undefined ? currentEdit.isPromoActive : p.isPromoActive) ? '' : 'opacity-50 pointer-events-none'}`}>
+                                      <div className="flex-1">
+                                          <label className="text-[9px] font-bold text-slate-400 uppercase">Qtd</label>
+                                          <input 
+                                              type="number"
+                                              disabled={!canManagePrices || isLocked}
+                                              value={currentEdit.promoQty !== undefined ? currentEdit.promoQty : (p.promoQty || '')}
+                                              onChange={(e) => handlePromoChange(p.id, 'qty', e.target.value)}
+                                              className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg px-2 py-1 text-sm font-bold text-center outline-none focus:ring-1 focus:ring-blue-500"
+                                              placeholder="3"
+                                          />
+                                      </div>
+                                      <div className="flex-[2]">
+                                          <label className="text-[9px] font-bold text-slate-400 uppercase">Preço Promo</label>
+                                          <input 
+                                              type="number"
+                                              disabled={!canManagePrices || isLocked}
+                                              value={currentEdit.promoPrice !== undefined ? currentEdit.promoPrice : (p.promoPrice || '')}
+                                              onChange={(e) => handlePromoChange(p.id, 'price', e.target.value)}
+                                              className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg px-2 py-1 text-sm font-bold text-center outline-none focus:ring-1 focus:ring-blue-500"
+                                              placeholder="1000"
+                                          />
+                                      </div>
+                                  </div>
+                              </div>
+                          </td>
                           <td className="p-6 align-middle">
                             <span className={`font-black text-sm px-4 py-2 rounded-xl flex items-center gap-2 w-fit ${profit >= 0 ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'}`}>
                               {profit >= 0 ? <Plus size={14} /> : <Minus size={14} />}
@@ -576,7 +670,7 @@ const Prices: React.FC = () => {
                     })
                   ) : (
                     <tr>
-                      <td colSpan={5} className="p-12 text-center text-slate-400 font-medium italic">
+                      <td colSpan={6} className="p-12 text-center text-slate-400 font-medium italic">
                         Nenhum produto encontrado com os filtros atuais.
                       </td>
                     </tr>

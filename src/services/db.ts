@@ -20,6 +20,8 @@ export interface DirectSale {
   paymentMethod: 'cash' | 'tpa' | 'transfer';
   statusSync: 'pending' | 'synced' | 'cancelled';
   syncError?: string;
+  totalDiscount?: number;
+  isSyncTime?: boolean;
 }
 
 // IndexedDB Helpers

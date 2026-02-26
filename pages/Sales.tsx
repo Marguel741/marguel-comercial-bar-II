@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Save, Calculator, DollarSign, Calendar, TrendingDown, AlertCircle, PlusCircle, Wallet, CreditCard, ArrowRightLeft, CheckCircle, X, Send, MessageSquare, Clock, Plus, Printer, Lock, Unlock, BarChart2, ArrowUp, Filter, Eye, ChevronRight, RefreshCw, Database, Server, ShieldCheck, Smartphone } from 'lucide-react';
+import { Save, Calculator, DollarSign, Calendar, TrendingDown, AlertCircle, PlusCircle, Wallet, CreditCard, ArrowRightLeft, CheckCircle, X, Send, MessageSquare, Clock, Plus, Printer, Lock, Unlock, BarChart2, ArrowUp, Filter, Eye, ChevronRight, RefreshCw, Database, Server, ShieldCheck, Smartphone, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react';
 import SoftCard from '../components/SoftCard';
 import { useProducts } from '../contexts/ProductContext';
 import { MGLogo } from '../constants';
@@ -101,6 +101,10 @@ const Sales: React.FC = () => {
   const [viewHistoryReport, setViewHistoryReport] = useState<DailyReport | null>(null);
 
   const [toast, setToast] = useState<{show: boolean, message: string}>({ show: false, message: '' });
+  
+  // States for Breakdown (Mix & Match)
+  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
+  const [breakdowns, setBreakdowns] = useState<Record<string, { packs: number, singles: number, waste: number }>>({});
 
   const canEditInitialStock = user?.role === UserRole.ADMIN_GERAL || user?.role === UserRole.PROPRIETARIO || user?.role === UserRole.GERENTE;
   const isReadOnly = user?.role === UserRole.COLABORADOR_REMOTO;
@@ -145,6 +149,22 @@ const Sales: React.FC = () => {
     showToast('Compra adicionada ao histórico e stock!');
   };
 
+  const toggleRow = (id: string) => {
+    if (isReadOnly) return;
+    triggerHaptic('selection');
+    setExpandedRows(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const handleBreakdownChange = (id: string, field: 'packs' | 'singles' | 'waste', value: string, currentBreakdown: any) => {
+    if (isReadOnly) return;
+    const num = parseInt(value) || 0;
+    setBreakdowns(prev => {
+        // If no manual entry yet, start with the current (default) breakdown
+        const base = prev[id] || { packs: currentBreakdown.packs, singles: currentBreakdown.singles, waste: currentBreakdown.waste };
+        return { ...prev, [id]: { ...base, [field]: num } };
+    });
+  };
+
   const calculatedData = useMemo(() => {
     let totalTheoreticalRevenue = 0;
     let hasStockError = false;
@@ -158,10 +178,38 @@ const Sales: React.FC = () => {
       
       if (soldQty < 0) hasStockError = true;
 
-      const revenue = soldQty * product.sellPrice;
+      // Mix & Match / Breakdown Logic
+      const isPromo = product.category === 'Cervejas' || (product as any).isPromoActive;
+      const promoQty = (product as any).promoQty || 3;
+      const promoPrice = (product as any).promoPrice || 1000;
+      
+      let revenue = 0;
+      let breakdown = { packs: 0, singles: 0, waste: 0 };
+      let isBalanced = true;
+
+      if (isPromo && soldQty > 0) {
+          const manual = breakdowns[product.id];
+          if (manual) {
+              // Use manual breakdown
+              const totalUnits = (manual.packs * promoQty) + manual.singles + manual.waste;
+              isBalanced = totalUnits === soldQty;
+              revenue = (manual.packs * promoPrice) + (manual.singles * product.sellPrice);
+              breakdown = manual;
+          } else {
+              // Default breakdown (Auto-suggest)
+              const packs = Math.floor(soldQty / promoQty);
+              const singles = soldQty % promoQty;
+              revenue = (packs * promoPrice) + (singles * product.sellPrice);
+              breakdown = { packs, singles, waste: 0 };
+          }
+      } else {
+          // Standard calculation
+          revenue = soldQty * product.sellPrice;
+      }
+
       totalTheoreticalRevenue += revenue;
 
-      return { ...product, init, buy, end, soldQty, revenue };
+      return { ...product, init, buy, end, soldQty, revenue, isPromo, breakdown, isBalanced, promoQty, promoPrice };
     });
 
     const salesChartData = items
@@ -175,7 +223,7 @@ const Sales: React.FC = () => {
       }));
 
     return { items, totalTheoreticalRevenue, salesChartData, hasStockError };
-  }, [initialStock, purchasedStock, endingStock, products]);
+  }, [initialStock, purchasedStock, endingStock, products, breakdowns]);
 
   const declaredCash = parseFloat(financials.cash) || 0;
   const declaredTransfer = parseFloat(financials.transfer) || 0;
@@ -443,8 +491,22 @@ const Sales: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
               {calculatedData.items.map((item) => (
-                <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-                  <td className="p-3 md:p-4 font-bold text-slate-700 dark:text-slate-300">{item.name}</td>
+                <React.Fragment key={item.id}>
+                <tr className={`hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors ${!item.isBalanced ? 'bg-red-50 dark:bg-red-900/20' : ''}`}>
+                  <td className="p-3 md:p-4 font-bold text-slate-700 dark:text-slate-300">
+                      <div className="flex items-center gap-2">
+                          {item.name}
+                          {item.isPromo && item.soldQty > 0 && (
+                              <button 
+                                onClick={() => toggleRow(item.id)}
+                                className={`p-1 rounded-full transition-all ${expandedRows[item.id] ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-400'}`}
+                              >
+                                  {expandedRows[item.id] ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                              </button>
+                          )}
+                          {!item.isBalanced && <AlertTriangle size={16} className="text-red-500 animate-pulse" />}
+                      </div>
+                  </td>
                   <td className="p-2 bg-blue-50/30 dark:bg-blue-900/10">
                     <input type="number" disabled={!canEditInitialStock || isReadOnly} placeholder="0" value={initialStock[item.id] || ''} onChange={(e) => handleStockChange(setInitialStock, item.id, e.target.value)} className="w-full text-center border rounded-lg py-2 focus:ring-2 focus:ring-blue-500 outline-none font-medium dark:bg-slate-700 dark:text-white" />
                   </td>
@@ -459,6 +521,66 @@ const Sales: React.FC = () => {
                   </td>
                   <td className="p-3 md:p-4 text-right font-bold text-[#003366] dark:text-blue-300">{item.revenue.toLocaleString('pt-AO')}</td>
                 </tr>
+                {expandedRows[item.id] && item.isPromo && item.soldQty > 0 && (
+                    <tr className="bg-slate-50 dark:bg-slate-800/50 animate-fade-in">
+                        <td colSpan={6} className="p-4">
+                            <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 shadow-inner">
+                                <div className="flex items-center justify-between mb-3">
+                                    <h4 className="text-xs font-bold uppercase text-slate-400 flex items-center gap-2">
+                                        <Calculator size={14} /> Detalhe da Venda (Mix & Match)
+                                    </h4>
+                                    {!item.isBalanced && (
+                                        <span className="text-xs font-bold text-red-500 flex items-center gap-1">
+                                            <AlertTriangle size={12} /> Soma incorreta ({((item.breakdown?.packs || 0) * item.promoQty + (item.breakdown?.singles || 0) + (item.breakdown?.waste || 0))} vs {item.soldQty})
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className="bg-blue-50 dark:bg-blue-900/10 p-3 rounded-lg border border-blue-100 dark:border-blue-800">
+                                        <label className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase mb-1 block">
+                                            Packs de {item.promoQty} ({item.promoPrice} Kz)
+                                        </label>
+                                        <div className="flex items-center gap-2">
+                                            <input 
+                                                type="number" 
+                                                value={item.breakdown?.packs || 0}
+                                                onChange={(e) => handleBreakdownChange(item.id, 'packs', e.target.value, item.breakdown)}
+                                                className="w-16 p-1 text-center font-bold rounded border-none outline-none focus:ring-1 focus:ring-blue-500 dark:bg-slate-700 dark:text-white"
+                                            />
+                                            <span className="text-xs font-medium text-slate-500">= {((item.breakdown?.packs || 0) * item.promoPrice).toLocaleString()} Kz</span>
+                                        </div>
+                                    </div>
+                                    <div className="bg-slate-100 dark:bg-slate-700 p-3 rounded-lg border border-slate-200 dark:border-slate-600">
+                                        <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-1 block">
+                                            Avulsas ({item.sellPrice} Kz)
+                                        </label>
+                                        <div className="flex items-center gap-2">
+                                            <input 
+                                                type="number" 
+                                                value={item.breakdown?.singles || 0}
+                                                onChange={(e) => handleBreakdownChange(item.id, 'singles', e.target.value, item.breakdown)}
+                                                className="w-16 p-1 text-center font-bold rounded border-none outline-none focus:ring-1 focus:ring-slate-500 dark:bg-slate-600 dark:text-white"
+                                            />
+                                            <span className="text-xs font-medium text-slate-500">= {((item.breakdown?.singles || 0) * item.sellPrice).toLocaleString()} Kz</span>
+                                        </div>
+                                    </div>
+                                    <div className="bg-red-50 dark:bg-red-900/10 p-3 rounded-lg border border-red-100 dark:border-red-800">
+                                        <label className="text-[10px] font-bold text-red-500 dark:text-red-400 uppercase mb-1 block">
+                                            Quebras (0 Kz)
+                                        </label>
+                                        <input 
+                                            type="number" 
+                                            value={item.breakdown?.waste || 0}
+                                            onChange={(e) => handleBreakdownChange(item.id, 'waste', e.target.value, item.breakdown)}
+                                            className="w-full p-1 text-center font-bold rounded border-none outline-none focus:ring-1 focus:ring-red-500 text-red-600 dark:bg-slate-700 dark:text-red-400"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                )}
+                </React.Fragment>
               ))}
               <tr>
                 <td colSpan={6} className="p-2">

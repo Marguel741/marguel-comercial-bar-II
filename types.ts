@@ -43,6 +43,10 @@ export interface Product {
   category: string;
   packSize?: number;
   packType?: 'Grade' | 'Caixa' | 'Embalagem' | 'Fardo';
+  // Promo fields
+  promoQty?: number;
+  promoPrice?: number;
+  isPromoActive?: boolean;
 }
 
 export interface PriceHistoryLog {

@@ -1,11 +1,11 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Search, ShoppingCart, Plus, Minus, Trash2, CheckCircle, Wallet, CreditCard, ArrowRightLeft, X, History, Clock, Eye, Wifi, WifiOff, Cloud, Loader2, Check, Filter, AlertCircle } from 'lucide-react';
+import { Search, ShoppingCart, Plus, Minus, Trash2, CheckCircle, Wallet, CreditCard, ArrowRightLeft, X, History, Clock, Eye, Wifi, WifiOff, Cloud, Loader2, Check, Filter, AlertCircle, Tag } from 'lucide-react';
 import { useProducts } from '../contexts/ProductContext';
 import { useLayout } from '../contexts/LayoutContext';
 import { useAuth } from '../App';
 import SoftCard from '../components/SoftCard';
 import { dbAddSale, dbGetAllSales, dbUpdateSale, DirectSale } from '../src/services/db';
-import { processSync } from '../src/services/syncService';
+import { processSync, serverTimeOffset } from '../src/services/syncService';
 
 interface Product {
   id: string;
@@ -204,14 +204,47 @@ const DirectService: React.FC = () => {
     setShowCheckout(false);
   };
 
-  const cartTotal = useMemo(() => {
-    let total = 0;
-    Object.entries(cart).forEach(([id, qty]) => {
+  // Price Calculation Engine
+  const calculateTransaction = useCallback((currentCart: Record<string, number>) => {
+    let standardTotal = 0;
+    let beerQty = 0;
+    let nonBeerTotal = 0;
+
+    Object.entries(currentCart).forEach(([id, qty]) => {
       const p = productMap.get(id);
-      if (p) total += p.sellPrice * Number(qty);
+      if (!p) return;
+      
+      const quantity = Math.round(Number(qty));
+      const itemTotal = Math.round(quantity * p.sellPrice);
+      standardTotal = Math.round(standardTotal + itemTotal);
+
+      if (p.category === 'Cervejas') {
+        beerQty += quantity;
+      } else {
+        nonBeerTotal = Math.round(nonBeerTotal + itemTotal);
+      }
     });
-    return total;
-  }, [cart, productMap]);
+
+    // Mix & Match Logic: 3 for 1000, 1 for 350
+    const packs = Math.floor(beerQty / 3);
+    const singles = beerQty % 3;
+    
+    const packsValue = Math.round(packs * 1000);
+    const singlesValue = Math.round(singles * 350);
+    
+    const beerPromoTotal = Math.round(packsValue + singlesValue);
+    
+    const finalTotal = Math.round(nonBeerTotal + beerPromoTotal);
+    const discount = Math.round(standardTotal - finalTotal);
+
+    return { total: finalTotal, discount: Math.max(0, discount) };
+  }, [productMap]);
+
+  const cartCalculations = useMemo(() => {
+    return calculateTransaction(cart);
+  }, [cart, calculateTransaction]);
+
+  const cartTotal = cartCalculations.total;
 
   const handleCheckout = async () => {
     // Validation
@@ -220,28 +253,44 @@ const DirectService: React.FC = () => {
         return;
     }
 
+    // Integrity Check (Pre-Transaction Validation)
+    const expected = calculateTransaction(cart);
+    if (expected.total !== cartTotal) {
+         console.error("Integrity Error: Calculated", expected.total, "State", cartTotal);
+         setNetworkToast({
+            show: true,
+            message: "Erro de validação de preço. Recalculando...",
+            type: 'warning'
+        });
+        // Force re-render/update if needed, but return for safety
+        return;
+    }
+
     triggerHaptic('success');
     
     // 1. Create Sale Record (Independent History)
+    const now = new Date(Date.now() + serverTimeOffset);
     const newSale: DirectSale = {
-        id: `${Date.now()}-${deviceId}`,
+        id: `${now.getTime()}-${deviceId}`,
         uuid: crypto.randomUUID(), // Immutable
-        date: new Date().toLocaleDateString('pt-AO'),
-        time: new Date().toLocaleTimeString('pt-AO'),
-        timestamp: Date.now(),
+        date: now.toLocaleDateString('pt-AO'),
+        time: now.toLocaleTimeString('pt-AO'),
+        timestamp: now.getTime(),
         serverTimestamp: undefined, // Will be set on sync
         attendant: user?.name || 'Desconhecido',
         userId: user?.id || 'unknown',
         deviceId: deviceId,
-        total: cartTotal,
+        total: cartTotal, // Final amount paid by customer (with discount applied)
+        totalDiscount: cartCalculations.discount > 0 ? cartCalculations.discount : undefined, // Global discount (Footer deduction)
         paymentMethod: paymentMethod,
         statusSync: 'pending', // Default offline state
+        isSyncTime: true,
         items: Object.entries(cart).map(([id, qty]) => {
             const p = productMap.get(id);
             return {
                 name: p?.name || 'Item Desconhecido',
                 qty: Number(qty),
-                price: p?.sellPrice || 0
+                price: p?.sellPrice || 0 // Original unit price (No discount applied here)
             };
         })
     };
@@ -547,8 +596,16 @@ const DirectService: React.FC = () => {
                    placeholder="Buscar produto..."
                    value={searchTerm}
                    onChange={e => setSearchTerm(e.target.value)}
-                   className="w-full pl-10 pr-4 py-3 rounded-xl bg-slate-100 dark:bg-slate-700 border-none outline-none focus:ring-2 focus:ring-[#003366] dark:text-white"
+                   className="w-full pl-10 pr-10 py-3 rounded-xl bg-slate-100 dark:bg-slate-700 border-none outline-none focus:ring-2 focus:ring-[#003366] dark:text-white"
                  />
+                 {searchTerm.length > 0 && (
+                     <button 
+                       onClick={() => setSearchTerm('')}
+                       className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-white p-1 rounded-full hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+                     >
+                         <X size={16} />
+                     </button>
+                 )}
               </div>
            </div>
            
@@ -726,9 +783,17 @@ const DirectService: React.FC = () => {
          </div>
 
          <div className="p-4 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-700">
-            <div className="flex justify-between items-center mb-4">
-               <span className="text-slate-500 dark:text-slate-400 font-bold uppercase text-xs">Total a Pagar</span>
-               <span className="text-2xl font-black text-[#003366] dark:text-white">{cartTotal.toLocaleString()} Kz</span>
+            <div className="flex flex-col gap-2 mb-4">
+               <div className="flex justify-between items-center">
+                  <span className="text-slate-500 dark:text-slate-400 font-bold uppercase text-xs">Total a Pagar</span>
+                  <span className="text-2xl font-black text-[#003366] dark:text-white">{cartTotal.toLocaleString()} Kz</span>
+               </div>
+               {cartCalculations.discount > 0 && (
+                  <div className="self-end bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 animate-fade-in">
+                     <Tag size={12} />
+                     Promoção Mix & Match: -{cartCalculations.discount.toLocaleString()} Kz
+                  </div>
+               )}
             </div>
             
             {!showCheckout ? (
