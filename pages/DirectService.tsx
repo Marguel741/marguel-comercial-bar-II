@@ -5,6 +5,20 @@ import { useLayout } from '../contexts/LayoutContext';
 import { useAuth } from '../App';
 import SoftCard from '../components/SoftCard';
 
+interface Product {
+  id: string;
+  name: string;
+  sellPrice: number;
+  category: string;
+  packType: string;
+}
+
+interface CartItem {
+  name: string;
+  qty: number;
+  price: number;
+}
+
 interface DirectSale {
   id: string;
   uuid: string; // Unique Immutable ID
@@ -16,9 +30,10 @@ interface DirectSale {
   userId: string; // Audit
   deviceId?: string; // Audit
   total: number;
-  items: { name: string; qty: number; price: number }[];
+  items: CartItem[];
   paymentMethod: 'cash' | 'tpa' | 'transfer';
   statusSync: 'pending' | 'synced';
+  syncError?: string;
 }
 
 // IndexedDB Helpers
@@ -89,7 +104,11 @@ const DirectService: React.FC = () => {
   const [cart, setCart] = useState<Record<string, number>>({});
   const [showCheckout, setShowCheckout] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'tpa' | 'transfer'>('cash');
-  const [amountPaid, setAmountPaid] = useState('');
+  
+  // Product Map for O(1) Access
+  const productMap = useMemo(() => {
+    return new Map((products as Product[]).map(p => [p.id, p]));
+  }, [products]);
   
   // Offline / Sync State
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -202,7 +221,7 @@ const DirectService: React.FC = () => {
 
   // Filtering
   const filteredProducts = useMemo(() => {
-    return products.filter(p => {
+    return (products as Product[]).filter(p => {
       const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesCategory = selectedCategory === 'Todos' || p.category === selectedCategory;
       return matchesSearch && matchesCategory;
@@ -212,7 +231,7 @@ const DirectService: React.FC = () => {
   const categoriesList = ['Todos', ...categories];
 
   // Cart Logic
-  const addToCart = (product: any) => {
+  const addToCart = (product: Product) => {
     triggerHaptic('impact');
     setCart(prev => ({
       ...prev,
@@ -243,11 +262,11 @@ const DirectService: React.FC = () => {
   const cartTotal = useMemo(() => {
     let total = 0;
     Object.entries(cart).forEach(([id, qty]) => {
-      const p = products.find(prod => prod.id === id);
+      const p = productMap.get(id);
       if (p) total += p.sellPrice * Number(qty);
     });
     return total;
-  }, [cart, products]);
+  }, [cart, productMap]);
 
   const handleCheckout = async () => {
     // Validation
@@ -260,7 +279,7 @@ const DirectService: React.FC = () => {
     
     // 1. Create Sale Record (Independent History)
     const newSale: DirectSale = {
-        id: Date.now().toString(),
+        id: `${Date.now()}-${deviceId}`,
         uuid: crypto.randomUUID(), // Immutable
         date: new Date().toLocaleDateString('pt-AO'),
         time: new Date().toLocaleTimeString('pt-AO'),
@@ -273,7 +292,7 @@ const DirectService: React.FC = () => {
         paymentMethod: paymentMethod,
         statusSync: 'pending', // Default offline state
         items: Object.entries(cart).map(([id, qty]) => {
-            const p = products.find(prod => prod.id === id);
+            const p = productMap.get(id);
             return {
                 name: p?.name || 'Item Desconhecido',
                 qty: Number(qty),
@@ -290,7 +309,6 @@ const DirectService: React.FC = () => {
         // Reset
         setCart({});
         setShowCheckout(false);
-        setAmountPaid('');
         
         alert('Venda registrada! ' + (isOnline ? 'Sincronize manualmente quando desejar.' : 'Salva localmente (Offline).'));
     } catch (error) {
@@ -623,7 +641,7 @@ const DirectService: React.FC = () => {
 
          <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
             {Object.entries(cart).map(([id, qty]) => {
-               const p = products.find(prod => prod.id === id);
+               const p = productMap.get(id);
                if (!p) return null;
                return (
                   <div key={id} className="flex justify-between items-center">
