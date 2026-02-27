@@ -96,9 +96,9 @@ const GlobalCalendar: React.FC = () => {
     <div className="p-4 md:p-8 space-y-8 animate-fade-in pb-24 relative">
        
        <header className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
-          <div>
-             <h1 className="text-3xl font-bold text-[#003366] dark:text-white flex items-center gap-3">
-                <Calendar size={32} /> Calendário Marguel
+          <div className="ml-20">
+             <h1 className="text-3xl font-bold text-[#003366] dark:text-white">
+                Calendário Marguel
              </h1>
              <p className="text-slate-500 dark:text-slate-400">Relatório Geral Completo do Sistema</p>
           </div>
