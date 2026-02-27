@@ -79,6 +79,7 @@ export interface PurchaseRecord {
   timestamp: number;
   source: 'Prices' | 'Inventory' | 'Sales';
   attachments?: string[];
+  synced?: boolean;
 }
 
 export interface Sale {
@@ -190,4 +191,5 @@ export interface SalesReport {
   };
   topProducts?: { name: string; qty: number; total: number }[];
   itemsSnapshot?: any[];
+  synced?: boolean;
 }

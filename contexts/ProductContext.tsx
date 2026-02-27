@@ -128,6 +128,15 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
   useEffect(() => {
+    const savedQueue = localStorage.getItem('mg_sync_queue');
+    if (savedQueue) setSyncQueue(JSON.parse(savedQueue));
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('mg_sync_queue', JSON.stringify(syncQueue));
+  }, [syncQueue]);
+
+  useEffect(() => {
     const goOnline = () => setIsOnline(true);
     const goOffline = () => setIsOnline(false);
     window.addEventListener('online', goOnline);
@@ -294,8 +303,10 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     const purchaseDate = new Date(systemDate);
     purchaseDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds());
 
+    const purchaseId = crypto.randomUUID();
+
     const newRecord: PurchaseRecord = {
-      id: Date.now().toString(),
+      id: purchaseId,
       name: source === 'Inventory' ? 'Ajuste de Stock (Inventário)' : source === 'Sales' ? 'Compra Rápida (Vendas)' : `Compra Efectuada`,
       date: getSystemDateStr(),
       items, 
@@ -303,10 +314,18 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       completedBy,
       timestamp: purchaseDate.getTime(),
       source,
-      attachments
+      attachments,
+      synced: false
     };
 
     setPurchases(prev => [newRecord, ...prev]);
+
+    setSyncQueue(prev => [...prev, {
+      id: crypto.randomUUID(),
+      type: 'UPDATE_STOCK',
+      payload: newRecord,
+      timestamp: Date.now()
+    }]);
 
     setProducts(prevProducts => prevProducts.map(p => {
       if (items[p.id]) {
@@ -339,7 +358,21 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   const getTodayPurchases = () => getPurchasesByDate(getSystemDateStr());
 
   const addSalesReport = (report: SalesReport) => {
-    setSalesReports(prev => [report, ...prev]);
+    const finalReport = { 
+      ...report, 
+      id: report.id || crypto.randomUUID(),
+      synced: false 
+    };
+
+    setSalesReports(prev => [finalReport, ...prev]);
+
+    const action: PendingAction = {
+      id: crypto.randomUUID(),
+      type: 'ADD_SALE',
+      payload: finalReport,
+      timestamp: Date.now()
+    };
+    setSyncQueue(prev => [...prev, action]);
   };
 
   return (
