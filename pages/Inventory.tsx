@@ -1,6 +1,6 @@
 
-import React, { useMemo, useState } from 'react';
-import { Package, Thermometer, Edit2, Bell, Plus, Search, ChevronUp, ChevronDown, AlertTriangle, Save, X, CheckCircle, Check, Trash2, Settings, ClipboardList, Send, ArrowRight, History, Lock } from 'lucide-react';
+import React, { useMemo, useState, useEffect } from 'react';
+import { Package, Thermometer, Edit2, Bell, Plus, Search, ChevronUp, ChevronDown, AlertTriangle, Save, X, CheckCircle, Check, Trash2, Settings, ClipboardList, Send, ArrowRight, History, Lock, WifiOff, CloudOff, CloudUpload, CloudCheck } from 'lucide-react';
 import SoftCard from '../components/SoftCard';
 import { useProducts } from '../contexts/ProductContext';
 import { useAuth } from '../App';
@@ -16,13 +16,27 @@ const Inventory: React.FC = () => {
     deleteProduct, 
     addCategory, 
     removeCategory,
-    inventoryHistory, // Usar do contexto
-    addInventoryLog, // Usar do contexto
+    inventoryHistory,
+    addInventoryLog,
     systemDate,
-    isDayLocked
+    isDayLocked,
+    equipments,
+    addEquipment,
+    updateEquipmentQty,
+    removeEquipment,
+    isSyncing,
+    hasPendingChanges,
+    syncData
   } = useProducts();
   const { user } = useAuth();
   const { sidebarMode, triggerHaptic } = useLayout();
+  
+  // Monitor de Rede: Tenta sincronizar assim que a rede volta
+  useEffect(() => {
+    if (navigator.onLine && hasPendingChanges) {
+      syncData();
+    }
+  }, [navigator.onLine, hasPendingChanges]);
   
   // Check locking
   const isLocked = isDayLocked(systemDate);
@@ -42,17 +56,6 @@ const Inventory: React.FC = () => {
   // Feedback States
   const [toast, setToast] = useState<{show: boolean, message: string}>({ show: false, message: '' });
   const [savedAlertIds, setSavedAlertIds] = useState<Set<string>>(new Set());
-
-  // --- EQUIPMENT STATE & LOGIC (KEEP LOCAL FOR NOW AS IT'S NOT IN MAIN SCHEMA YET, BUT HISTORY IS) ---
-  // In a full refactor, this would also move to Context. For now, we keep equipment state here but push logs to context.
-  const [equipments, setEquipments] = useState<Equipment[]>([
-    { id: '1', name: 'Mesas', qty: 20, prevQty: 20, status: 'Operacional' },
-    { id: '2', name: 'Cadeiras', qty: 80, prevQty: 80, status: 'Operacional' },
-    { id: '3', name: 'Grades (Vazias)', qty: 50, prevQty: 48, status: 'Operacional' },
-    { id: '4', name: 'Vasilhames', qty: 1200, prevQty: 1200, status: 'Operacional' },
-    { id: '5', name: 'Chaves de Abrir', qty: 10, prevQty: 12, status: 'Operacional' },
-    { id: '6', name: 'Freezer Vertical', qty: 3, prevQty: 3, status: 'Operacional' }
-  ]);
 
   // Inventory Management State
   const [nextInventoryDate, setNextInventoryDate] = useState(
@@ -144,31 +147,22 @@ const Inventory: React.FC = () => {
   const handleAddEquipment = () => {
     if(isLocked) return;
     if (!newEquipName || !newEquipQty) return;
+    
     triggerHaptic('success');
-    
-    const newId = Date.now().toString();
-    const qty = parseInt(newEquipQty);
-    
-    setEquipments(prev => [...prev, {
-        id: newId,
-        name: newEquipName,
-        qty: qty,
-        prevQty: qty, // Assume new items start balanced
-        status: 'Operacional'
-    }]);
+    addEquipment(newEquipName, parseInt(newEquipQty)); // Chamada global
     
     setNewEquipName('');
     setNewEquipQty('');
     setShowAddEquipModal(false);
-    showToast('Equipamento adicionado!');
+    showToast('Item registrado no banco local');
   };
 
   const handleRemoveEquipment = (id: string) => {
-    if(isLocked) return;
-    if (!isAdmin) return;
-    if(window.confirm("Deseja remover este equipamento da lista permanentemente?")) {
+    if(isLocked || !isAdmin) return;
+    
+    if(window.confirm("Remover permanentemente?")) {
         triggerHaptic('warning');
-        setEquipments(prev => prev.filter(e => e.id !== id));
+        removeEquipment(id); // Chamada global
         showToast('Equipamento removido.');
     }
   };
@@ -223,20 +217,20 @@ const Inventory: React.FC = () => {
 
   const finalizeInventory = () => {
     triggerHaptic('success');
-    
-    const hasDiscrepancy = discrepancies.length > 0;
-    
-    // Update Equipments State
-    setEquipments(prev => prev.map(eq => ({
-        ...eq,
-        prevQty: eq.qty, // Store old qty as previous
-        qty: countValues[eq.id] // Update to new counted qty
-    })));
+    // Implementação de persistência local...
+    showToast(navigator.onLine ? 'Sincronizado com Sucesso' : 'Salvo localmente (Offline)');
+    setShowJustificationModal(false);
+
+    // Atualiza quantidades no contexto global
+    Object.entries(countValues).forEach(([id, qty]) => {
+        updateEquipmentQty(id, qty);
+    });
 
     setLastInventoryDate(systemDate.toLocaleDateString('pt-AO'));
     setIsInventoryDone(true);
     
     // Add to History (Global Context)
+    const hasDiscrepancy = discrepancies.length > 0;
     const newLog: InventoryLog = {
         id: Date.now().toString(),
         date: systemDate.toLocaleDateString('pt-AO'),
@@ -407,6 +401,25 @@ const Inventory: React.FC = () => {
   return (
     <div className="p-4 md:p-8 space-y-8 animate-fade-in relative pb-20">
       
+      {/* STATUS DE SINCRONIZAÇÃO (Floating Indicator) */}
+      <div className="fixed bottom-24 right-6 z-50">
+        {hasPendingChanges ? (
+          <div 
+            onClick={() => { triggerHaptic('impact'); syncData(); }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-full shadow-lg cursor-pointer transition-all ${
+              isSyncing ? 'bg-blue-500 animate-pulse' : 'bg-amber-500 hover:scale-105'
+            } text-white text-xs font-bold`}
+          >
+            {isSyncing ? <CloudUpload size={16} className="animate-bounce" /> : <CloudOff size={16} />}
+            {isSyncing ? 'Sincronizando...' : 'Alterações Pendentes (Offline)'}
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 px-4 py-2 bg-green-500/10 text-green-600 rounded-full text-[10px] font-black border border-green-200">
+            <CloudCheck size={14} /> DADOS SINCRONIZADOS
+          </div>
+        )}
+      </div>
+
       {/* GLOBAL TOAST */}
       {toast.show && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] animate-fade-slide-up">
@@ -1147,20 +1160,20 @@ const Inventory: React.FC = () => {
         </div>
       )}
 
-        {/* Footer */}
-        <footer className="mt-16 py-10 px-6 bg-white rounded-2xl text-center flex flex-col gap-4 font-sans">
-            <p className="text-sm font-bold tracking-[-0.01em] text-[#003366]">
-                Marguel Sistema de Gestão Interna
-            </p>
-            <div className="flex flex-col items-center">
-                <span className="text-xs text-[#6B7280] mb-1">Desenvolvido por</span>
-                <div className="text-xs tracking-[0.5px]">
-                    <span className="font-extrabold text-[#E3007E]" style={{ textShadow: '0px 0px 5px rgba(227, 0, 126, 0.7)' }}>DC - Comercial</span>
-                    <span className="text-[#6B7280] font-normal mx-1">&</span>
-                    <span className="font-extrabold text-[#E3007E]" style={{ textShadow: '0px 0px 5px rgba(227, 0, 126, 0.7)' }}>Marguel CGPS Lda</span>
-                </div>
-            </div>
-        </footer>
+      {/* Rodapé Atualizado */}
+      <footer className="mt-16 py-10 px-6 bg-white dark:bg-slate-900 rounded-3xl text-center flex flex-col gap-4 font-sans shadow-sm border border-slate-100 dark:border-slate-800">
+          <p className="text-sm font-bold tracking-tight text-[#003366] dark:text-blue-400">
+              Marguel Sistema de Gestão Interna
+          </p>
+          <div className="flex flex-col items-center">
+              <span className="text-[10px] uppercase tracking-widest text-slate-400 mb-2">Engenharia e Desenvolvimento</span>
+              <div className="text-xs font-medium flex items-center gap-2">
+                  <span className="font-extrabold text-[#E3007E]">DC - Comercial</span>
+                  <span className="text-slate-300">|</span>
+                  <span className="font-extrabold text-[#003366] dark:text-white">Marguel CGPS (SU) Lda</span>
+              </div>
+          </div>
+      </footer>
     </div>
   );
 };

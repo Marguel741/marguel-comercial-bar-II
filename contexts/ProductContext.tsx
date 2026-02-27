@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import { Product, PurchaseRecord, Transaction, SalesReport, Expense, InventoryLog, PriceHistoryLog } from '../types';
+import { Product, PurchaseRecord, Transaction, SalesReport, Expense, InventoryLog, PriceHistoryLog, Equipment } from '../types';
 
 const INITIAL_PRODUCTS: Product[] = [
   { id: 'pepsi', name: 'Pepsi', sellPrice: 500, buyPrice: 250, stock: 0, minStock: 24, category: 'Refrigerantes', packSize: 24, packType: 'Grade' },
@@ -65,6 +65,7 @@ interface ProductContextType {
   priceHistory: PriceHistoryLog[];
   systemDate: Date;
   lockedDays: string[];
+  equipments: Equipment[];
   
   setSystemDate: (date: Date) => void;
   toggleDayLock: (dateStr: string) => void;
@@ -84,6 +85,12 @@ interface ProductContextType {
   getTodayPurchases: () => Record<string, number>;
   processTransaction: (type: 'deposit' | 'withdraw', account: 'main' | 'savings', amount: number, description: string) => void;
   addSalesReport: (report: SalesReport) => void;
+  addEquipment: (name: string, qty: number) => void;
+  updateEquipmentQty: (id: string, newQty: number) => void;
+  removeEquipment: (id: string) => void;
+  isSyncing: boolean;
+  hasPendingChanges: boolean;
+  syncData: () => Promise<void>;
 }
 
 const ProductContext = createContext<ProductContextType | undefined>(undefined);
@@ -375,6 +382,76 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     setSyncQueue(prev => [...prev, action]);
   };
 
+  const [equipments, setEquipments] = useState<Equipment[]>(() => {
+    try {
+        const saved = localStorage.getItem('@Marguel:equipments');
+        return saved ? JSON.parse(saved) : [
+            { id: '1', name: 'Mesas', qty: 20, prevQty: 20, status: 'Operacional' },
+            { id: '2', name: 'Cadeiras', qty: 80, prevQty: 80, status: 'Operacional' },
+            { id: '3', name: 'Grades (Vazias)', qty: 50, prevQty: 48, status: 'Operacional' },
+            { id: '4', name: 'Vasilhames', qty: 1200, prevQty: 1200, status: 'Operacional' },
+            { id: '5', name: 'Chaves de Abrir', qty: 10, prevQty: 12, status: 'Operacional' },
+            { id: '6', name: 'Freezer Vertical', qty: 3, prevQty: 3, status: 'Operacional' }
+        ];
+    } catch { return []; }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('@Marguel:equipments', JSON.stringify(equipments));
+  }, [equipments]);
+
+  const [hasPendingChanges, setHasPendingChanges] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const markAsPending = () => {
+    if (!navigator.onLine) {
+      setHasPendingChanges(true);
+      localStorage.setItem('@Marguel:needsSync', 'true');
+    }
+  };
+
+  const syncData = async () => {
+    if (!navigator.onLine || isSyncing) return;
+    
+    setIsSyncing(true);
+    try {
+      // Simulação de chamada de API para salvar o LocalStorage no Banco de Dados
+      await new Promise(resolve => setTimeout(resolve, 2000)); 
+      
+      setHasPendingChanges(false);
+      localStorage.removeItem('@Marguel:needsSync');
+      console.log("Sincronização concluída!");
+    } catch (error) {
+      console.error("Falha ao sincronizar");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const addEquipment = (name: string, qty: number) => {
+    const newEquip: Equipment = {
+        id: Date.now().toString(),
+        name,
+        qty,
+        prevQty: qty,
+        status: 'Operacional'
+    };
+    setEquipments(prev => [...prev, newEquip]);
+    markAsPending();
+  };
+
+  const updateEquipmentQty = (id: string, newQty: number) => {
+    setEquipments(prev => prev.map(eq => 
+        eq.id === id ? { ...eq, prevQty: eq.qty, qty: newQty } : eq
+    ));
+    markAsPending();
+  };
+
+  const removeEquipment = (id: string) => {
+    setEquipments(prev => prev.filter(eq => eq.id !== id));
+    markAsPending();
+  };
+
   return (
     <ProductContext.Provider value={{ 
       products, categories, purchases, currentBalance, savingsBalance, transactions, salesReports, 
@@ -383,7 +460,9 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       addExpense, deleteExpense, updateExpense,
       addInventoryLog, addProduct, updateProduct, deleteProduct, addCategory, removeCategory,
       addPurchase, getPurchasesByDate, getTodayPurchases, processTransaction, 
-      addSalesReport
+      addSalesReport,
+      equipments, addEquipment, updateEquipmentQty, removeEquipment,
+      isSyncing, hasPendingChanges, syncData
     }}>
       {children}
     </ProductContext.Provider>

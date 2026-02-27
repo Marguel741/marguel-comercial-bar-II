@@ -2,14 +2,15 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   ChevronLeft, ChevronRight, Calendar, DollarSign, ArrowUpRight, TrendingUp, 
-  Lock, Unlock, FileText, ShoppingBag, Package, Wallet, CheckCircle, AlertTriangle, AlertCircle, Eye, X, Info, Clock
+  Lock, Unlock, FileText, ShoppingBag, Package, Wallet, CheckCircle, AlertTriangle, AlertCircle, Eye, X, Info, Clock,
+  CloudOff, CloudUpload, CloudCheck // Novos ícones para o status
 } from 'lucide-react';
 import { useProducts } from '../contexts/ProductContext';
 import { useLayout } from '../contexts/LayoutContext';
 import { useAuth } from '../App';
 import { UserRole } from '../types';
 import SoftCard from '../components/SoftCard';
-import { formatKz, roundKz } from '../src/utils'; // Importação das funções NASA
+import { formatKz, roundKz } from '../src/utils';
 
 const GlobalCalendar: React.FC = () => {
   const { 
@@ -20,8 +21,13 @@ const GlobalCalendar: React.FC = () => {
     transactions,
     isDayLocked,
     toggleDayLock,
-    priceHistory
+    priceHistory,
+    // Novos estados do context para sincronização
+    isSyncing,
+    hasPendingChanges,
+    syncData
   } = useProducts();
+  
   const { triggerHaptic } = useLayout();
   const { user } = useAuth();
   
@@ -31,15 +37,19 @@ const GlobalCalendar: React.FC = () => {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
   useEffect(() => {
-      const goOnline = () => setIsOnline(true);
-      const goOffline = () => setIsOnline(false);
-      window.addEventListener('online', goOnline);
-      window.addEventListener('offline', goOffline);
-      return () => {
-          window.removeEventListener('online', goOnline);
-          window.removeEventListener('offline', goOffline);
+      const handleStatusChange = () => {
+          setIsOnline(navigator.onLine);
+          if (navigator.onLine && hasPendingChanges) {
+              syncData();
+          }
       };
-  }, []);
+      window.addEventListener('online', handleStatusChange);
+      window.addEventListener('offline', handleStatusChange);
+      return () => {
+          window.removeEventListener('online', handleStatusChange);
+          window.removeEventListener('offline', handleStatusChange);
+      };
+  }, [hasPendingChanges, syncData]);
 
   const daysInMonth = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0).getDate();
   const firstDayOfMonth = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1).getDay();
@@ -52,11 +62,9 @@ const GlobalCalendar: React.FC = () => {
     const newDate = new Date(viewDate);
     newDate.setMonth(newDate.getMonth() + direction);
     setViewDate(newDate);
-    setSelectedDayDetail(null); // Reset NASA: Evita inconsistência visual ao mudar de mês
+    setSelectedDayDetail(null);
   };
 
-  // --- PERFORMANCE O(1) MAPS ---
-  // Em vez de usar .find() dentro de loops, criamos Mapas para acesso instantâneo
   const salesMap = useMemo(() => new Map(salesReports.map(r => [r.date, r])), [salesReports]);
   const inventoryMap = useMemo(() => new Map(inventoryHistory.map(h => [h.date, h])), [inventoryHistory]);
 
@@ -83,7 +91,6 @@ const GlobalCalendar: React.FC = () => {
     const dayInventoryLog = inventoryMap.get(selectedDayDetail);
     const dayTrans = transactions.filter(t => t.date.includes(selectedDayDetail.substring(0, 5)));
     
-    // Filtro Robusto de Preços (usando início do dia para comparação)
     const dayPriceChanges = priceHistory?.filter(l => {
         const logDate = new Date(parseInt(l.id)).toLocaleDateString('pt-AO');
         return logDate === selectedDayDetail;
@@ -110,13 +117,32 @@ const GlobalCalendar: React.FC = () => {
   return (
     <div className="p-4 md:p-8 space-y-8 animate-fade-in pb-24 relative">
        
+       {/* FLOATING SYNC STATUS */}
+       <div className="fixed bottom-24 right-6 z-50">
+        {hasPendingChanges ? (
+          <div 
+            onClick={() => { triggerHaptic('impact'); syncData(); }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-full shadow-lg cursor-pointer transition-all ${
+              isSyncing ? 'bg-blue-500 animate-pulse' : 'bg-amber-500 hover:scale-105'
+            } text-white text-xs font-bold`}
+          >
+            {isSyncing ? <CloudUpload size={16} className="animate-bounce" /> : <CloudOff size={16} />}
+            {isSyncing ? 'Sincronizando...' : 'Alterações Pendentes (Offline)'}
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 px-4 py-2 bg-green-500/10 text-green-600 rounded-full text-[10px] font-black border border-green-200 backdrop-blur-sm">
+            <CloudCheck size={14} /> DADOS SINCRONIZADOS
+          </div>
+        )}
+      </div>
+
        <header className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
           <div className="ml-20">
              <h1 className="text-3xl font-bold text-[#003366] dark:text-white flex items-center gap-3">
                 Calendário Marguel
                 {!isOnline && (
                     <div className="flex items-center gap-2 px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-[10px] font-black animate-pulse">
-                        <Clock size={12} /> MODO OFFLINE - DADOS LOCAIS
+                        <Clock size={12} /> MODO OFFLINE
                     </div>
                 )}
              </h1>
@@ -131,8 +157,7 @@ const GlobalCalendar: React.FC = () => {
        </header>
 
        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-          
-          {/* Calendar Grid */}
+          {/* Calendar Grid & Monthly Summary (Mesmo do original) */}
           <div className="lg:col-span-3 bg-white dark:bg-slate-800 rounded-[32px] p-6 shadow-xl border border-slate-100 dark:border-slate-700">
              <div className="grid grid-cols-7 mb-4">
                 {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(d => (
@@ -193,7 +218,6 @@ const GlobalCalendar: React.FC = () => {
              </div>
           </div>
 
-          {/* Monthly Summary */}
           <div className="space-y-4">
              <SoftCard className="bg-[#003366] text-white border-none shadow-blue-900/20">
                 <div className="flex justify-between items-start mb-2">
@@ -224,7 +248,7 @@ const GlobalCalendar: React.FC = () => {
           </div>
        </div>
 
-       {/* --- DETAILED DAY REPORT MODAL (ESTRUTURA NASA) --- */}
+       {/* MODAL DETALHADO (Mantido conforme original) */}
        {selectedDayDetail && dayData && (
          <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[80] flex items-center justify-center p-4 animate-fade-in" onClick={() => setSelectedDayDetail(null)}>
             <div className="bg-white dark:bg-slate-900 w-full max-w-5xl h-[85vh] rounded-[40px] shadow-2xl flex flex-col overflow-hidden border border-white/20" onClick={e => e.stopPropagation()}>
