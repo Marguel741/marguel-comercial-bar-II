@@ -45,6 +45,13 @@ const INITIAL_CATEGORIES = [
   'Vinhos', 'Espirituosas', 'Gin & Vodka', 'Águas', 'Energéticos', 'Descartáveis'
 ];
 
+interface PendingAction {
+  id: string;
+  type: 'ADD_SALE' | 'UPDATE_STOCK' | 'ADD_EXPENSE';
+  payload: any;
+  timestamp: number;
+}
+
 interface ProductContextType {
   products: Product[];
   categories: string[];
@@ -116,6 +123,34 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     else checkDateStr = date.includes('T') ? new Date(date).toLocaleDateString('pt-AO') : date;
     return lockedDays.includes(checkDateStr);
   };
+
+  const [syncQueue, setSyncQueue] = useState<PendingAction[]>([]);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  useEffect(() => {
+    const goOnline = () => setIsOnline(true);
+    const goOffline = () => setIsOnline(false);
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
+    return () => {
+      window.removeEventListener('online', goOnline);
+      window.removeEventListener('offline', goOffline);
+    };
+  }, []);
+
+  const processSyncQueue = async () => {
+    if (syncQueue.length === 0) return;
+    console.log('Processing sync queue:', syncQueue);
+    // TODO: Implement actual sync logic here
+    // For now, we clear the queue to simulate processing
+    setSyncQueue([]);
+  };
+
+  useEffect(() => {
+    if (navigator.onLine && syncQueue.length > 0) {
+      processSyncQueue();
+    }
+  }, [syncQueue, isOnline]);
 
   const [products, setProducts] = useState<Product[]>(() => {
     try {

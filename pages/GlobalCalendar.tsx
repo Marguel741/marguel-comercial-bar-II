@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   ChevronLeft, ChevronRight, Calendar, DollarSign, ArrowUpRight, TrendingUp, 
   Lock, Unlock, FileText, ShoppingBag, Package, Wallet, CheckCircle, AlertTriangle, AlertCircle, Eye, X, Info, Clock
@@ -28,6 +28,18 @@ const GlobalCalendar: React.FC = () => {
   const [viewDate, setViewDate] = useState(new Date());
   const [selectedDayDetail, setSelectedDayDetail] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'sales' | 'inventory' | 'finance' | 'purchases'>('overview');
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  useEffect(() => {
+      const goOnline = () => setIsOnline(true);
+      const goOffline = () => setIsOnline(false);
+      window.addEventListener('online', goOnline);
+      window.addEventListener('offline', goOffline);
+      return () => {
+          window.removeEventListener('online', goOnline);
+          window.removeEventListener('offline', goOffline);
+      };
+  }, []);
 
   const daysInMonth = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0).getDate();
   const firstDayOfMonth = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1).getDay();
@@ -100,8 +112,13 @@ const GlobalCalendar: React.FC = () => {
        
        <header className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
           <div className="ml-20">
-             <h1 className="text-3xl font-bold text-[#003366] dark:text-white">
+             <h1 className="text-3xl font-bold text-[#003366] dark:text-white flex items-center gap-3">
                 Calendário Marguel
+                {!isOnline && (
+                    <div className="flex items-center gap-2 px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-[10px] font-black animate-pulse">
+                        <Clock size={12} /> MODO OFFLINE - DADOS LOCAIS
+                    </div>
+                )}
              </h1>
              <p className="text-slate-500 dark:text-slate-400">Relatório Geral de Gestão</p>
           </div>
