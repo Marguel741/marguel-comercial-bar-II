@@ -1,11 +1,12 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { Package, Thermometer, Edit2, Bell, Plus, Search, ChevronUp, ChevronDown, AlertTriangle, Save, X, CheckCircle, Check, Trash2, Settings, ClipboardList, Send, ArrowRight, History, Lock, WifiOff, CloudOff, CloudUpload, CloudCheck } from 'lucide-react';
+import { Package, Thermometer, Edit2, Edit3, Bell, Plus, Search, ChevronUp, ChevronDown, AlertTriangle, Save, X, CheckCircle, Check, Trash2, Settings, ClipboardList, Send, ArrowRight, History, Lock, WifiOff, CloudOff, CloudUpload, CloudCheck } from 'lucide-react';
 import SoftCard from '../components/SoftCard';
 import { useProducts } from '../contexts/ProductContext';
 import { useAuth } from '../App';
 import { UserRole, InventoryLog, Equipment } from '../types'; // Importar tipos centralizados
 import { useLayout } from '../contexts/LayoutContext';
+import SyncStatus from '../components/SyncStatus';
 
 const Inventory: React.FC = () => {
   const { 
@@ -15,6 +16,7 @@ const Inventory: React.FC = () => {
     updateProduct, 
     deleteProduct, 
     addCategory, 
+    editCategory,
     removeCategory,
     inventoryHistory,
     addInventoryLog,
@@ -442,7 +444,8 @@ const Inventory: React.FC = () => {
              )}
           </div>
         </div>
-        <div className="flex flex-1 justify-center md:justify-end gap-2 w-full md:w-auto">
+        <div className="flex flex-1 items-center justify-center md:justify-end gap-2 w-full md:w-auto">
+          <SyncStatus />
           {isAdmin && (
              <button 
                onClick={() => { triggerHaptic('selection'); setCategoryModal(true); }}
@@ -1038,6 +1041,18 @@ const Inventory: React.FC = () => {
                   className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border-none soft-ui-inset dark:text-white"
                 />
               </div>
+              <div>
+                <label className="text-xs font-bold text-slate-400 uppercase">Categoria</label>
+                <select 
+                  value={productModal.data.category} 
+                  onChange={(e) => setProductModal({...productModal, data: {...productModal.data, category: e.target.value}})}
+                  className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border-none soft-ui-inset text-sm dark:text-white"
+                >
+                  {categories.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                    <label className="text-xs font-bold text-slate-400 uppercase">Tipo</label>
@@ -1148,11 +1163,22 @@ const Inventory: React.FC = () => {
                 {categories.map(cat => (
                   <div key={cat} className="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700">
                      <span className="font-bold text-slate-700 dark:text-white text-sm">{cat}</span>
-                     {cat !== 'Geral' && (
-                        <button onClick={() => handleRemoveCategory(cat)} className="text-red-400 hover:text-red-600 p-1">
-                           <Trash2 size={16} />
+                     <div className="flex gap-1">
+                        <button 
+                          onClick={() => {
+                            const newName = prompt("Novo nome para a categoria:", cat);
+                            if (newName) editCategory(cat, newName);
+                          }}
+                          className="text-blue-500 hover:bg-blue-100 p-1 rounded transition-colors"
+                        >
+                          <Edit3 size={16} />
                         </button>
-                     )}
+                        {cat !== 'Geral' && (
+                           <button onClick={() => handleRemoveCategory(cat)} className="text-red-400 hover:text-red-600 p-1 rounded transition-colors">
+                              <Trash2 size={16} />
+                           </button>
+                        )}
+                     </div>
                   </div>
                 ))}
              </div>
@@ -1161,16 +1187,16 @@ const Inventory: React.FC = () => {
       )}
 
       {/* Rodapé Atualizado */}
-      <footer className="mt-16 py-10 px-6 bg-white dark:bg-slate-900 rounded-3xl text-center flex flex-col gap-4 font-sans shadow-sm border border-slate-100 dark:border-slate-800">
-          <p className="text-sm font-bold tracking-tight text-[#003366] dark:text-blue-400">
+      <footer className="mt-16 py-10 px-6 bg-white rounded-2xl text-center flex flex-col gap-4 font-sans border border-slate-100">
+          <p className="text-sm font-bold tracking-[-0.01em] text-[#003366]">
               Marguel Sistema de Gestão Interna
           </p>
           <div className="flex flex-col items-center">
-              <span className="text-[10px] uppercase tracking-widest text-slate-400 mb-2">Engenharia e Desenvolvimento</span>
-              <div className="text-xs font-medium flex items-center gap-2">
-                  <span className="font-extrabold text-[#E3007E]">DC - Comercial</span>
-                  <span className="text-slate-300">|</span>
-                  <span className="font-extrabold text-[#003366] dark:text-white">Marguel CGPS (SU) Lda</span>
+              <span className="text-xs text-[#6B7280] mb-1">Desenvolvido por</span>
+              <div className="text-xs tracking-[0.5px]">
+                  <span className="font-extrabold text-[#E3007E]" style={{ textShadow: '0px 0px 5px rgba(227, 0, 126, 0.7)' }}>DC - Comercial</span>
+                  <span className="text-[#6B7280] font-normal mx-1">&</span>
+                  <span className="font-extrabold text-[#E3007E]" style={{ textShadow: '0px 0px 5px rgba(227, 0, 126, 0.7)' }}>Marguel CGPS (SU) Lda</span>
               </div>
           </div>
       </footer>

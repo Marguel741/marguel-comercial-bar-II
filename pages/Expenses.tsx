@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import SoftCard from '../components/SoftCard';
 import { useLayout } from '../contexts/LayoutContext';
+import SyncStatus from '../components/SyncStatus';
 import { useAuth } from '../App';
 import { useProducts } from '../contexts/ProductContext';
 import { Expense } from '../types';
@@ -20,7 +21,8 @@ const Expenses: React.FC = () => {
     updateExpense, 
     systemDate, 
     isDayLocked, 
-    processTransaction 
+    processTransaction,
+    categories
   } = useProducts();
 
   const isLocked = isDayLocked(systemDate);
@@ -210,7 +212,8 @@ const Expenses: React.FC = () => {
           <h1 className="text-3xl font-bold text-[#003366]">Despesas</h1>
           <p className="text-slate-500">Controlo de custos e pagamentos</p>
         </div>
-        <div className="flex-1 flex justify-center md:justify-end w-full md:w-auto">
+        <div className="flex-1 flex items-center justify-center md:justify-end w-full md:w-auto gap-4">
+          <SyncStatus />
           <button 
             onClick={handleNewExpenseClick}
             className="pill-button px-6 py-3 bg-red-500 text-white font-bold flex items-center justify-center gap-2 shadow-lg shadow-red-100 w-full md:w-auto hover:bg-red-600 transition-all active:scale-95"
@@ -259,22 +262,17 @@ const Expenses: React.FC = () => {
                 </div>
               </div>
               <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Categoria</label>
-                <div className="relative">
-                  <Tag className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                  <select 
-                    value={formData.category} 
-                    onChange={(e) => handleInputChange('category', e.target.value)}
-                    className="w-full p-4 bg-slate-50 rounded-2xl border-none soft-ui-inset pl-12 appearance-none focus:ring-2 focus:ring-[#003366] outline-none text-slate-700 font-medium"
-                  >
-                    <option value="Operacional">Operacional</option>
-                    <option value="Pessoal">Pessoal</option>
-                    <option value="Stock">Stock (Compra)</option>
-                    <option value="Material">Material/Limpeza</option>
-                    <option value="Reparação">Reparação</option>
-                    <option value="Outros">Outros</option>
-                  </select>
-                </div>
+                <label className="text-sm font-bold text-slate-600 dark:text-slate-400">Categoria</label>
+                <select
+                  value={formData.category}
+                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                  className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-700 border-none outline-none focus:ring-2 focus:ring-[#003366] dark:text-white"
+                >
+                  <option value="">Selecione uma categoria</option>
+                  {categories.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
               </div>
             </div>
 
@@ -749,7 +747,7 @@ const Expenses: React.FC = () => {
           <div className="text-xs tracking-[0.5px]">
             <span className="font-extrabold text-[#E3007E]" style={{ textShadow: '0px 0px 5px rgba(227, 0, 126, 0.7)' }}>DC - Comercial</span>
             <span className="text-[#6B7280] font-normal mx-1">&</span>
-            <span className="font-extrabold text-[#E3007E]" style={{ textShadow: '0px 0px 5px rgba(227, 0, 126, 0.7)' }}>Marguel CGPS Lda</span>
+            <span className="font-extrabold text-[#E3007E]" style={{ textShadow: '0px 0px 5px rgba(227, 0, 126, 0.7)' }}>Marguel CGPS (SU) Lda</span>
           </div>
         </div>
       </footer>

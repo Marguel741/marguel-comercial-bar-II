@@ -6,18 +6,15 @@ import {
   Package, Plus, Minus, ArrowRight, FileText, Printer, ChevronUp, 
   ChevronDown, MessageSquare, Copy, ArrowLeft, Lock, Trash2, FolderOpen, 
   Calendar, Folder, Clock, User, Eye, AlertTriangle, List, ArrowLeftCircle, 
-  ClipboardCheck, ShoppingBag, Paperclip, Camera, Image as ImageIcon 
+  ClipboardCheck, ShoppingBag, Paperclip, Camera, Image as ImageIcon, Truck, Calculator
 } from 'lucide-react';
 import SoftCard from '../components/SoftCard';
 import { useProducts } from '../contexts/ProductContext';
 import { useLayout } from '../contexts/LayoutContext';
+import SyncStatus from '../components/SyncStatus';
 import { useAuth } from '../App';
 import { PriceHistoryLog, SavedProposal, PurchaseRecord } from '../types';
 import { MGLogo } from '../constants';
-
-interface ExtendedSavedProposal extends SavedProposal {
-  createdBy?: string;
-}
 
 const Prices: React.FC = () => {
   const { products, categories, updateProduct, purchases, addPurchase, isDayLocked, systemDate } = useProducts();
@@ -31,6 +28,7 @@ const Prices: React.FC = () => {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Todos');
+  const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null);
   const [toast, setToast] = useState<{ show: boolean, message: string }>({ show: false, message: '' });
   const [editingPrices, setEditingPrices] = useState<Record<string, { buy?: number, sell?: number, promoQty?: number, promoPrice?: number, isPromoActive?: boolean }>>({});
   
@@ -49,6 +47,12 @@ const Prices: React.FC = () => {
   }, [priceHistory]);
 
   const [isTableExpanded, setIsTableExpanded] = useState(true);
+  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
+
+  const toggleRow = (id: string) => {
+    triggerHaptic('selection');
+    setExpandedRows(prev => ({ ...prev, [id]: !prev[id] }));
+  };
 
   // --- STATES SIMULAÇÃO ---
   const [showSimulationModal, setShowSimulationModal] = useState(false);
@@ -56,7 +60,7 @@ const Prices: React.FC = () => {
   const [simSearchTerm, setSimSearchTerm] = useState('');
   const [simCategory, setSimCategory] = useState('Todos');
   const [simulationCart, setSimulationCart] = useState<Record<string, number>>({});
-  const [savedProposals, setSavedProposals] = useState<ExtendedSavedProposal[]>(() => {
+  const [savedProposals, setSavedProposals] = useState<SavedProposal[]>(() => {
     try {
       const saved = localStorage.getItem('mg_saved_proposals');
       return saved ? JSON.parse(saved) : [];
@@ -66,9 +70,10 @@ const Prices: React.FC = () => {
   });
   const [proposalNameInput, setProposalNameInput] = useState('');
   const [showSaveProposalDialog, setShowSaveProposalDialog] = useState(false);
+  const [isSavingProposal, setIsSavingProposal] = useState(false);
   const [isCurrentSimulationSaved, setIsCurrentSimulationSaved] = useState(false);
   const [showAlreadySavedModal, setShowAlreadySavedModal] = useState(false);
-  const [previewProposal, setPreviewProposal] = useState<ExtendedSavedProposal | null>(null);
+  const [previewProposal, setPreviewProposal] = useState<SavedProposal | null>(null);
   const [showPreviewDetails, setShowPreviewDetails] = useState(false);
   const [generatedMessage, setGeneratedMessage] = useState('');
 
@@ -79,9 +84,11 @@ const Prices: React.FC = () => {
   const [purchaseCategory, setPurchaseCategory] = useState('Todos');
   const [purchaseCart, setPurchaseCart] = useState<Record<string, number>>({});
   const [purchaseAttachments, setPurchaseAttachments] = useState<string[]>([]);
+  const [purchaseSupplier, setPurchaseSupplier] = useState('');
+  const [isProcessingPurchase, setIsProcessingPurchase] = useState(false);
 
   // Estado para o Relatório de Compra Oficial (Visualizador)
-  const [reportProposal, setReportProposal] = useState<ExtendedSavedProposal | PurchaseRecord | null>(null);
+  const [reportProposal, setReportProposal] = useState<SavedProposal | PurchaseRecord | null>(null);
   const [viewImageIndex, setViewImageIndex] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -109,9 +116,10 @@ const Prices: React.FC = () => {
     return products.filter(p => {
       const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesCategory = selectedCategory === 'Todos' || p.category === selectedCategory;
-      return matchesSearch && matchesCategory;
+      const matchesSubcategory = !selectedSubcategory || (selectedSubcategory === 'Mix & Match' && p.isPromoActive && p.category === 'Cervejas');
+      return matchesSearch && matchesCategory && matchesSubcategory;
     });
-  }, [products, searchTerm, selectedCategory]);
+  }, [products, searchTerm, selectedCategory, selectedSubcategory]);
 
   const filteredSimulationProducts = useMemo(() => {
     return products.filter(p => {
@@ -150,8 +158,14 @@ const Prices: React.FC = () => {
 
   const togglePromo = (productId: string) => {
     if (!canManagePrices) return;
+    const product = products.find(p => p.id === productId);
+    if (product?.category !== 'Cervejas') {
+      triggerHaptic('error');
+      showToast("Apenas produtos da categoria Cervejas podem ter promoções Mix & Match.");
+      return;
+    }
+    
     setEditingPrices(prev => {
-      const product = products.find(p => p.id === productId);
       const currentEdit = prev[productId]?.isPromoActive;
       const currentVal = currentEdit !== undefined ? currentEdit : !!product?.isPromoActive;
       
@@ -292,7 +306,9 @@ const Prices: React.FC = () => {
     return total;
   };
 
-  const handleGeneratePurchase = () => {
+  const [showConfirmPurchase, setShowConfirmPurchase] = useState(false);
+
+  const handleGeneratePurchase = async () => {
     // 1. Verificação de Permissão
     if (!canEditPurchases) {
       triggerHaptic('error');
@@ -305,20 +321,43 @@ const Prices: React.FC = () => {
       showToast("O carrinho está vazio! Adicione produtos.");
       return;
     }
-    if (window.confirm("Confirmar a emissão desta compra? Stock e Vendas serão atualizados.")) {
+
+    if (isProcessingPurchase) return;
+
+    setIsProcessingPurchase(true);
+    setShowConfirmPurchase(false);
+    
+    try {
       triggerHaptic('success');
+      
+      // Simular um pequeno delay para o loading ser visível e passar sensação de processamento "atômico"
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
       // Use Global Context to add purchase with Attachments
+      // addPurchase handles stock update and financial debit internally
       addPurchase(
         purchaseCart,
         'Prices', // Origin of the purchase
-        user?.name || 'Desconhecido',
+        purchaseSupplier || user?.name || 'Desconhecido',
         purchaseAttachments // Pass attachments
       );
+      
       setPurchaseCart({});
       setPurchaseAttachments([]);
+      setPurchaseSupplier('');
       setPurchaseStep('history'); // Go to history after success
       showToast("Compra efectuada! Stock e Relatórios Atualizados.");
+    } catch (error) {
+      console.error("Erro ao processar compra:", error);
+      triggerHaptic('error');
+      showToast("Erro ao processar compra.");
+    } finally {
+      setIsProcessingPurchase(false);
     }
+  };
+
+  const handleConfirmSimulationPurchase = () => {
+    // Function removed as requested
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -359,24 +398,49 @@ const Prices: React.FC = () => {
     }
   };
 
-  const handleSaveProposal = () => {
+  const handleSaveProposal = async () => {
+    if (isSavingProposal) return;
+    
+    setIsSavingProposal(true);
     triggerHaptic('success');
-    const newProposal: ExtendedSavedProposal = {
-      id: Date.now().toString(),
-      name: proposalNameInput || `Proposta ${new Date().toLocaleDateString('pt-AO')}`,
-      date: new Date().toLocaleString('pt-AO'),
-      items: { ...simulationCart },
-      total: calculateSimulationTotal(),
-      createdBy: user?.name || 'Desconhecido'
-    };
-    setSavedProposals(prev => [newProposal, ...prev]);
-    setIsCurrentSimulationSaved(true);
-    setProposalNameInput('');
-    setShowSaveProposalDialog(false);
-    showToast("Proposta salva!");
+    
+    try {
+      // Simulate a small delay for better UX and to show processing state
+      await new Promise(resolve => setTimeout(resolve, 600));
+
+      // Snapshot of current prices
+      const pricesSnapshot: Record<string, { buy: number; sell: number }> = {};
+      Object.keys(simulationCart).forEach(id => {
+        const p = products.find(prod => prod.id === id);
+        if (p) {
+          pricesSnapshot[id] = { buy: p.buyPrice, sell: p.sellPrice };
+        }
+      });
+
+      const newProposal: SavedProposal = {
+        id: Date.now().toString(),
+        name: proposalNameInput || `Proposta ${new Date().toLocaleDateString('pt-AO')}`,
+        date: new Date().toLocaleString('pt-AO'),
+        items: { ...simulationCart },
+        total: calculateSimulationTotal(),
+        createdBy: user?.name || 'Desconhecido',
+        snapshotPrices: pricesSnapshot,
+        status: 'Proposta'
+      };
+      
+      setSavedProposals(prev => [newProposal, ...prev]);
+      setIsCurrentSimulationSaved(true);
+      setProposalNameInput('');
+      setShowSaveProposalDialog(false);
+      showToast("Proposta salva com sucesso!");
+    } catch (error) {
+      showToast("Erro ao salvar proposta.");
+    } finally {
+      setIsSavingProposal(false);
+    }
   };
 
-  const handleOpenLoadPreview = (proposal: ExtendedSavedProposal) => {
+  const handleOpenLoadPreview = (proposal: SavedProposal) => {
     triggerHaptic('selection');
     setPreviewProposal(proposal);
     setShowPreviewDetails(false);
@@ -390,7 +454,7 @@ const Prices: React.FC = () => {
     }
   };
 
-  const handleOpenReport = (data: ExtendedSavedProposal | PurchaseRecord) => {
+  const handleOpenReport = (data: SavedProposal | PurchaseRecord) => {
     triggerHaptic('selection');
     setReportProposal(data);
   };
@@ -451,8 +515,9 @@ const Prices: React.FC = () => {
             )}
           </p>
         </div>
-        <div className="flex flex-col md:flex-row gap-4 flex-1">
-          <div className="relative flex-1">
+        <div className="flex flex-col md:flex-row gap-4 flex-1 items-center">
+          <SyncStatus />
+          <div className="relative flex-1 w-full">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
             <input 
               type="text" 
@@ -462,20 +527,36 @@ const Prices: React.FC = () => {
               className="w-full pl-10 pr-4 py-3 rounded-2xl bg-white dark:bg-slate-800 soft-ui-inset border-none text-sm font-medium focus:ring-2 focus:ring-[#003366] transition-all dark:text-white" 
             />
           </div>
-          <div className="flex gap-2 overflow-x-auto custom-scrollbar pb-1 md:pb-0">
-            {filterCategories.map(cat => (
-              <button 
-                key={cat} 
-                onClick={() => { triggerHaptic('selection'); setSelectedCategory(cat); }} 
-                className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-                  selectedCategory === cat 
-                    ? 'bg-[#003366] text-white shadow-lg shadow-blue-200' 
-                    : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-100 dark:border-slate-700'
-                }`}
-              >
-                {cat}
-              </button>
-            ))}
+          <div className="flex flex-col gap-2">
+            <div className="flex gap-2 overflow-x-auto custom-scrollbar pb-1 md:pb-0">
+              {filterCategories.map(cat => (
+                <button 
+                  key={cat} 
+                  onClick={() => { triggerHaptic('selection'); setSelectedCategory(cat); setSelectedSubcategory(null); }} 
+                  className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                    selectedCategory === cat 
+                      ? 'bg-[#003366] text-white shadow-lg shadow-blue-200' 
+                      : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-100 dark:border-slate-700'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+            {selectedCategory === 'Cervejas' && (
+              <div className="flex gap-2 animate-fade-in">
+                <button 
+                  onClick={() => { triggerHaptic('selection'); setSelectedSubcategory(selectedSubcategory === 'Mix & Match' ? null : 'Mix & Match'); }}
+                  className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all flex items-center gap-1 ${
+                    selectedSubcategory === 'Mix & Match' 
+                      ? 'bg-amber-500 text-white shadow-md' 
+                      : 'bg-white dark:bg-slate-800 text-amber-600 border border-amber-200 dark:border-amber-900/30'
+                  }`}
+                >
+                  <Plus size={12} /> Mix & Match
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </header>
@@ -506,7 +587,6 @@ const Prices: React.FC = () => {
                       Preço Compra <span className="text-slate-400 font-normal">(Grade/Caixa)</span>
                     </th>
                     <th className="p-6 font-bold text-[#003366] dark:text-white text-xs uppercase tracking-wider">Preço Venda (Unitário)</th>
-                    <th className="p-6 font-bold text-[#003366] dark:text-white text-xs uppercase tracking-wider">Promoção (Mix & Match)</th>
                     <th className="p-6 font-bold text-[#003366] dark:text-white text-xs uppercase tracking-wider">Lucro Estimado</th>
                     <th className="p-6 font-bold text-[#003366] dark:text-white text-xs uppercase tracking-wider text-center">Ações</th>
                   </tr>
@@ -523,154 +603,204 @@ const Prices: React.FC = () => {
                       const displayPackBuy = displayBuy * packSize;
 
                       return (
-                        <tr key={p.id} className={`hover:bg-slate-50/80 dark:hover:bg-slate-700/50 transition-colors ${hasChanged ? 'bg-blue-50/20 dark:bg-blue-900/10' : ''}`}>
-                          <td className="p-6">
-                            <p className="font-bold text-slate-800 dark:text-white text-base">{p.name}</p>
-                            <div className="flex gap-2 mt-1">
-                              <span className="text-[10px] uppercase font-bold text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 rounded-md">{p.category}</span>
-                              {packSize > 1 && (
-                                <span className="text-[10px] uppercase font-bold text-blue-500 bg-blue-50 dark:bg-blue-900/30 dark:text-blue-300 px-2 rounded-md">
-                                  {p.packType || 'Pack'} de {packSize}un
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          {/* INPUT DE COMPRA */}
-                          <td className="p-6">
-                            {packSize > 1 ? (
-                              <div className="flex flex-col gap-1 w-full min-w-[180px]">
-                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
-                                  Preço da {p.packType || 'Grade'} ({packSize}un)
-                                </label>
-                                <div className={`flex items-center gap-2 p-2 bg-white dark:bg-slate-800 rounded-xl soft-ui-inset border border-slate-200 dark:border-slate-600 shadow-inner ${!canManagePrices || isLocked ? 'opacity-60 grayscale' : ''}`}>
+                        <React.Fragment key={p.id}>
+                          <tr className={`hover:bg-slate-50/80 dark:hover:bg-slate-700/50 transition-colors ${hasChanged ? 'bg-blue-50/20 dark:bg-blue-900/10' : ''}`}>
+                            <td className="p-6">
+                              <div className="flex items-center gap-2">
+                                <p className="font-bold text-slate-800 dark:text-white text-base">{p.name}</p>
+                                {p.category === 'Cervejas' && (
+                                  <button 
+                                    onClick={() => toggleRow(p.id)}
+                                    className={`p-1 rounded-full transition-all ${expandedRows[p.id] ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-400'}`}
+                                  >
+                                    {expandedRows[p.id] ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                  </button>
+                                )}
+                              </div>
+                              <div className="flex gap-2 mt-1">
+                                <span className="text-[10px] uppercase font-bold text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 rounded-md">{p.category}</span>
+                                {packSize > 1 && (
+                                  <span className="text-[10px] uppercase font-bold text-blue-500 bg-blue-50 dark:bg-blue-900/30 dark:text-blue-300 px-2 rounded-md">
+                                    {p.packType || 'Pack'} de {packSize}un
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            {/* INPUT DE COMPRA */}
+                            <td className="p-6">
+                              {packSize > 1 ? (
+                                <div className="flex flex-col gap-1 w-full min-w-[180px]">
+                                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                                    Preço da {p.packType || 'Grade'} ({packSize}un)
+                                  </label>
+                                  <div className={`flex items-center gap-2 p-2 bg-white dark:bg-slate-800 rounded-xl soft-ui-inset border border-slate-200 dark:border-slate-600 shadow-inner ${!canManagePrices || isLocked ? 'opacity-60 grayscale' : ''}`}>
+                                    <input 
+                                      type="number" 
+                                      disabled={!canManagePrices || isLocked}
+                                      value={displayPackBuy === 0 ? '' : (Number.isInteger(displayPackBuy) ? displayPackBuy : displayPackBuy.toFixed(2))}
+                                      onChange={(e) => handlePackPriceChange(p.id, packSize, e.target.value)}
+                                      className="bg-transparent border-none w-full text-lg font-bold text-[#003366] dark:text-white focus:ring-0 outline-none p-0 disabled:cursor-not-allowed"
+                                      placeholder="0"
+                                    />
+                                    <span className="text-xs font-black text-slate-400">KZ</span>
+                                  </div>
+                                  <div className="text-[10px] text-slate-500 dark:text-slate-400 px-1 font-medium">
+                                    = <span className="font-bold text-[#003366] dark:text-white">{displayBuy.toLocaleString('pt-AO', {maximumFractionDigits: 2})} Kz</span> /unidade
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className={`flex items-center gap-3 p-3 bg-white dark:bg-slate-800 rounded-2xl soft-ui-inset border border-slate-200 dark:border-slate-600 w-full min-w-[180px] shadow-inner ${!canManagePrices || isLocked ? 'opacity-60 grayscale' : ''}`}>
+                                  <span className="text-xs font-black text-slate-400">KZ</span>
                                   <input 
                                     type="number" 
                                     disabled={!canManagePrices || isLocked}
-                                    value={displayPackBuy === 0 ? '' : (Number.isInteger(displayPackBuy) ? displayPackBuy : displayPackBuy.toFixed(2))}
-                                    onChange={(e) => handlePackPriceChange(p.id, packSize, e.target.value)}
+                                    value={displayBuy === 0 ? '' : displayBuy}
+                                    onChange={(e) => handleInputChange(p.id, 'buy', e.target.value)}
                                     className="bg-transparent border-none w-full text-lg font-bold text-[#003366] dark:text-white focus:ring-0 outline-none p-0 disabled:cursor-not-allowed"
                                     placeholder="0"
                                   />
+                                </div>
+                              )}
+                            </td>
+                            {/* INPUT DE VENDA */}
+                            <td className="p-6">
+                              <div className="flex flex-col gap-1 w-full min-w-[180px]">
+                                {packSize > 1 && <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider opacity-0">Spacer</label>}
+                                <div className={`flex items-center gap-3 p-2 bg-white dark:bg-slate-800 rounded-xl soft-ui-inset border border-slate-200 dark:border-slate-600 shadow-inner h-[46px] ${!canManagePrices || isLocked ? 'opacity-60 grayscale' : ''}`}>
                                   <span className="text-xs font-black text-slate-400">KZ</span>
+                                  <input 
+                                    type="number" 
+                                    disabled={!canManagePrices || isLocked}
+                                    value={displaySell === 0 ? '' : displaySell}
+                                    onChange={(e) => handleInputChange(p.id, 'sell', e.target.value)}
+                                    className="bg-transparent border-none w-full text-lg font-bold text-[#003366] dark:text-white focus:ring-0 outline-none p-0 disabled:cursor-not-allowed"
+                                    placeholder="0"
+                                  />
                                 </div>
-                                <div className="text-[10px] text-slate-500 dark:text-slate-400 px-1 font-medium">
-                                  = <span className="font-bold text-[#003366] dark:text-white">{displayBuy.toLocaleString('pt-AO', {maximumFractionDigits: 2})} Kz</span> /unidade
-                                </div>
+                                {packSize > 1 && <div className="text-[10px] h-[15px]"></div>}
                               </div>
-                            ) : (
-                              <div className={`flex items-center gap-3 p-3 bg-white dark:bg-slate-800 rounded-2xl soft-ui-inset border border-slate-200 dark:border-slate-600 w-full min-w-[180px] shadow-inner ${!canManagePrices || isLocked ? 'opacity-60 grayscale' : ''}`}>
-                                <span className="text-xs font-black text-slate-400">KZ</span>
-                                <input 
-                                  type="number" 
-                                  disabled={!canManagePrices || isLocked}
-                                  value={displayBuy === 0 ? '' : displayBuy}
-                                  onChange={(e) => handleInputChange(p.id, 'buy', e.target.value)}
-                                  className="bg-transparent border-none w-full text-lg font-bold text-[#003366] dark:text-white focus:ring-0 outline-none p-0 disabled:cursor-not-allowed"
-                                  placeholder="0"
-                                />
+                            </td>
+                            <td className="p-6 align-middle">
+                              <span className={`font-black text-sm px-4 py-2 rounded-xl flex items-center gap-2 w-fit ${profit >= 0 ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'}`}>
+                                {profit >= 0 ? <Plus size={14} /> : <Minus size={14} />}
+                                {Math.abs(profit).toLocaleString('pt-AO', {maximumFractionDigits: 1})} Kz
+                              </span>
+                            </td>
+                            <td className="p-6 align-middle">
+                              <div className="flex justify-center gap-3">
+                                <button 
+                                  onClick={() => handleSave(p.id, p.name)} 
+                                  disabled={!hasChanged || !canManagePrices || isLocked} 
+                                  className={`p-3 rounded-xl transition-all active:scale-95 ${
+                                    hasChanged && canManagePrices && !isLocked
+                                      ? 'bg-[#003366] text-white shadow-lg hover:bg-[#004488]' 
+                                      : 'bg-slate-100 dark:bg-slate-700 text-slate-300 dark:text-slate-500 cursor-not-allowed'
+                                  }`}
+                                  title={canManagePrices ? "Guardar Alterações" : "Sem permissão para alterar"}
+                                >
+                                  {canManagePrices ? <Save size={20} /> : <Lock size={20} />}
+                                </button>
+                                <button 
+                                  onClick={() => { triggerHaptic('selection'); setViewHistoryId(p.id); }} 
+                                  className="p-3 bg-slate-100 dark:bg-slate-700 text-slate-400 rounded-xl hover:text-[#003366] dark:hover:text-blue-400 hover:bg-slate-200 dark:hover:bg-slate-600 transition-all active:scale-95"
+                                  title="Ver Histórico de Preços"
+                                >
+                                  <History size={20} />
+                                </button>
                               </div>
-                            )}
-                          </td>
-                          {/* INPUT DE VENDA */}
-                          <td className="p-6">
-                            <div className="flex flex-col gap-1 w-full min-w-[180px]">
-                              {packSize > 1 && <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider opacity-0">Spacer</label>}
-                              <div className={`flex items-center gap-3 p-2 bg-white dark:bg-slate-800 rounded-xl soft-ui-inset border border-slate-200 dark:border-slate-600 shadow-inner h-[46px] ${!canManagePrices || isLocked ? 'opacity-60 grayscale' : ''}`}>
-                                <span className="text-xs font-black text-slate-400">KZ</span>
-                                <input 
-                                  type="number" 
-                                  disabled={!canManagePrices || isLocked}
-                                  value={displaySell === 0 ? '' : displaySell}
-                                  onChange={(e) => handleInputChange(p.id, 'sell', e.target.value)}
-                                  className="bg-transparent border-none w-full text-lg font-bold text-[#003366] dark:text-white focus:ring-0 outline-none p-0 disabled:cursor-not-allowed"
-                                  placeholder="0"
-                                />
-                              </div>
-                              {packSize > 1 && <div className="text-[10px] h-[15px]"></div>}
-                            </div>
-                          </td>
-                          {/* PROMO CONFIG */}
-                          <td className="p-6">
-                              <div className="flex flex-col gap-2 min-w-[200px]">
-                                  <div className="flex items-center justify-between">
-                                      <span className="text-[10px] font-bold uppercase text-slate-400">Ativar Promo</span>
+                            </td>
+                          </tr>
+                          {expandedRows[p.id] && p.category === 'Cervejas' && (
+                            <tr className="bg-slate-50 dark:bg-slate-800/50 animate-fade-in">
+                              <td colSpan={5} className="p-4">
+                                <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6 shadow-inner max-w-2xl relative">
+                                  <button 
+                                    onClick={() => toggleRow(p.id)}
+                                    className="absolute top-4 right-4 p-2 text-slate-400 hover:text-red-500 transition-colors"
+                                    title="Fechar"
+                                  >
+                                    <X size={20} />
+                                  </button>
+                                  <div className="flex items-center justify-between mb-4 pr-8">
+                                    <h4 className="text-xs font-black uppercase text-[#003366] dark:text-blue-400 flex items-center gap-2 tracking-widest">
+                                      <Calculator size={14} /> Configuração Mix & Match (Promoção)
+                                    </h4>
+                                    <div className="flex items-center gap-3">
+                                      <span className="text-[10px] font-bold uppercase text-slate-400">Ativar Promoção</span>
                                       <button 
-                                          onClick={() => togglePromo(p.id)}
-                                          disabled={!canManagePrices || isLocked}
-                                          className={`w-10 h-5 rounded-full p-1 transition-colors ${
-                                              (currentEdit.isPromoActive !== undefined ? currentEdit.isPromoActive : p.isPromoActive) 
-                                              ? 'bg-green-500' 
-                                              : 'bg-slate-300 dark:bg-slate-600'
-                                          }`}
+                                        onClick={() => togglePromo(p.id)}
+                                        disabled={!canManagePrices || isLocked}
+                                        className={`w-10 h-5 rounded-full p-1 transition-colors ${
+                                          (currentEdit.isPromoActive !== undefined ? currentEdit.isPromoActive : p.isPromoActive) 
+                                            ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.3)]' 
+                                            : 'bg-slate-300 dark:bg-slate-600'
+                                        }`}
                                       >
-                                          <div className={`w-3 h-3 bg-white rounded-full shadow-md transform transition-transform ${
-                                              (currentEdit.isPromoActive !== undefined ? currentEdit.isPromoActive : p.isPromoActive) 
-                                              ? 'translate-x-5' 
-                                              : 'translate-x-0'
-                                          }`} />
+                                        <div className={`w-3 h-3 bg-white rounded-full shadow-md transform transition-transform ${
+                                          (currentEdit.isPromoActive !== undefined ? currentEdit.isPromoActive : p.isPromoActive) 
+                                            ? 'translate-x-5' 
+                                            : 'translate-x-0'
+                                        }`} />
                                       </button>
+                                    </div>
                                   </div>
-                                  <div className={`flex gap-2 ${(currentEdit.isPromoActive !== undefined ? currentEdit.isPromoActive : p.isPromoActive) ? '' : 'opacity-50 pointer-events-none'}`}>
-                                      <div className="flex-1">
-                                          <label className="text-[9px] font-bold text-slate-400 uppercase">Qtd</label>
-                                          <input 
-                                              type="number"
-                                              disabled={!canManagePrices || isLocked}
-                                              value={currentEdit.promoQty !== undefined ? currentEdit.promoQty : (p.promoQty || '')}
-                                              onChange={(e) => handlePromoChange(p.id, 'qty', e.target.value)}
-                                              className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg px-2 py-1 text-sm font-bold text-center outline-none focus:ring-1 focus:ring-blue-500"
-                                              placeholder="3"
-                                          />
+                                  
+                                  <div className={`grid grid-cols-2 gap-6 transition-all duration-300 ${(currentEdit.isPromoActive !== undefined ? currentEdit.isPromoActive : p.isPromoActive) ? 'opacity-100' : 'opacity-40 grayscale pointer-events-none'}`}>
+                                    <div className="space-y-2">
+                                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Quantidade Mínima</label>
+                                      <div className="relative">
+                                        <input 
+                                          type="number"
+                                          disabled={!canManagePrices || isLocked}
+                                          value={currentEdit.promoQty !== undefined ? currentEdit.promoQty : (p.promoQty || '')}
+                                          onChange={(e) => handlePromoChange(p.id, 'qty', e.target.value)}
+                                          className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-lg font-black text-[#003366] dark:text-white outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                                          placeholder="3"
+                                        />
+                                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400 uppercase">Unidades</span>
                                       </div>
-                                      <div className="flex-[2]">
-                                          <label className="text-[9px] font-bold text-slate-400 uppercase">Preço Promo</label>
-                                          <input 
-                                              type="number"
-                                              disabled={!canManagePrices || isLocked}
-                                              value={currentEdit.promoPrice !== undefined ? currentEdit.promoPrice : (p.promoPrice || '')}
-                                              onChange={(e) => handlePromoChange(p.id, 'price', e.target.value)}
-                                              className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg px-2 py-1 text-sm font-bold text-center outline-none focus:ring-1 focus:ring-blue-500"
-                                              placeholder="1000"
-                                          />
+                                    </div>
+                                    <div className="space-y-2">
+                                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Preço Promocional (Pack)</label>
+                                      <div className="relative">
+                                        <input 
+                                          type="number"
+                                          disabled={!canManagePrices || isLocked}
+                                          value={currentEdit.promoPrice !== undefined ? currentEdit.promoPrice : (p.promoPrice || '')}
+                                          onChange={(e) => handlePromoChange(p.id, 'price', e.target.value)}
+                                          className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-lg font-black text-green-600 dark:text-green-400 outline-none focus:ring-2 focus:ring-green-500 transition-all"
+                                          placeholder="1000"
+                                        />
+                                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400 uppercase">KZ</span>
                                       </div>
+                                    </div>
                                   </div>
-                              </div>
-                          </td>
-                          <td className="p-6 align-middle">
-                            <span className={`font-black text-sm px-4 py-2 rounded-xl flex items-center gap-2 w-fit ${profit >= 0 ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'}`}>
-                              {profit >= 0 ? <Plus size={14} /> : <Minus size={14} />}
-                              {Math.abs(profit).toLocaleString('pt-AO', {maximumFractionDigits: 1})} Kz
-                            </span>
-                          </td>
-                          <td className="p-6 align-middle">
-                            <div className="flex justify-center gap-3">
-                              <button 
-                                onClick={() => handleSave(p.id, p.name)} 
-                                disabled={!hasChanged || !canManagePrices || isLocked} 
-                                className={`p-3 rounded-xl transition-all active:scale-95 ${
-                                  hasChanged && canManagePrices && !isLocked
-                                    ? 'bg-[#003366] text-white shadow-lg hover:bg-[#004488]' 
-                                    : 'bg-slate-100 dark:bg-slate-700 text-slate-300 dark:text-slate-500 cursor-not-allowed'
-                                }`}
-                                title={canManagePrices ? "Guardar Alterações" : "Sem permissão para alterar"}
-                              >
-                                {canManagePrices ? <Save size={20} /> : <Lock size={20} />}
-                              </button>
-                              <button 
-                                onClick={() => { triggerHaptic('selection'); setViewHistoryId(p.id); }} 
-                                className="p-3 bg-slate-100 dark:bg-slate-700 text-slate-400 rounded-xl hover:text-[#003366] dark:hover:text-blue-400 hover:bg-slate-200 dark:hover:bg-slate-600 transition-all active:scale-95"
-                                title="Ver Histórico de Preços"
-                              >
-                                <History size={20} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
+                                  
+                                  <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-800/50">
+                                    <p className="text-[10px] text-blue-600 dark:text-blue-400 font-medium leading-relaxed">
+                                      <Info size={12} className="inline mr-1 mb-0.5" />
+                                      O Mix & Match permite que o cliente combine diferentes cervejas para atingir a quantidade mínima e obter o preço promocional.
+                                    </p>
+                                  </div>
+
+                                  <div className="mt-6 flex justify-end">
+                                    <button 
+                                      onClick={() => toggleRow(p.id)}
+                                      className="px-6 py-2 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold rounded-xl hover:bg-slate-200 transition-all active:scale-95"
+                                    >
+                                      Fechar
+                                    </button>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
                       );
                     })
                   ) : (
                     <tr>
-                      <td colSpan={6} className="p-12 text-center text-slate-400 font-medium italic">
+                      <td colSpan={5} className="p-12 text-center text-slate-400 font-medium italic">
                         Nenhum produto encontrado com os filtros atuais.
                       </td>
                     </tr>
@@ -683,29 +813,21 @@ const Prices: React.FC = () => {
       )}
 
       {/* --- BOTÃO DE SIMULAÇÃO (CTA) --- */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4 border-t border-slate-200 dark:border-slate-700 mt-4">
-        <SoftCard className="space-y-4">
-          <h3 className="font-bold text-[#003366] dark:text-white flex items-center gap-2 text-lg">
-            <Info size={20} /> Dicas de Precificação
-          </h3>
-          <p className="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">
-            Mantenha as margens de lucro sempre acima de 30% para garantir a saúde financeira do bar. Preços de compra devem ser atualizados a cada nova remessa de stock.
-          </p>
-        </SoftCard>
-        <SoftCard className="bg-[#003366] text-white flex flex-col justify-center items-center gap-6 text-center relative overflow-hidden group">
-          <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-white/5 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700"></div>
-          <div className="p-6 bg-white/10 rounded-[40px] backdrop-blur-md shadow-xl">
-            <ShoppingCart size={48} />
+      <div className="pt-4 border-t border-slate-200 dark:border-slate-700 mt-4">
+        <SoftCard className="bg-amber-50 dark:bg-amber-900/10 text-[#003366] dark:text-amber-100 flex flex-col justify-center items-center gap-8 py-12 text-center relative overflow-hidden group border border-amber-100 dark:border-amber-900/20">
+          <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-amber-200/20 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700"></div>
+          <div className="p-6 bg-amber-100 dark:bg-amber-900/30 rounded-[40px] shadow-sm">
+            <ShoppingCart size={48} className="text-amber-600" />
           </div>
           <div>
             <h3 className="text-2xl font-black mb-2">Simular Proposta de Compra</h3>
-            <p className="text-white/70 text-sm max-w-[280px]">
+            <p className="text-slate-600 dark:text-amber-200/70 text-sm max-w-[320px]">
               Gere uma lista de compras calculada por grades/caixas e saiba exatamente quanto vai gastar.
             </p>
           </div>
           <button 
             onClick={() => { triggerHaptic('impact'); setShowSimulationModal(true); setSimulationStep('select'); }} 
-            className="pill-button px-10 py-4 bg-white text-[#003366] font-black shadow-2xl hover:scale-105 active:scale-95 transition-all"
+            className="pill-button px-12 py-4 bg-[#003366] text-white font-black shadow-xl hover:scale-105 active:scale-95 transition-all"
           >
             Iniciar Simulação
           </button>
@@ -914,19 +1036,27 @@ const Prices: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <button 
-                      onClick={checkSaveProposal}
-                      className="flex items-center justify-center gap-2 p-4 bg-white dark:bg-slate-800 text-[#003366] dark:text-white rounded-2xl font-bold border border-slate-200 dark:border-slate-700 hover:bg-slate-50 transition-all"
-                    >
-                      <Save size={20} /> {isCurrentSimulationSaved ? 'Salva' : 'Salvar Proposta'}
-                    </button>
-                    <button 
-                      onClick={generateOrderMessage}
-                      className="flex items-center justify-center gap-2 p-4 bg-green-500 text-white rounded-2xl font-bold shadow-lg shadow-green-200 dark:shadow-none hover:bg-green-600 transition-all"
-                    >
-                      <MessageSquare size={20} /> Gerar Mensagem
-                    </button>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <button 
+                        onClick={checkSaveProposal}
+                        disabled={isSavingProposal || calculateSimulationTotal() === 0}
+                        className={`flex items-center justify-center gap-2 p-4 bg-white dark:bg-slate-800 text-[#003366] dark:text-white rounded-2xl font-bold border border-slate-200 dark:border-slate-700 hover:bg-slate-50 transition-all ${isSavingProposal ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      >
+                        {isSavingProposal ? (
+                          <div className="w-5 h-5 border-2 border-[#003366] border-t-transparent rounded-full animate-spin"></div>
+                        ) : (
+                          <Save size={20} />
+                        )}
+                        {isSavingProposal ? 'Salvando...' : isCurrentSimulationSaved ? 'Salva' : 'Salvar Proposta'}
+                      </button>
+                      <button 
+                        onClick={generateOrderMessage}
+                        className="flex items-center justify-center gap-2 p-4 bg-green-500 text-white rounded-2xl font-bold shadow-lg shadow-green-200 dark:shadow-none hover:bg-green-600 transition-all"
+                      >
+                        <MessageSquare size={20} /> Gerar Mensagem
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -992,7 +1122,7 @@ const Prices: React.FC = () => {
                           <div className="flex justify-between items-center">
                             <span className="text-lg font-black text-[#003366] dark:text-blue-400">{prop.total.toLocaleString()} Kz</span>
                             <button 
-                              onClick={() => handleOpenLoadPreview(prop)}
+                              onClick={() => handleOpenReport(prop)}
                               className="px-4 py-2 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl text-xs font-bold hover:bg-[#003366] hover:text-white transition-all"
                             >
                               Ver Detalhes
@@ -1174,6 +1304,20 @@ const Prices: React.FC = () => {
 
                   {/* Sidebar de Finalização */}
                   <div className="space-y-6">
+                    {/* Fornecedor */}
+                    <div className="bg-white dark:bg-slate-800 rounded-[32px] p-6 shadow-xl border border-slate-100 dark:border-slate-700">
+                      <h3 className="text-sm font-black text-slate-800 dark:text-white mb-4 flex items-center gap-2 uppercase tracking-wider">
+                        <Truck size={16} /> Fornecedor / Ref.
+                      </h3>
+                      <input 
+                        type="text"
+                        value={purchaseSupplier}
+                        onChange={(e) => setPurchaseSupplier(e.target.value)}
+                        placeholder="Ex: Refriango, Coca-Cola..."
+                        className="w-full p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border-none soft-ui-inset text-sm font-medium dark:text-white"
+                      />
+                    </div>
+
                     {/* Anexos */}
                     <div className="bg-white dark:bg-slate-800 rounded-[32px] p-6 shadow-xl border border-slate-100 dark:border-slate-700">
                       <h3 className="text-sm font-black text-slate-800 dark:text-white mb-4 flex items-center gap-2 uppercase tracking-wider">
@@ -1211,12 +1355,26 @@ const Prices: React.FC = () => {
                       <p className="text-xs font-bold text-blue-100 uppercase tracking-widest mb-1">Total a Pagar</p>
                       <p className="text-3xl font-black mb-6">{calculatePurchaseTotal().toLocaleString()} <span className="text-sm">Kz</span></p>
                       
-                      <button 
-                        onClick={handleGeneratePurchase}
-                        className="w-full py-4 bg-white text-[#0054A6] rounded-2xl font-black shadow-lg hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2"
-                      >
-                        <ClipboardCheck size={20} /> Confirmar Compra
-                      </button>
+                      <div className="grid grid-cols-2 gap-3 relative z-10">
+                        <button 
+                          onClick={() => setPurchaseStep('select')}
+                          className="py-4 bg-white/10 text-white border border-white/20 rounded-2xl font-bold hover:bg-white/20 transition-all flex items-center justify-center gap-2 text-[10px] uppercase tracking-wider"
+                        >
+                          <ArrowLeft size={14} /> Voltar e Editar
+                        </button>
+                        <button 
+                          onClick={() => setShowConfirmPurchase(true)}
+                          disabled={isProcessingPurchase || Object.keys(purchaseCart).length === 0}
+                          className={`py-4 bg-white text-[#0054A6] rounded-2xl font-black shadow-lg hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2 text-[10px] uppercase tracking-wider ${isProcessingPurchase ? 'opacity-70 cursor-wait' : ''}`}
+                        >
+                          {isProcessingPurchase ? (
+                            <div className="w-4 h-4 border-2 border-[#0054A6] border-t-transparent rounded-full animate-spin"></div>
+                          ) : (
+                            <ClipboardCheck size={14} />
+                          )}
+                          {isProcessingPurchase ? '...' : 'Confirmar Compra'}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1248,7 +1406,7 @@ const Prices: React.FC = () => {
                                     <ShoppingBag size={20} />
                                   </div>
                                   <div>
-                                    <h4 className="font-bold text-slate-800 dark:text-white text-sm">Compra #{purchase.id.slice(-4)}</h4>
+                                    <h4 className="font-bold text-slate-800 dark:text-white text-sm">Compra efectuada</h4>
                                     <p className="text-[10px] text-slate-400 font-bold flex items-center gap-1 uppercase">
                                       <Clock size={10} /> {new Date(purchase.timestamp).toLocaleTimeString('pt-AO', {hour: '2-digit', minute: '2-digit'})} • <User size={10} /> {purchase.completedBy}
                                     </p>
@@ -1291,9 +1449,10 @@ const Prices: React.FC = () => {
               </div>
               <div className="flex gap-3">
                 {purchaseStep === 'summary' && (
-                  <button onClick={() => setPurchaseStep('select')} className="px-6 py-3 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-2xl font-bold hover:bg-slate-200 transition-all">
-                    Adicionar Itens
-                  </button>
+                  <div className="flex flex-col items-end">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Revisão de Itens</span>
+                    <span className="text-xs font-bold text-[#0054A6] dark:text-blue-400">{Object.keys(purchaseCart).length} Produtos</span>
+                  </div>
                 )}
                 {purchaseStep === 'select' && (
                   <button 
@@ -1318,7 +1477,7 @@ const Prices: React.FC = () => {
             <div className="bg-white dark:bg-slate-800 p-6 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center shrink-0">
               <div>
                 <h2 className="text-2xl font-black text-[#003366] dark:text-white flex items-center gap-3">
-                  <FileText size={24} className="text-blue-500" /> {reportProposal.name || `Compra #${reportProposal.id.slice(-4)}`}
+                  <FileText size={24} className="text-blue-500" /> {reportProposal.name || 'Compra efectuada'}
                 </h2>
                 <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">
                   {reportProposal.date} • {(reportProposal as any).completedBy || (reportProposal as any).createdBy || 'Sistema'}
@@ -1339,44 +1498,67 @@ const Prices: React.FC = () => {
               <div className="max-w-2xl mx-auto space-y-10">
                 {/* Logo & Info */}
                 <div className="flex justify-between items-start">
-                  <MGLogo className="h-12 w-auto" />
+                  <div className="flex flex-col items-center">
+                    <div className="relative flex items-center justify-center">
+                      <span className="font-sans font-black text-3xl tracking-tighter text-[#E3007E] relative z-10" style={{ filter: 'drop-shadow(0 0 12px rgba(227, 0, 126, 0.4))' }}>MG</span>
+                      <div className="absolute inset-0 blur-xl bg-[#E3007E]/10 rounded-full animate-pulse"></div>
+                    </div>
+                    <div className="w-10 h-[1px] bg-[#E3007E]/50 mt-0.5 shadow-[0_0_5px_rgba(227,0,126,0.2)]"></div>
+                  </div>
                   <div className="text-right">
-                    <p className="font-black text-[#003366] dark:text-white uppercase tracking-tighter text-xl">Marguel Group</p>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Relatório de Aquisição</p>
+                    <p className="font-black text-[#003366] dark:text-white uppercase tracking-tighter text-xl">Marguel Mobile</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                      { (reportProposal as SavedProposal).status === 'Proposta' ? 'Relatório de Proposta' : 'Relatório de Aquisição' }
+                    </p>
+                    <div className="mt-2 flex flex-col items-end gap-1">
+                      { (reportProposal as SavedProposal).status && (
+                        <span className="text-[10px] font-bold text-blue-600 bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded-md uppercase">
+                          Status: {(reportProposal as SavedProposal).status}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
                 {/* Itens Table */}
-                <div className="border border-slate-100 dark:border-slate-800 rounded-2xl overflow-hidden">
+                <div className="border border-slate-100 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="bg-slate-50 dark:bg-slate-800 text-slate-500 font-bold uppercase text-[10px] tracking-widest">
                         <th className="p-4 text-left">Produto</th>
                         <th className="p-4 text-center">Qtd</th>
-                        <th className="p-4 text-right">Total</th>
+                        <th className="p-4 text-right">Preço Unit.</th>
+                        <th className="p-4 text-right">Subtotal</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
                       {Object.entries(reportProposal.items).map(([id, qty]) => {
                         const p = products.find(prod => prod.id === id);
                         if (!p) return null;
+                        
+                        // Use snapshot price if available (for SavedProposal)
+                        const snapshot = (reportProposal as SavedProposal).snapshotPrices?.[id];
+                        const unitPrice = snapshot ? snapshot.buy : p.buyPrice;
                         const packSize = p.packSize || 1;
-                        const packCost = p.buyPrice * packSize;
+                        const packCost = unitPrice * packSize;
+                        const subtotal = packCost * Number(qty);
+
                         return (
-                          <tr key={id} className="dark:text-slate-300">
+                          <tr key={id} className="dark:text-slate-300 hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
                             <td className="p-4">
                               <p className="font-bold">{p.name}</p>
                               <p className="text-[10px] text-slate-400 uppercase font-medium">{p.packType || 'Pack'} de {packSize}un</p>
                             </td>
                             <td className="p-4 text-center font-black text-[#003366] dark:text-blue-400">{qty}</td>
-                            <td className="p-4 text-right font-bold">{ (packCost * Number(qty)).toLocaleString() } Kz</td>
+                            <td className="p-4 text-right font-medium text-slate-500">{packCost.toLocaleString()} Kz</td>
+                            <td className="p-4 text-right font-bold text-slate-800 dark:text-white">{ subtotal.toLocaleString() } Kz</td>
                           </tr>
                         );
                       })}
                     </tbody>
                     <tfoot>
                       <tr className="bg-[#003366] text-white font-black">
-                        <td colSpan={2} className="p-4 text-lg">Total Geral</td>
+                        <td colSpan={3} className="p-4 text-lg">Total Geral</td>
                         <td className="p-4 text-right text-lg">{reportProposal.total.toLocaleString()} Kz</td>
                       </tr>
                     </tfoot>
@@ -1406,7 +1588,7 @@ const Prices: React.FC = () => {
                 {/* Footer Report */}
                 <div className="pt-10 border-t border-slate-100 dark:border-slate-800 text-center space-y-2">
                   <p className="text-[10px] text-slate-400 font-medium italic">Este documento é um registro interno de movimentação de stock e financeiro.</p>
-                  <p className="text-[10px] font-black text-[#003366] dark:text-blue-400 uppercase tracking-widest">Marguel Group • Gestão de Preços</p>
+                  <p className="text-[10px] font-black text-[#003366] dark:text-blue-400 uppercase tracking-widest">Marguel Mobile • Gestão de Preços</p>
                 </div>
               </div>
             </div>
@@ -1485,6 +1667,113 @@ const Prices: React.FC = () => {
         </div>
       )}
 
+      {/* --- MODAL: DIALOGO SALVAR PROPOSTA --- */}
+      {showSaveProposalDialog && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-[32px] shadow-2xl overflow-hidden border border-slate-100 dark:border-slate-800">
+            <div className="p-8 space-y-6">
+              <div className="w-16 h-16 bg-blue-50 dark:bg-blue-900/30 rounded-2xl flex items-center justify-center text-[#003366] dark:text-blue-400 mx-auto">
+                <Save size={32} />
+              </div>
+              <div className="text-center space-y-2">
+                <h3 className="text-xl font-black text-[#003366] dark:text-white uppercase tracking-tight">Salvar Proposta</h3>
+                <p className="text-slate-400 text-sm font-medium leading-relaxed">Dê um nome para identificar esta proposta no seu histórico.</p>
+              </div>
+              <input 
+                type="text"
+                autoFocus
+                placeholder="Ex: Proposta Refriango Março"
+                value={proposalNameInput}
+                onChange={e => setProposalNameInput(e.target.value)}
+                className="w-full p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl border-none soft-ui-inset text-sm font-bold dark:text-white outline-none focus:ring-2 focus:ring-[#003366]"
+              />
+              <div className="grid grid-cols-2 gap-3 pt-4">
+                <button 
+                  onClick={() => setShowSaveProposalDialog(false)}
+                  className="py-4 bg-slate-100 dark:bg-slate-800 text-slate-500 rounded-2xl font-bold hover:bg-slate-200 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={handleSaveProposal}
+                  disabled={isSavingProposal}
+                  className="py-4 bg-[#003366] text-white rounded-2xl font-black shadow-lg shadow-blue-200 dark:shadow-none hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2"
+                >
+                  {isSavingProposal ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <CheckCircle size={20} />}
+                  Confirmar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL: CONFIRMAR COMPRA --- */}
+      {showConfirmPurchase && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-[32px] shadow-2xl overflow-hidden border border-slate-100 dark:border-slate-800">
+            <div className="p-8 space-y-6 text-center">
+              <div className="w-16 h-16 bg-blue-50 dark:bg-blue-900/30 rounded-2xl flex items-center justify-center text-[#003366] dark:text-blue-400 mx-auto">
+                <ClipboardCheck size={32} />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-xl font-black text-[#003366] dark:text-white uppercase tracking-tight">Finalizar Aquisição</h3>
+                <p className="text-slate-400 text-sm font-medium leading-relaxed">
+                  Esta ação irá debitar <span className="font-bold text-slate-600 dark:text-slate-200">{calculatePurchaseTotal().toLocaleString()} Kz</span> da Conta Corrente e atualizar o estoque. Deseja continuar?
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-3 pt-4">
+                <button 
+                  onClick={() => setShowConfirmPurchase(false)}
+                  className="py-4 bg-slate-100 dark:bg-slate-800 text-slate-500 rounded-2xl font-bold hover:bg-slate-200 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={handleGeneratePurchase}
+                  disabled={isProcessingPurchase}
+                  className="py-4 bg-[#003366] text-white rounded-2xl font-black shadow-lg shadow-blue-200 dark:shadow-none hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2"
+                >
+                  {isProcessingPurchase ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <CheckCircle size={20} />}
+                  Confirmar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL: JÁ SALVA --- */}
+      {showAlreadySavedModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-[32px] shadow-2xl overflow-hidden border border-slate-100 dark:border-slate-800">
+            <div className="p-8 space-y-6 text-center">
+              <div className="w-16 h-16 bg-amber-50 dark:bg-amber-900/30 rounded-2xl flex items-center justify-center text-amber-600 mx-auto">
+                <AlertTriangle size={32} />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-xl font-black text-[#003366] dark:text-white uppercase tracking-tight">Proposta já Salva</h3>
+                <p className="text-slate-400 text-sm font-medium leading-relaxed">Esta simulação já foi arquivada. Deseja criar uma nova cópia ou apenas continuar?</p>
+              </div>
+              <div className="grid grid-cols-1 gap-3 pt-4">
+                <button 
+                  onClick={() => { setIsCurrentSimulationSaved(false); setShowAlreadySavedModal(false); setShowSaveProposalDialog(true); }}
+                  className="py-4 bg-[#003366] text-white rounded-2xl font-black shadow-lg shadow-blue-200 dark:shadow-none hover:scale-[1.02] active:scale-95 transition-all"
+                >
+                  Salvar como Nova
+                </button>
+                <button 
+                  onClick={() => setShowAlreadySavedModal(false)}
+                  className="py-4 bg-slate-100 dark:bg-slate-800 text-slate-500 rounded-2xl font-bold hover:bg-slate-200 transition-all"
+                >
+                  Entendido
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Footer */}
       <footer className="mt-16 py-10 px-6 bg-white dark:bg-slate-800 rounded-[32px] text-center flex flex-col gap-4 font-sans shadow-sm border border-slate-100 dark:border-slate-700">
         <p className="text-sm font-bold tracking-[-0.01em] text-[#003366] dark:text-blue-400">
@@ -1495,7 +1784,7 @@ const Prices: React.FC = () => {
           <div className="text-xs tracking-[0.5px]">
             <span className="font-extrabold text-[#E3007E]" style={{ textShadow: '0px 0px 5px rgba(227, 0, 126, 0.7)' }}>DC - Comercial</span>
             <span className="text-[#6B7280] dark:text-slate-400 font-normal mx-1">&</span>
-            <span className="font-extrabold text-[#E3007E]" style={{ textShadow: '0px 0px 5px rgba(227, 0, 126, 0.7)' }}>Marguel CGPS Lda</span>
+            <span className="font-extrabold text-[#E3007E]" style={{ textShadow: '0px 0px 5px rgba(227, 0, 126, 0.7)' }}>Marguel CGPS (SU) Lda</span>
           </div>
         </div>
       </footer>

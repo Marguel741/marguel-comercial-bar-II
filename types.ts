@@ -67,6 +67,9 @@ export interface SavedProposal {
   date: string;
   items: Record<string, number>;
   total: number;
+  snapshotPrices?: Record<string, { buy: number; sell: number }>;
+  createdBy?: string;
+  status?: string;
 }
 
 export interface PurchaseRecord {
@@ -118,6 +121,16 @@ export interface Equipment {
   qty: number;
   prevQty: number; 
   status: 'Operacional' | 'Danificado' | 'Em Manutenção';
+}
+
+export interface Card {
+  id: string;
+  name: string;
+  holder: string;
+  balance: number;
+  color: string;
+  type: 'Corrente' | 'Poupança' | 'Outro';
+  validity: string;
 }
 
 export interface InventoryLog {

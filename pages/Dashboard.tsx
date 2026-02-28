@@ -8,6 +8,7 @@ import { useProducts } from '../contexts/ProductContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useLayout } from '../contexts/LayoutContext';
 import { UserRole } from '../types';
+import SyncStatus from '../components/SyncStatus';
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -259,6 +260,7 @@ const Dashboard: React.FC = () => {
             </div>
         </div>
         <div className="flex items-center gap-4">
+            <SyncStatus />
             <div className="relative">
                 <button 
                     className={`relative ${showNotifications ? 'z-50' : ''}`}
@@ -781,7 +783,7 @@ const Dashboard: React.FC = () => {
                 <div className="text-xs tracking-[0.5px]">
                     <span className="font-extrabold text-[#E3007E]" style={{ textShadow: '0px 0px 5px rgba(227, 0, 126, 0.7)' }}>DC - Comercial</span>
                     <span className="text-[#6B7280] font-normal mx-1">&</span>
-                    <span className="font-extrabold text-[#E3007E]" style={{ textShadow: '0px 0px 5px rgba(227, 0, 126, 0.7)' }}>Marguel Group</span>
+                    <span className="font-extrabold text-[#E3007E]" style={{ textShadow: '0px 0px 5px rgba(227, 0, 126, 0.7)' }}>Marguel CGPS (SU) Lda</span>
                 </div>
             </div>
         </footer>

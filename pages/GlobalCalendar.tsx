@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { 
   ChevronLeft, ChevronRight, Calendar, DollarSign, ArrowUpRight, TrendingUp, 
   Lock, Unlock, FileText, ShoppingBag, Package, Wallet, CheckCircle, AlertTriangle, AlertCircle, Eye, X, Info, Clock,
-  CloudOff, CloudUpload, CloudCheck // Novos ícones para o status
+  Loader2, Wifi, WifiOff // Novos ícones para o status
 } from 'lucide-react';
 import { useProducts } from '../contexts/ProductContext';
 import { useLayout } from '../contexts/LayoutContext';
@@ -117,42 +117,43 @@ const GlobalCalendar: React.FC = () => {
   return (
     <div className="p-4 md:p-8 space-y-8 animate-fade-in pb-24 relative">
        
-       {/* FLOATING SYNC STATUS */}
-       <div className="fixed bottom-24 right-6 z-50">
-        {hasPendingChanges ? (
-          <div 
-            onClick={() => { triggerHaptic('impact'); syncData(); }}
-            className={`flex items-center gap-2 px-4 py-2 rounded-full shadow-lg cursor-pointer transition-all ${
-              isSyncing ? 'bg-blue-500 animate-pulse' : 'bg-amber-500 hover:scale-105'
-            } text-white text-xs font-bold`}
-          >
-            {isSyncing ? <CloudUpload size={16} className="animate-bounce" /> : <CloudOff size={16} />}
-            {isSyncing ? 'Sincronizando...' : 'Alterações Pendentes (Offline)'}
-          </div>
-        ) : (
-          <div className="flex items-center gap-2 px-4 py-2 bg-green-500/10 text-green-600 rounded-full text-[10px] font-black border border-green-200 backdrop-blur-sm">
-            <CloudCheck size={14} /> DADOS SINCRONIZADOS
-          </div>
-        )}
-      </div>
-
        <header className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
           <div className="ml-20">
-             <h1 className="text-3xl font-bold text-[#003366] dark:text-white flex items-center gap-3">
+             <h1 className="text-3xl font-bold text-[#003366] dark:text-white">
                 Calendário Marguel
-                {!isOnline && (
-                    <div className="flex items-center gap-2 px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-[10px] font-black animate-pulse">
-                        <Clock size={12} /> MODO OFFLINE
-                    </div>
-                )}
              </h1>
              <p className="text-slate-500 dark:text-slate-400">Relatório Geral de Gestão</p>
           </div>
           
-          <div className="flex items-center gap-4 bg-white dark:bg-slate-800 p-2 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
-             <button onClick={() => handleNav(-1)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full text-slate-500 transition-colors"><ChevronLeft size={24}/></button>
-             <span className="font-bold text-lg text-[#003366] dark:text-white w-48 text-center capitalize">{monthName}</span>
-             <button onClick={() => handleNav(1)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full text-slate-500 transition-colors"><ChevronRight size={24}/></button>
+          <div className="flex items-center gap-4">
+              {/* Offline/Online Indicator - Padronizado com Atendimento Directo */}
+              <button 
+                  onClick={() => isOnline && syncData()}
+                  disabled={!isOnline || isSyncing}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                      !isOnline 
+                          ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 cursor-not-allowed'
+                          : isSyncing
+                              ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 opacity-50 cursor-wait'
+                              : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 hover:bg-green-200 cursor-pointer'
+                  }`}>
+                  {isSyncing ? (
+                      <Loader2 size={14} className="animate-spin" />
+                  ) : isOnline ? (
+                      <Wifi size={14} />
+                  ) : (
+                      <WifiOff size={14} />
+                  )}
+                  <span className="hidden md:inline">
+                      {isSyncing ? 'Sincronizando...' : isOnline ? 'Online (Sincronizar)' : 'Offline'}
+                  </span>
+              </button>
+
+              <div className="flex items-center gap-4 bg-white dark:bg-slate-800 p-2 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
+                 <button onClick={() => handleNav(-1)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full text-slate-500 transition-colors"><ChevronLeft size={24}/></button>
+                 <span className="font-bold text-lg text-[#003366] dark:text-white w-48 text-center capitalize">{monthName}</span>
+                 <button onClick={() => handleNav(1)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full text-slate-500 transition-colors"><ChevronRight size={24}/></button>
+              </div>
           </div>
        </header>
 

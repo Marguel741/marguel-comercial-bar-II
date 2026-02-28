@@ -1,6 +1,6 @@
 
-import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import { Product, PurchaseRecord, Transaction, SalesReport, Expense, InventoryLog, PriceHistoryLog, Equipment } from '../types';
+import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
+import { Product, PurchaseRecord, Transaction, SalesReport, Expense, InventoryLog, PriceHistoryLog, Equipment, Card } from '../types';
 
 const INITIAL_PRODUCTS: Product[] = [
   { id: 'pepsi', name: 'Pepsi', sellPrice: 500, buyPrice: 250, stock: 0, minStock: 24, category: 'Refrigerantes', packSize: 24, packType: 'Grade' },
@@ -58,6 +58,9 @@ interface ProductContextType {
   purchases: PurchaseRecord[];
   currentBalance: number;
   savingsBalance: number;
+  cashBalance: number;
+  tpaBalance: number;
+  cards: Card[];
   transactions: Transaction[];
   salesReports: SalesReport[];
   expenses: Expense[];
@@ -79,15 +82,20 @@ interface ProductContextType {
   updateProduct: (id: string, updates: Partial<Product>) => void;
   deleteProduct: (id: string) => void;
   addCategory: (category: string) => void;
+  editCategory: (oldName: string, newName: string) => Promise<void>;
   removeCategory: (category: string) => void;
   addPurchase: (items: Record<string, number>, source: 'Prices' | 'Inventory' | 'Sales', completedBy: string, attachments?: string[]) => void;
   getPurchasesByDate: (dateStr: string) => Record<string, number>;
   getTodayPurchases: () => Record<string, number>;
-  processTransaction: (type: 'deposit' | 'withdraw', account: 'main' | 'savings', amount: number, description: string) => void;
+  processTransaction: (type: 'deposit' | 'withdraw', account: 'main' | 'savings' | string, amount: number, description: string, category?: string) => void;
+  processCashTPADebit: (origin: 'Cash' | 'TPA', amount: number, note: string) => void;
   addSalesReport: (report: SalesReport) => void;
   addEquipment: (name: string, qty: number) => void;
   updateEquipmentQty: (id: string, newQty: number) => void;
   removeEquipment: (id: string) => void;
+  addCard: (card: Omit<Card, 'id'>) => void;
+  updateCard: (id: string, updates: Partial<Card>) => void;
+  deleteCard: (id: string) => void;
   isSyncing: boolean;
   hasPendingChanges: boolean;
   syncData: () => Promise<void>;
@@ -219,6 +227,45 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     return saved ? parseFloat(saved) : 500000;
   });
 
+  const [cashBalance, setCashBalance] = useState<number>(() => {
+    const saved = localStorage.getItem('mg_cash_balance');
+    return saved ? parseFloat(saved) : 850000;
+  });
+
+  const [tpaBalance, setTPABalance] = useState<number>(() => {
+    const saved = localStorage.getItem('mg_tpa_balance');
+    return saved ? parseFloat(saved) : 400000;
+  });
+
+  const [cards, setCards] = useState<Card[]>(() => {
+    try {
+      const saved = localStorage.getItem('mg_cards');
+      if (saved) return JSON.parse(saved);
+      
+      // Default cards
+      return [
+        {
+          id: 'main',
+          name: 'Conta Corrente',
+          holder: 'Marguel Bar',
+          balance: 1250000,
+          color: 'bg-gradient-to-bl from-[#003366] via-[#004488] to-[#0054A6]',
+          type: 'Corrente',
+          validity: '12/28'
+        },
+        {
+          id: 'savings',
+          name: 'Marguel Reserve',
+          holder: 'Marguel Reserve',
+          balance: 500000,
+          color: 'bg-gradient-to-br from-[#F5DF4D] via-[#D4AF37] to-[#AA6C39]',
+          type: 'Poupança',
+          validity: '06/30'
+        }
+      ];
+    } catch { return []; }
+  });
+
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
     try {
       const saved = localStorage.getItem('mg_transactions');
@@ -239,6 +286,9 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   useEffect(() => { localStorage.setItem('mg_inventory_history', JSON.stringify(inventoryHistory)); }, [inventoryHistory]);
   useEffect(() => { localStorage.setItem('mg_current_balance', currentBalance.toString()); }, [currentBalance]);
   useEffect(() => { localStorage.setItem('mg_savings_balance', savingsBalance.toString()); }, [savingsBalance]);
+  useEffect(() => { localStorage.setItem('mg_cash_balance', cashBalance.toString()); }, [cashBalance]);
+  useEffect(() => { localStorage.setItem('mg_tpa_balance', tpaBalance.toString()); }, [tpaBalance]);
+  useEffect(() => { localStorage.setItem('mg_cards', JSON.stringify(cards)); }, [cards]);
   useEffect(() => { localStorage.setItem('mg_transactions', JSON.stringify(transactions)); }, [transactions]);
   useEffect(() => { localStorage.setItem('mg_sales_reports', JSON.stringify(salesReports)); }, [salesReports]);
   
@@ -273,24 +323,79 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     if (!categories.includes(category)) setCategories([...categories, category].sort());
   };
 
+  const editCategory = useCallback(async (oldName: string, newName: string) => {
+    if (!newName || oldName === newName) return;
+
+    // 1. Atualiza a lista de categorias
+    setCategories(prev => prev.map(cat => cat === oldName ? newName : cat));
+
+    // 2. Realoca todos os produtos da categoria antiga para a nova
+    setProducts(prevProducts => 
+      prevProducts.map(prod => 
+        prod.category === oldName ? { ...prod, category: newName } : prod
+      )
+    );
+
+    // 3. Marcar para sincronização
+    setHasPendingChanges(true);
+    
+    // Aqui você chamaria o dbUpdate para persistir no IndexedDB/Backend
+  }, [setCategories, setProducts]);
+
   const removeCategory = (category: string) => {
     setCategories(categories.filter(c => c !== category));
   };
 
-  const processTransaction = (type: 'deposit' | 'withdraw', account: 'main' | 'savings', amount: number, description: string) => {
+  const processTransaction = (type: 'deposit' | 'withdraw', account: 'main' | 'savings' | string, amount: number, description: string, category?: string) => {
+    let accountName = '';
+    
     if (account === 'main') {
       setCurrentBalance(prev => type === 'deposit' ? prev + amount : prev - amount);
-    } else {
+      accountName = 'Conta Corrente';
+      // Sync with cards array
+      setCards(prev => prev.map(c => c.id === 'main' ? { ...c, balance: type === 'deposit' ? c.balance + amount : c.balance - amount } : c));
+    } else if (account === 'savings') {
       setSavingsBalance(prev => type === 'deposit' ? prev + amount : prev - amount);
+      accountName = 'Conta Poupança';
+      // Sync with cards array
+      setCards(prev => prev.map(c => c.id === 'savings' ? { ...c, balance: type === 'deposit' ? c.balance + amount : c.balance - amount } : c));
+    } else {
+      // Custom card
+      setCards(prev => prev.map(c => {
+        if (c.id === account) {
+          accountName = c.name;
+          return { ...c, balance: type === 'deposit' ? c.balance + amount : c.balance - amount };
+        }
+        return c;
+      }));
     }
 
     const newTrans: Transaction = {
       id: Date.now().toString(),
       type: type === 'deposit' ? 'entrada' : 'saida',
-      category: account === 'main' ? 'Conta Corrente' : 'Conta Poupança',
+      category: category || accountName || 'Cartão',
       amount: amount,
       date: systemDate.toLocaleDateString('pt-AO', {day:'2-digit', month:'short'}) + ', ' + systemDate.toLocaleTimeString('pt-AO', {hour:'2-digit', minute:'2-digit'}),
       description: description
+    };
+
+    setTransactions(prev => [newTrans, ...prev]);
+  };
+
+  const processCashTPADebit = (origin: 'Cash' | 'TPA', amount: number, note: string) => {
+    if (origin === 'Cash') {
+      setCashBalance(prev => prev - amount);
+    } else {
+      setTPABalance(prev => prev - amount);
+    }
+
+    const newTrans: Transaction = {
+      id: Date.now().toString(),
+      type: 'saida',
+      category: `Débito ${origin}`,
+      amount: amount,
+      date: systemDate.toLocaleDateString('pt-AO', {day:'2-digit', month:'short'}) + ', ' + systemDate.toLocaleTimeString('pt-AO', {hour:'2-digit', minute:'2-digit'}),
+      description: note
     };
 
     setTransactions(prev => [newTrans, ...prev]);
@@ -344,7 +449,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     }));
 
     if (totalValue > 0) {
-        processTransaction('withdraw', 'main', totalValue, `Compra de Stock (${source}): ${Object.keys(items).length} itens`);
+        processTransaction('withdraw', 'main', totalValue, 'Compra de estoque', 'Compra de Estoque');
     }
   };
 
@@ -410,23 +515,23 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   };
 
-  const syncData = async () => {
-    if (!navigator.onLine || isSyncing) return;
+  const syncData = useCallback(async () => {
+    if (!isOnline || isSyncing) return;
     
     setIsSyncing(true);
     try {
-      // Simulação de chamada de API para salvar o LocalStorage no Banco de Dados
-      await new Promise(resolve => setTimeout(resolve, 2000)); 
+      // SUBSTITUIR PELO SEU FETCH NO FUTURO:
+      // const response = await fetch('/api/sync', { method: 'POST', body: JSON.stringify(products) });
+      // if (!response.ok) throw new Error();
       
+      await new Promise(resolve => setTimeout(resolve, 1500)); // Simulação
       setHasPendingChanges(false);
-      localStorage.removeItem('@Marguel:needsSync');
-      console.log("Sincronização concluída!");
     } catch (error) {
-      console.error("Falha ao sincronizar");
+      console.error("Erro ao sincronizar", error);
     } finally {
       setIsSyncing(false);
     }
-  };
+  }, [isOnline, isSyncing, products]);
 
   const addEquipment = (name: string, qty: number) => {
     const newEquip: Equipment = {
@@ -452,16 +557,38 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     markAsPending();
   };
 
+  const addCard = (card: Omit<Card, 'id'>) => {
+    const newCard: Card = {
+      ...card,
+      id: Math.random().toString(36).substr(2, 9)
+    };
+    setCards(prev => [...prev, newCard]);
+  };
+
+  const updateCard = (id: string, updates: Partial<Card>) => {
+    setCards(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+    
+    // Sync legacy balances if needed
+    if (id === 'main' && updates.balance !== undefined) setCurrentBalance(updates.balance);
+    if (id === 'savings' && updates.balance !== undefined) setSavingsBalance(updates.balance);
+  };
+
+  const deleteCard = (id: string) => {
+    if (id === 'main' || id === 'savings') return; // Protect default cards
+    setCards(prev => prev.filter(c => c.id !== id));
+  };
+
   return (
     <ProductContext.Provider value={{ 
-      products, categories, purchases, currentBalance, savingsBalance, transactions, salesReports, 
+      products, categories, purchases, currentBalance, savingsBalance, cashBalance, tpaBalance, cards, transactions, salesReports, 
       expenses, inventoryHistory, priceHistory, lockedDays, systemDate,
       setSystemDate, toggleDayLock, isDayLocked,
       addExpense, deleteExpense, updateExpense,
-      addInventoryLog, addProduct, updateProduct, deleteProduct, addCategory, removeCategory,
-      addPurchase, getPurchasesByDate, getTodayPurchases, processTransaction, 
+      addInventoryLog, addProduct, updateProduct, deleteProduct, addCategory, editCategory, removeCategory,
+      addPurchase, getPurchasesByDate, getTodayPurchases, processTransaction, processCashTPADebit,
       addSalesReport,
       equipments, addEquipment, updateEquipmentQty, removeEquipment,
+      addCard, updateCard, deleteCard,
       isSyncing, hasPendingChanges, syncData
     }}>
       {children}
