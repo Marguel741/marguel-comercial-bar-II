@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
-import { Product, PurchaseRecord, Transaction, SalesReport, Expense, InventoryLog, PriceHistoryLog, Equipment, Card } from '../types';
+import { Product, PurchaseRecord, Transaction, SalesReport, Expense, InventoryLog, PriceHistoryLog, Equipment, Card, StockOperationLog } from '../types';
 
 const INITIAL_PRODUCTS: Product[] = [
   { id: 'pepsi', name: 'Pepsi', sellPrice: 500, buyPrice: 250, stock: 0, minStock: 24, category: 'Refrigerantes', packSize: 24, packType: 'Grade' },
@@ -65,6 +65,7 @@ interface ProductContextType {
   salesReports: SalesReport[];
   expenses: Expense[];
   inventoryHistory: InventoryLog[];
+  stockOperationHistory: StockOperationLog[];
   priceHistory: PriceHistoryLog[];
   systemDate: Date;
   lockedDays: string[];
@@ -210,6 +211,13 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     } catch { return []; }
   });
 
+  const [stockOperationHistory, setStockOperationHistory] = useState<StockOperationLog[]>(() => {
+    try {
+      const saved = localStorage.getItem('mg_stock_operation_history');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+
   const [priceHistory, setPriceHistory] = useState<PriceHistoryLog[]>(() => {
       try {
         const saved = localStorage.getItem('mg_price_history');
@@ -284,6 +292,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   useEffect(() => { localStorage.setItem('mg_purchases', JSON.stringify(purchases)); }, [purchases]);
   useEffect(() => { localStorage.setItem('mg_expenses', JSON.stringify(expenses)); }, [expenses]);
   useEffect(() => { localStorage.setItem('mg_inventory_history', JSON.stringify(inventoryHistory)); }, [inventoryHistory]);
+  useEffect(() => { localStorage.setItem('mg_stock_operation_history', JSON.stringify(stockOperationHistory)); }, [stockOperationHistory]);
   useEffect(() => { localStorage.setItem('mg_current_balance', currentBalance.toString()); }, [currentBalance]);
   useEffect(() => { localStorage.setItem('mg_savings_balance', savingsBalance.toString()); }, [savingsBalance]);
   useEffect(() => { localStorage.setItem('mg_cash_balance', cashBalance.toString()); }, [cashBalance]);
@@ -403,20 +412,50 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   const addPurchase = (items: Record<string, number>, source: 'Prices' | 'Inventory' | 'Sales', completedBy: string, attachments?: string[]) => {
     let totalValue = 0;
-    Object.entries(items).forEach(([id, qty]) => {
-      const p = products.find(prod => prod.id === id);
-      if (p) {
-        const packCost = p.buyPrice * (p.packSize || 1);
-        totalValue += packCost * qty;
-      }
-    });
-
+    const purchaseId = crypto.randomUUID();
     const now = new Date();
     const purchaseDate = new Date(systemDate);
     purchaseDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds());
 
-    const purchaseId = crypto.randomUUID();
+    const logs: StockOperationLog[] = [];
 
+    // 1. Calcular total e preparar logs de auditoria (Fórmula Correta e Conversão Controlada)
+    products.forEach(p => {
+      if (items[p.id]) {
+        const qtyPacks = items[p.id];
+        const packSize = p.packSize || 1; // Respeita packSize do cadastro
+        const unitsToAdd = qtyPacks * packSize;
+        const packCost = p.buyPrice * packSize;
+        
+        totalValue += packCost * qtyPacks;
+        
+        logs.push({
+          id: crypto.randomUUID(),
+          productId: p.id,
+          productName: p.name,
+          type: 'PURCHASE',
+          qtyBefore: p.stock,
+          qtyAdded: unitsToAdd,
+          qtyAfter: p.stock + unitsToAdd,
+          timestamp: purchaseDate.getTime(),
+          performedBy: completedBy,
+          referenceId: purchaseId
+        });
+      }
+    });
+
+    // 2. Atualização de Estoque (Atómica via State Update)
+    setProducts(prevProducts => prevProducts.map(p => {
+      if (items[p.id]) {
+        const qtyPacks = items[p.id];
+        const packSize = p.packSize || 1;
+        const unitsToAdd = qtyPacks * packSize;
+        return { ...p, stock: p.stock + unitsToAdd };
+      }
+      return p;
+    }));
+
+    // 3. Registro da Compra
     const newRecord: PurchaseRecord = {
       id: purchaseId,
       name: source === 'Inventory' ? 'Ajuste de Stock (Inventário)' : source === 'Sales' ? 'Compra Rápida (Vendas)' : `Compra Efectuada`,
@@ -431,26 +470,20 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     };
 
     setPurchases(prev => [newRecord, ...prev]);
+    setStockOperationHistory(prev => [...logs, ...prev]);
 
+    // 4. Débito Financeiro
+    if (totalValue > 0) {
+        processTransaction('withdraw', 'main', totalValue, 'Compra de estoque', 'Compra de Estoque');
+    }
+
+    // 5. Fila de Sincronização
     setSyncQueue(prev => [...prev, {
       id: crypto.randomUUID(),
       type: 'UPDATE_STOCK',
       payload: newRecord,
       timestamp: Date.now()
     }]);
-
-    setProducts(prevProducts => prevProducts.map(p => {
-      if (items[p.id]) {
-        const qtyPacks = items[p.id];
-        const unitsToAdd = qtyPacks * (p.packSize || 1);
-        return { ...p, stock: p.stock + unitsToAdd };
-      }
-      return p;
-    }));
-
-    if (totalValue > 0) {
-        processTransaction('withdraw', 'main', totalValue, 'Compra de estoque', 'Compra de Estoque');
-    }
   };
 
   const getPurchasesByDate = (dateStr: string) => {
@@ -586,7 +619,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       addExpense, deleteExpense, updateExpense,
       addInventoryLog, addProduct, updateProduct, deleteProduct, addCategory, editCategory, removeCategory,
       addPurchase, getPurchasesByDate, getTodayPurchases, processTransaction, processCashTPADebit,
-      addSalesReport,
+      addSalesReport, stockOperationHistory,
       equipments, addEquipment, updateEquipmentQty, removeEquipment,
       addCard, updateCard, deleteCard,
       isSyncing, hasPendingChanges, syncData

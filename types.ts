@@ -133,6 +133,19 @@ export interface Card {
   validity: string;
 }
 
+export interface StockOperationLog {
+  id: string;
+  productId: string;
+  productName: string;
+  type: 'PURCHASE' | 'SALE' | 'ADJUSTMENT';
+  qtyBefore: number;
+  qtyAdded: number;
+  qtyAfter: number;
+  timestamp: number;
+  performedBy: string;
+  referenceId: string;
+}
+
 export interface InventoryLog {
   id: string;
   date: string;
