@@ -13,8 +13,9 @@ import { useProducts } from '../contexts/ProductContext';
 import { useLayout } from '../contexts/LayoutContext';
 import SyncStatus from '../components/SyncStatus';
 import { useAuth } from '../App';
-import { PriceHistoryLog, SavedProposal, PurchaseRecord } from '../types';
+import { PriceHistoryLog, SavedProposal, PurchaseRecord, UserPermissions } from '../types';
 import { MGLogo } from '../constants';
+import { hasPermission } from '../src/utils/permissions';
 
 const Prices: React.FC = () => {
   const { products, categories, updateProduct, purchases, addPurchase, isDayLocked, systemDate } = useProducts();
@@ -22,8 +23,10 @@ const Prices: React.FC = () => {
   const { user } = useAuth();
   const location = useLocation();
   
-  const canManagePrices = user?.permissions?.managePrices === true;
-  const canEditPurchases = user?.permissions?.canEditPurchases === true;
+  const canManagePrices = hasPermission(user, 'prices_edit');
+  const canEditPurchases = hasPermission(user, 'purchases_execute');
+  const canViewPurchases = hasPermission(user, 'purchases_view');
+  const canVoidPurchases = hasPermission(user, 'purchases_void');
   const isLocked = isDayLocked(systemDate);
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -510,7 +513,7 @@ const Prices: React.FC = () => {
             Controlo de margens e valores de mercado
             {!canManagePrices && (
               <span className="bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1 border border-amber-200 dark:border-amber-800">
-                <Lock size={10} /> Modo Leitura
+                <Lock size={10} /> Modo Leitura (Preços)
               </span>
             )}
           </p>

@@ -14,6 +14,7 @@ import { formatKz, roundKz } from '../src/utils';
 
 const GlobalCalendar: React.FC = () => {
   const { 
+    products,
     salesReports, 
     purchases, 
     expenses, 
@@ -293,9 +294,9 @@ const GlobalCalendar: React.FC = () => {
                   {[
                      { id: 'overview', label: 'Resumo', icon: FileText },
                      { id: 'sales', label: 'Vendas', icon: DollarSign },
-                     { id: 'inventory', label: 'Equipamento', icon: Package },
+                     { id: 'inventory', label: 'Trabalho Operacional', icon: Package },
                      { id: 'finance', label: 'Financeiro', icon: Wallet },
-                     { id: 'purchases', label: 'Suprimentos', icon: ShoppingBag },
+                     { id: 'purchases', label: 'Compras', icon: ShoppingBag },
                   ].map(tab => (
                      <button
                         key={tab.id}
@@ -336,6 +337,38 @@ const GlobalCalendar: React.FC = () => {
                                     </span>
                                 </div>
                             </div>
+
+                            {/* 1️⃣ Trabalho Operacional */}
+                            <div className="space-y-4">
+                                <h3 className="font-black text-[#003366] dark:text-white text-lg flex items-center gap-2">
+                                    <Package size={20} className="text-blue-500" /> Trabalho Operacional
+                                </h3>
+                                <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-[32px] border border-slate-100 dark:border-slate-700">
+                                    {dayData.inventory ? (
+                                        <div className="space-y-2">
+                                            <div className="flex justify-between items-center text-sm">
+                                                <span className="text-slate-500 font-medium">Contagem de Equipamentos</span>
+                                                <span className="font-bold text-green-600">Sim</span>
+                                            </div>
+                                            <div className="flex justify-between items-center text-sm">
+                                                <span className="text-slate-500 font-medium">Responsável</span>
+                                                <span className="font-bold text-[#003366] dark:text-white">{dayData.inventory.performedBy}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center text-sm">
+                                                <span className="text-slate-500 font-medium">Hora</span>
+                                                <span className="font-bold text-[#003366] dark:text-white">
+                                                    {new Date(parseInt(dayData.inventory.id)).toLocaleTimeString('pt-AO', { hour: '2-digit', minute: '2-digit' })}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="flex justify-between items-center text-sm">
+                                            <span className="text-slate-500 font-medium">Contagem de Equipamentos</span>
+                                            <span className="font-bold text-red-500">Não</span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                         </div>
 
                         <div className="space-y-6">
@@ -367,6 +400,61 @@ const GlobalCalendar: React.FC = () => {
                                       <p className="text-xs font-bold uppercase italic">Aguardando Fecho de Caixa Final</p>
                                   </div>
                               )}
+                           </div>
+
+                           {/* 2️⃣ Compras do Dia */}
+                           <div className="space-y-4">
+                                <h3 className="font-black text-[#003366] dark:text-white text-lg flex items-center gap-2">
+                                    <ShoppingBag size={20} className="text-blue-500" /> Compras do Dia
+                                </h3>
+                                <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-[32px] border border-slate-100 dark:border-slate-700">
+                                    {dayData.purchases.length > 0 ? (
+                                        <div className="space-y-4">
+                                            {dayData.purchases.map(p => (
+                                                <div key={p.id} className="text-xs border-b border-slate-200 dark:border-slate-700 pb-2 last:border-0 last:pb-0">
+                                                    <div className="flex justify-between font-bold text-[#003366] dark:text-white mb-1">
+                                                        <span>{p.name || 'Compra de Stock'}</span>
+                                                        <span>{formatKz(p.total)}</span>
+                                                    </div>
+                                                    <div className="flex justify-between text-slate-500">
+                                                        <span>Resp: {p.completedBy}</span>
+                                                        <span>{new Date(p.timestamp).toLocaleTimeString('pt-AO', { hour: '2-digit', minute: '2-digit' })}</span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <p className="text-xs text-slate-400 italic">Nenhuma compra registrada.</p>
+                                    )}
+                                </div>
+                           </div>
+
+                           {/* 3️⃣ Financeiro (Despesas) */}
+                           <div className="space-y-4">
+                                <h3 className="font-black text-[#003366] dark:text-white text-lg flex items-center gap-2">
+                                    <Wallet size={20} className="text-blue-500" /> Financeiro (Despesas)
+                                </h3>
+                                <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-[32px] border border-slate-100 dark:border-slate-700">
+                                    {dayData.expenses.length > 0 ? (
+                                        <div className="space-y-4">
+                                            {dayData.expenses.map(ex => (
+                                                <div key={ex.id} className="text-xs border-b border-slate-200 dark:border-slate-700 pb-2 last:border-0 last:pb-0">
+                                                    <div className="flex justify-between font-bold text-slate-800 dark:text-white mb-1">
+                                                        <span>{ex.title}</span>
+                                                        <span className="text-red-500">-{formatKz(ex.amount)}</span>
+                                                    </div>
+                                                    {ex.notes && <p className="text-[10px] text-slate-400 italic mb-1">"{ex.notes}"</p>}
+                                                    <div className="flex justify-between text-slate-500">
+                                                        <span>Resp: {ex.user}</span>
+                                                        <span>{new Date(ex.timestamp).toLocaleTimeString('pt-AO', { hour: '2-digit', minute: '2-digit' })}</span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <p className="text-xs text-slate-400 italic">Nenhuma despesa registrada.</p>
+                                    )}
+                                </div>
                            </div>
                         </div>
                      </div>
@@ -423,25 +511,150 @@ const GlobalCalendar: React.FC = () => {
                      </div>
                   )}
 
-                  {/* Restantes Tabs (Finance, Purchases, Inventory) seguiriam a mesma lógica de limpeza e arredondamento... */}
                   {activeTab === 'finance' && (
                       <div className="space-y-6 animate-slide-up">
                           <div className="bg-white dark:bg-slate-800 p-8 rounded-[32px] border border-slate-100 dark:border-slate-700">
-                              <h3 className="font-black text-[#003366] dark:text-white mb-6 uppercase text-xs tracking-widest">Saídas de Caixa</h3>
+                              <h3 className="font-black text-[#003366] dark:text-white mb-6 uppercase text-xs tracking-widest">Saídas de Caixa (Despesas)</h3>
                               {dayData.expenses.length > 0 ? (
-                                  <div className="space-y-3">
+                                  <div className="space-y-4">
                                       {dayData.expenses.map(ex => (
-                                          <div key={ex.id} className="flex justify-between items-center p-4 bg-red-50/50 dark:bg-red-900/10 rounded-2xl border border-red-50 dark:border-red-900/20">
-                                              <div>
-                                                  <p className="font-bold text-slate-800 dark:text-white text-sm">{ex.title}</p>
-                                                  <p className="text-[10px] font-black text-red-600/60 uppercase">{ex.category}</p>
+                                          <div key={ex.id} className="p-5 bg-red-50/50 dark:bg-red-900/10 rounded-2xl border border-red-50 dark:border-red-900/20">
+                                              <div className="flex justify-between items-start mb-2">
+                                                  <div>
+                                                      <p className="font-bold text-slate-800 dark:text-white text-base">{ex.title}</p>
+                                                      <p className="text-[10px] font-black text-red-600/60 uppercase">{ex.category}</p>
+                                                  </div>
+                                                  <span className="font-black text-red-600 text-lg">-{formatKz(ex.amount)}</span>
                                               </div>
-                                              <span className="font-black text-red-600">-{formatKz(ex.amount)}</span>
+                                              {ex.notes && (
+                                                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-3 italic">"{ex.notes}"</p>
+                                              )}
+                                              <div className="flex items-center justify-between pt-3 border-t border-red-100 dark:border-red-900/30">
+                                                  <div className="flex items-center gap-2 text-[10px] text-slate-400 font-bold uppercase">
+                                                      <Clock size={12} />
+                                                      {new Date(ex.timestamp).toLocaleTimeString('pt-AO', { hour: '2-digit', minute: '2-digit' })}
+                                                  </div>
+                                                  <div className="text-[10px] text-slate-400 font-bold uppercase">
+                                                      Resp: {ex.user}
+                                                  </div>
+                                              </div>
                                           </div>
                                       ))}
                                   </div>
                               ) : (
                                   <p className="text-slate-400 italic text-center py-10">Nenhuma despesa lançada.</p>
+                              )}
+                          </div>
+                      </div>
+                  )}
+
+                  {activeTab === 'purchases' && (
+                      <div className="space-y-6 animate-slide-up">
+                          <div className="bg-white dark:bg-slate-800 p-8 rounded-[32px] border border-slate-100 dark:border-slate-700">
+                              <h3 className="font-black text-[#003366] dark:text-white mb-6 uppercase text-xs tracking-widest">Compras do Dia</h3>
+                              {dayData.purchases.length > 0 ? (
+                                  <div className="space-y-6">
+                                      {dayData.purchases.map(purchase => (
+                                          <div key={purchase.id} className="p-6 bg-blue-50/50 dark:bg-blue-900/10 rounded-[24px] border border-blue-50 dark:border-blue-900/20">
+                                              <div className="flex justify-between items-start mb-4">
+                                                  <h4 className="font-black text-[#003366] dark:text-blue-300 uppercase text-sm">{purchase.name || 'Compra de Stock'}</h4>
+                                                  <span className="font-black text-blue-600 text-lg">{formatKz(purchase.total)}</span>
+                                              </div>
+                                              
+                                              <div className="space-y-2 mb-4">
+                                                  {Object.entries(purchase.items).map(([prodId, qty]) => {
+                                                      const prod = products.find(p => p.id === prodId);
+                                                      return (
+                                                          <div key={prodId} className="flex justify-between text-xs">
+                                                              <span className="text-slate-600 dark:text-slate-400 font-medium">{prod?.name || 'Produto Desconhecido'}</span>
+                                                              <span className="font-bold text-slate-900 dark:text-white">x{qty}</span>
+                                                          </div>
+                                                      );
+                                                  })}
+                                              </div>
+
+                                              <div className="flex items-center justify-between pt-4 border-t border-blue-100 dark:border-blue-900/30">
+                                                  <div className="flex items-center gap-2 text-[10px] text-slate-400 font-bold uppercase">
+                                                      <Clock size={12} />
+                                                      {new Date(purchase.timestamp).toLocaleTimeString('pt-AO', { hour: '2-digit', minute: '2-digit' })}
+                                                  </div>
+                                                  <div className="text-[10px] text-slate-400 font-bold uppercase">
+                                                      Resp: {purchase.completedBy}
+                                                  </div>
+                                              </div>
+                                          </div>
+                                      ))}
+                                  </div>
+                              ) : (
+                                  <p className="text-slate-400 italic text-center py-10">Nenhuma compra registada.</p>
+                              )}
+                          </div>
+                      </div>
+                  )}
+
+                  {activeTab === 'inventory' && (
+                      <div className="space-y-6 animate-slide-up">
+                          <div className="bg-white dark:bg-slate-800 p-8 rounded-[32px] border border-slate-100 dark:border-slate-700">
+                              <h3 className="font-black text-[#003366] dark:text-white mb-6 uppercase text-xs tracking-widest">Trabalho Operacional (Contagem)</h3>
+                              {dayData.inventory ? (
+                                  <div className="space-y-6">
+                                      <div className={`p-6 rounded-[24px] border ${dayData.inventory.status === 'OK' ? 'bg-green-50/50 border-green-100 dark:bg-green-900/10 dark:border-green-900/20' : 'bg-amber-50/50 border-amber-100 dark:bg-amber-900/10 dark:border-amber-900/20'}`}>
+                                          <div className="flex justify-between items-center mb-4">
+                                              <div className="flex items-center gap-3">
+                                                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${dayData.inventory.status === 'OK' ? 'bg-green-500 text-white' : 'bg-amber-500 text-white'}`}>
+                                                      {dayData.inventory.status === 'OK' ? <CheckCircle size={20} /> : <AlertTriangle size={20} />}
+                                                  </div>
+                                                  <div>
+                                                      <p className="text-xs font-black text-slate-400 uppercase">Status da Contagem</p>
+                                                      <p className={`font-black uppercase ${dayData.inventory.status === 'OK' ? 'text-green-600' : 'text-amber-600'}`}>
+                                                          {dayData.inventory.status === 'OK' ? 'Equipamentos OK' : 'Divergência Detectada'}
+                                                      </p>
+                                                  </div>
+                                              </div>
+                                              <div className="text-right">
+                                                  <p className="text-xs font-black text-slate-400 uppercase">Itens Conferidos</p>
+                                                  <p className="font-black text-slate-900 dark:text-white">{dayData.inventory.totalItems}</p>
+                                              </div>
+                                          </div>
+
+                                          {dayData.inventory.discrepancies.length > 0 && (
+                                              <div className="mt-4 space-y-2">
+                                                  <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Detalhes das Divergências:</p>
+                                                  {dayData.inventory.discrepancies.map((d, idx) => (
+                                                      <div key={idx} className="flex justify-between items-center text-xs p-2 bg-white dark:bg-slate-800 rounded-lg">
+                                                          <span className="font-medium text-slate-700 dark:text-slate-300">{d.name}</span>
+                                                          <span className={`font-bold ${d.diff < 0 ? 'text-red-500' : 'text-green-500'}`}>
+                                                              {d.diff > 0 ? '+' : ''}{d.diff} unidades
+                                                          </span>
+                                                      </div>
+                                                  ))}
+                                              </div>
+                                          )}
+
+                                          {dayData.inventory.justification && (
+                                              <div className="mt-4 p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700">
+                                                  <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Justificação:</p>
+                                                  <p className="text-xs text-slate-600 dark:text-slate-400 italic">"{dayData.inventory.justification}"</p>
+                                              </div>
+                                          )}
+
+                                          <div className="flex items-center justify-between pt-4 mt-4 border-t border-slate-200 dark:border-slate-700">
+                                              <div className="flex items-center gap-2 text-[10px] text-slate-400 font-bold uppercase">
+                                                  <Clock size={12} />
+                                                  {/* Assuming ID is timestamp if no generatedAt is present in InventoryLog */}
+                                                  {new Date(parseInt(dayData.inventory.id)).toLocaleTimeString('pt-AO', { hour: '2-digit', minute: '2-digit' })}
+                                              </div>
+                                              <div className="text-[10px] text-slate-400 font-bold uppercase">
+                                                  Realizado por: {dayData.inventory.performedBy}
+                                              </div>
+                                          </div>
+                                      </div>
+                                  </div>
+                              ) : (
+                                  <div className="flex flex-col items-center justify-center py-20 text-slate-400 opacity-50">
+                                      <Package size={64} className="mb-4" />
+                                      <p className="font-bold">Nenhuma contagem de equipamentos realizada nesta data.</p>
+                                  </div>
                               )}
                           </div>
                       </div>

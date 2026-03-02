@@ -121,7 +121,7 @@ const Expenses: React.FC = () => {
     };
 
     addExpense(newExpense);
-    processTransaction('withdraw', 'main', amountVal, `Despesa: ${formData.title}`);
+    processTransaction('withdraw', 'main', amountVal, `Despesa: ${formData.title}`, formData.category, newExpense.id, 'expense', newExpense.user);
     showToast('Despesa registrada com sucesso!');
     
     // Reset Form

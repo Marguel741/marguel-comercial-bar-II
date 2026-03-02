@@ -13,40 +13,15 @@ import DirectService from './pages/DirectService';
 import GlobalCalendar from './pages/GlobalCalendar';
 import TestCycle from './pages/TestCycle'; // Importação da nova página
 import SplashGenerator from './pages/SplashGenerator';
+import AccessDenied from './pages/AccessDenied';
 import Sidebar from './components/Sidebar';
-import { User, UserRole } from './types';
+import { User, UserRole, UserPermissions } from './types';
+import { DEFAULT_PERMISSIONS, hasPermission } from './src/utils/permissions';
 import { ProductProvider } from './contexts/ProductContext';
 import { FinanceProvider } from './contexts/FinanceContext';
 import { LayoutProvider } from './contexts/LayoutContext';
 import { ThemeProvider } from './contexts/ThemeContext';
-
-// --- MOCK DATABASE FOR TESTING ---
-const MOCK_USERS_DB: User[] = [
-  { 
-    id: '1', name: 'Admin Geral', email: 'admin@marguel.com', role: UserRole.ADMIN_GERAL, isApproved: true, 
-    permissions: { viewAccountStatus: true, managePrices: true, canDeleteRecords: true, canManageUsers: true, canEditSales: true, canEditInventory: true, canEditExpenses: true, canEditPurchases: true } 
-  },
-  { 
-    id: '2', name: 'Proprietário', email: 'dono@marguel.com', role: UserRole.PROPRIETARIO, isApproved: true, 
-    permissions: { viewAccountStatus: true, managePrices: true, canDeleteRecords: true, canManageUsers: true, canEditSales: true, canEditInventory: true, canEditExpenses: true, canEditPurchases: true } 
-  },
-  { 
-    id: '3', name: 'Gerente Loja', email: 'gerente@marguel.com', role: UserRole.GERENTE, isApproved: true, 
-    permissions: { viewAccountStatus: true, managePrices: false, canEditSales: true, canEditInventory: true, canEditExpenses: true, canEditPurchases: true } 
-  },
-  { 
-    id: '4', name: 'Colab. Efetivo', email: 'efetivo@marguel.com', role: UserRole.COLABORADOR_EFETIVO, isApproved: true, 
-    permissions: { viewAccountStatus: false, managePrices: false, canEditSales: true, canEditInventory: true, canEditExpenses: true, canEditPurchases: false } 
-  },
-  { 
-    id: '5', name: 'Funcionário', email: 'func@marguel.com', role: UserRole.FUNCIONARIO, isApproved: true, 
-    permissions: { viewAccountStatus: false, managePrices: false, canEditSales: true, canEditInventory: true, canEditExpenses: true, canEditPurchases: false } 
-  },
-  { 
-    id: '6', name: 'Analista Remoto', email: 'remoto@marguel.com', role: UserRole.COLABORADOR_REMOTO, isApproved: true, 
-    permissions: { viewAccountStatus: true, managePrices: false, canEditSales: false, canEditInventory: false, canEditExpenses: false, canEditPurchases: false } // Apenas Leitura
-  },
-];
+import { getMockUsers, saveMockUsers } from './src/services/mockUsers';
 
 // Auth Context
 interface AuthContextType {
@@ -55,6 +30,7 @@ interface AuthContextType {
   logout: () => void;
   isLoading: boolean;
   switchUser: (role: UserRole) => void; // Function for dev testing
+  refreshUser: () => void; // Function to refresh current user's permissions
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -65,22 +41,54 @@ export const useAuth = () => {
   return context;
 };
 
+// Protected Route Component
+const ProtectedRoute: React.FC<{ children: React.ReactNode, permission: keyof UserPermissions }> = ({ children, permission }) => {
+  const { user } = useAuth();
+  
+  if (!user) return <Navigate to="/login" />;
+  
+  if (!hasPermission(user, permission)) {
+    return <Navigate to="/access-denied" />;
+  }
+  
+  return <>{children}</>;
+};
+
 const App: React.FC = () => {
   const [showSplash, setShowSplash] = useState(true);
   // Initialize with Admin user by default
-  const [user, setUser] = useState<User | null>(MOCK_USERS_DB[0]);
+  const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    // Splash screen is now handled by video end event
+    // Initialize user from mock DB
+    const users = getMockUsers();
+    setUser(users[0]); // Default to first user (Admin)
+    
+    // Listen for user updates to refresh current session
+    const handleUsersUpdated = () => {
+        refreshUser();
+    };
+    window.addEventListener('mg_users_updated', handleUsersUpdated);
+    return () => window.removeEventListener('mg_users_updated', handleUsersUpdated);
   }, []);
+
+  const refreshUser = () => {
+    if (!user) return;
+    const users = getMockUsers();
+    const updatedUser = users.find(u => u.id === user.id);
+    if (updatedUser) {
+        setUser(updatedUser);
+    }
+  };
 
   const login = async (email: string, pass: string) => {
     setIsLoading(true);
     // Simulate API delay
     await new Promise(resolve => setTimeout(resolve, 800));
     
-    const foundUser = MOCK_USERS_DB.find(u => u.email.toLowerCase() === email.toLowerCase());
+    const users = getMockUsers();
+    const foundUser = users.find(u => u.email.toLowerCase() === email.toLowerCase());
     
     if (foundUser && foundUser.isApproved) {
         setUser(foundUser);
@@ -98,7 +106,8 @@ const App: React.FC = () => {
 
   // Helper for Testing: Switch Roles Instantly
   const switchUser = (role: UserRole) => {
-    const targetUser = MOCK_USERS_DB.find(u => u.role === role);
+    const users = getMockUsers();
+    const targetUser = users.find(u => u.role === role);
     if (targetUser) {
         setUser(targetUser);
     }
@@ -108,7 +117,7 @@ const App: React.FC = () => {
 
   return (
     <ThemeProvider>
-      <AuthContext.Provider value={{ user, login, logout, isLoading, switchUser }}>
+      <AuthContext.Provider value={{ user, login, logout, isLoading, switchUser, refreshUser }}>
         <ProductProvider>
           <FinanceProvider>
             <LayoutProvider>
@@ -119,14 +128,56 @@ const App: React.FC = () => {
                     <Routes>
                       <Route path="/login" element={<Navigate to="/" />} />
                       <Route path="/" element={<Dashboard />} />
-                      <Route path="/direct-service" element={<DirectService />} />
-                      <Route path="/calendar" element={<GlobalCalendar />} />
-                      <Route path="/sales" element={<Sales />} />
-                      <Route path="/inventory" element={<Inventory />} />
-                      <Route path="/prices" element={<Prices />} />
-                      <Route path="/expenses" element={<Expenses />} />
-                      <Route path="/account" element={<AccountStatus />} />
-                      <Route path="/users" element={<UserManagement />} />
+                      <Route path="/access-denied" element={<AccessDenied />} />
+                      
+                      <Route path="/direct-service" element={
+                        <ProtectedRoute permission="direct_service_view">
+                          <DirectService />
+                        </ProtectedRoute>
+                      } />
+                      
+                      <Route path="/calendar" element={
+                        <ProtectedRoute permission="calendar_view">
+                          <GlobalCalendar />
+                        </ProtectedRoute>
+                      } />
+                      
+                      <Route path="/sales" element={
+                        <ProtectedRoute permission="sales_view">
+                          <Sales />
+                        </ProtectedRoute>
+                      } />
+                      
+                      <Route path="/inventory" element={
+                        <ProtectedRoute permission="inventory_view">
+                          <Inventory />
+                        </ProtectedRoute>
+                      } />
+                      
+                      <Route path="/prices" element={
+                        <ProtectedRoute permission="prices_view">
+                          <Prices />
+                        </ProtectedRoute>
+                      } />
+                      
+                      <Route path="/expenses" element={
+                        <ProtectedRoute permission="expenses_view">
+                          <Expenses />
+                        </ProtectedRoute>
+                      } />
+                      
+                      <Route path="/account" element={
+                        <ProtectedRoute permission="finance_view">
+                          <AccountStatus />
+                        </ProtectedRoute>
+                      } />
+                      
+                      <Route path="/users" element={
+                        <ProtectedRoute permission="admin_users_view">
+                          <UserManagement />
+                        </ProtectedRoute>
+                      } />
+                      
                       <Route path="/test-cycle" element={<TestCycle />} />
                       <Route path="/generate-splash" element={<SplashGenerator />} />
                       <Route path="*" element={<Navigate to="/" />} />

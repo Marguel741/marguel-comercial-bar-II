@@ -9,14 +9,86 @@ export enum UserRole {
 }
 
 export interface UserPermissions {
-  viewAccountStatus: boolean;
-  managePrices: boolean;
-  canDeleteRecords?: boolean;
-  canManageUsers?: boolean;
-  canEditSales?: boolean;
-  canEditInventory?: boolean;
-  canEditExpenses?: boolean;
-  canEditPurchases?: boolean;
+  // 1. ADMINISTRAÇÃO DO SISTEMA
+  admin_users_view: boolean;
+  admin_users_create: boolean;
+  admin_users_edit: boolean;
+  admin_users_delete: boolean;
+  admin_users_permissions: boolean;
+  admin_global_admin: boolean;
+  admin_global_read_only: boolean;
+  admin_global_block_hours: boolean;
+  admin_logs_view: boolean;
+  admin_history_view: boolean;
+
+  // 2. ATENDIMENTO DIRECTO
+  direct_service_view: boolean;
+  direct_service_execute: boolean;
+  direct_service_reports: boolean;
+  direct_service_void: boolean;
+
+  // 3. CONTROLE DE VENDAS
+  sales_view: boolean;
+  sales_execute: boolean;
+  sales_edit: boolean;
+  sales_void: boolean;
+  sales_view_margins: boolean;
+
+  // 4. INVENTÁRIO
+  inventory_view: boolean;
+  inventory_product_create: boolean;
+  inventory_product_edit: boolean;
+  inventory_product_delete: boolean;
+  inventory_edit: boolean;
+  inventory_stock_adjust: boolean;
+  inventory_category_manage: boolean;
+  inventory_view_costs: boolean;
+
+  // 5. PREÇOS & PROMOÇÕES
+  prices_view: boolean;
+  prices_edit: boolean;
+  prices_mix_match: boolean;
+  prices_promo_create: boolean;
+  prices_promo_delete: boolean;
+
+  // 6. CENTRAL DE COMPRAS
+  purchases_view: boolean;
+  purchases_execute: boolean;
+  purchases_simulate: boolean;
+  purchases_void: boolean;
+  purchases_edit_finalized: boolean;
+  purchases_reopen: boolean;
+  purchases_approve: boolean;
+  purchases_limit: number; // Max value per purchase
+
+  // 7. DESPESAS
+  expenses_view: boolean;
+  expenses_execute: boolean;
+  expenses_approve: boolean;
+  expenses_void: boolean;
+  expenses_limit: number; // Max value per expense
+
+  // 8. ESTADO DE CONTA & FINANCEIRO
+  finance_view: boolean;
+  finance_edit: boolean;
+  finance_card_create: boolean;
+  finance_card_delete: boolean;
+  finance_transfer: boolean;
+  finance_approve_movement: boolean;
+  finance_reports_view: boolean;
+  finance_export: boolean;
+
+  // 9. CALENDÁRIO MARGUEL
+  calendar_view: boolean;
+  calendar_event_create: boolean;
+  calendar_event_edit: boolean;
+  calendar_event_delete: boolean;
+
+  // 10. SISTEMA & CONFIGURAÇÕES
+  settings_edit: boolean;
+  sync_manage: boolean;
+  backup_manage: boolean;
+  restore_system: boolean;
 }
 
 export interface User {
@@ -121,6 +193,8 @@ export interface Equipment {
   qty: number;
   prevQty: number; 
   status: 'Operacional' | 'Danificado' | 'Em Manutenção';
+  category?: string;
+  observations?: string;
 }
 
 export interface Card {
@@ -131,6 +205,16 @@ export interface Card {
   color: string;
   type: 'Corrente' | 'Poupança' | 'Outro';
   validity: string;
+}
+
+export interface AuditLog {
+  id: string;
+  action: string;
+  entity: string;
+  entityId: string;
+  details: string;
+  performedBy: string;
+  timestamp: number;
 }
 
 export interface StockOperationLog {
@@ -177,6 +261,9 @@ export interface Transaction {
   amount: number;
   date: string;
   description: string;
+  referenceId?: string;
+  referenceType?: 'purchase' | 'expense' | 'sales_report' | 'deposit' | 'withdrawal' | 'day_closure';
+  performedBy?: string;
 }
 
 export interface SalesReport {

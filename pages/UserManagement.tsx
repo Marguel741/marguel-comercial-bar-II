@@ -1,47 +1,32 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, Filter, Shield, User as UserIcon, CheckCircle, XCircle, AlertTriangle, MoreVertical, Ban, Eye, EyeOff, DollarSign, Lock, ShoppingCart, Package, Wallet, ShoppingBag, Save, RefreshCw } from 'lucide-react';
 import SoftCard from '../components/SoftCard';
-import { User, UserRole } from '../types';
+import { User, UserRole, UserPermissions } from '../types';
 import { useAuth } from '../App';
 import { useLayout } from '../contexts/LayoutContext';
+import { DEFAULT_PERMISSIONS } from '../src/utils/permissions';
+import { getMockUsers, saveMockUsers } from '../src/services/mockUsers';
 
 const UserManagement: React.FC = () => {
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, refreshUser } = useAuth();
   const { sidebarMode, triggerHaptic } = useLayout();
   
   // Mock Users Data
-  const [users, setUsers] = useState<User[]>([
-    { 
-      id: '1', name: 'Administrador Geral', email: 'admin@marguel.com', role: UserRole.ADMIN_GERAL, isApproved: true, isBanned: false,
-      permissions: { viewAccountStatus: true, managePrices: true, canEditSales: true, canEditInventory: true, canEditExpenses: true, canEditPurchases: true }
-    },
-    { 
-      id: '2', name: 'Sr. Proprietário', email: 'dono@marguel.com', role: UserRole.PROPRIETARIO, isApproved: true, isBanned: false,
-      permissions: { viewAccountStatus: true, managePrices: true, canEditSales: true, canEditInventory: true, canEditExpenses: true, canEditPurchases: true }
-    },
-    { 
-      id: '3', name: 'José Gerente', email: 'jose@marguel.com', role: UserRole.GERENTE, isApproved: true, isBanned: false,
-      permissions: { viewAccountStatus: true, managePrices: false, canEditSales: true, canEditInventory: true, canEditExpenses: true, canEditPurchases: true }
-    },
-    { 
-      id: '4', name: 'Maria Efetiva', email: 'maria@marguel.com', role: UserRole.COLABORADOR_EFETIVO, isApproved: true, isBanned: false,
-      permissions: { viewAccountStatus: false, managePrices: false, canEditSales: true, canEditInventory: true, canEditExpenses: true, canEditPurchases: false }
-    },
-    { 
-      id: '5', name: 'João Funcionário', email: 'joao@marguel.com', role: UserRole.FUNCIONARIO, isApproved: true, isBanned: false,
-      permissions: { viewAccountStatus: false, managePrices: false, canEditSales: true, canEditInventory: true, canEditExpenses: true, canEditPurchases: false }
-    },
-    { 
-      id: '6', name: 'Analista Remoto', email: 'remoto@marguel.com', role: UserRole.COLABORADOR_REMOTO, isApproved: true, isBanned: false,
-      permissions: { viewAccountStatus: true, managePrices: false, canEditSales: false, canEditInventory: false, canEditExpenses: false, canEditPurchases: false }
-    },
-  ]);
+  const [users, setUsers] = useState<User[]>([]);
+
+  useEffect(() => {
+    setUsers(getMockUsers());
+  }, []);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState<string>('ALL');
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
   
+  // Permission Matrix Modal State
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [tempPermissions, setTempPermissions] = useState<UserPermissions | null>(null);
+
   // Track modified users to show save button
   const [modifiedUsers, setModifiedUsers] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<{ show: boolean, message: string }>({ show: false, message: '' });
@@ -53,50 +38,65 @@ const UserManagement: React.FC = () => {
 
   // Actions
   const handleApprove = (id: string) => {
-    setUsers(users.map(u => u.id === id ? { ...u, isApproved: true } : u));
+    const updated = users.map(u => u.id === id ? { ...u, isApproved: true } : u);
+    setUsers(updated);
+    saveMockUsers(updated);
+    showToast('Usuário aprovado com sucesso!');
   };
 
   const handleBanToggle = (id: string) => {
-    setUsers(users.map(u => u.id === id ? { ...u, isBanned: !u.isBanned } : u));
+    const updated = users.map(u => u.id === id ? { ...u, isBanned: !u.isBanned } : u);
+    setUsers(updated);
+    saveMockUsers(updated);
+    showToast(updated.find(u => u.id === id)?.isBanned ? 'Usuário banido!' : 'Banimento removido!');
   };
 
   const handleRoleChange = (id: string, newRole: UserRole) => {
-    setUsers(users.map(u => u.id === id ? { ...u, role: newRole } : u));
+    const updated = users.map(u => u.id === id ? { ...u, role: newRole, permissions: DEFAULT_PERMISSIONS[newRole] } : u);
+    setUsers(updated);
+    saveMockUsers(updated);
+    showToast(`Cargo de ${updated.find(u => u.id === id)?.name} alterado!`);
   };
 
-  // Permission Toggle Action
-  const handlePermissionToggle = (userId: string, key: keyof import('../types').UserPermissions) => {
-    setUsers(prevUsers => prevUsers.map(u => {
-      if (u.id === userId) {
-        const currentPerms = u.permissions || { 
-            viewAccountStatus: false, managePrices: false,
-            canEditSales: false, canEditInventory: false, canEditExpenses: false, canEditPurchases: false
-        };
-        
-        // Add to modified set
-        setModifiedUsers(prev => new Set(prev).add(userId));
-        
-        return {
-          ...u,
-          permissions: {
-            ...currentPerms,
-            [key]: !currentPerms[key]
-          }
-        };
+  // Permission Matrix Actions
+  const openPermissionMatrix = (user: User) => {
+    setEditingUser(user);
+    setTempPermissions({ ...(user.permissions || DEFAULT_PERMISSIONS[user.role]) });
+  };
+
+  const closePermissionMatrix = () => {
+    setEditingUser(null);
+    setTempPermissions(null);
+  };
+
+  const handleTempPermissionToggle = (key: keyof UserPermissions) => {
+    if (!tempPermissions) return;
+    
+    setTempPermissions(prev => {
+      if (!prev) return null;
+      const val = prev[key];
+      if (typeof val === 'boolean') {
+        return { ...prev, [key]: !val };
       }
-      return u;
-    }));
+      return prev;
+    });
   };
 
-  const handleSavePermissions = (userId: string) => {
-      triggerHaptic('success');
-      // Here you would typically call an API
-      setModifiedUsers(prev => {
-          const next = new Set(prev);
-          next.delete(userId);
-          return next;
-      });
-      showToast("Permissões atualizadas com sucesso!");
+  const handleTempLimitChange = (key: 'purchases_limit' | 'expenses_limit', value: string) => {
+    if (!tempPermissions) return;
+    const numValue = parseFloat(value) || 0;
+    setTempPermissions(prev => prev ? { ...prev, [key]: numValue } : null);
+  };
+
+  const savePermissions = () => {
+    if (!editingUser || !tempPermissions) return;
+    
+    const updated = users.map(u => u.id === editingUser.id ? { ...u, permissions: tempPermissions } : u);
+    setUsers(updated);
+    saveMockUsers(updated);
+    
+    showToast(`Permissões de ${editingUser.name} atualizadas!`);
+    closePermissionMatrix();
   };
 
   // Filter Logic
@@ -196,7 +196,7 @@ const UserManagement: React.FC = () => {
           const isMe = currentUser.id === u.id;
           
           // Helper to check permission
-          const hasPerm = (key: keyof import('../types').UserPermissions) => u.permissions?.[key] === true;
+          const hasPerm = (key: keyof UserPermissions) => u.permissions?.[key] === true;
           
           // Logic for lock states
           const isOwner = u.role === UserRole.PROPRIETARIO;
@@ -245,77 +245,16 @@ const UserManagement: React.FC = () => {
               {/* Specific Permissions Section */}
               <div className="mb-4 bg-slate-50 dark:bg-slate-700/50 p-3 rounded-xl border border-slate-100 dark:border-slate-600">
                 <p className="text-[10px] font-bold text-slate-400 uppercase mb-2 flex items-center gap-1">
-                  <Shield size={10} /> Permissões de Edição
+                  <Shield size={10} /> Matriz de Permissões
                 </p>
-                <div className="space-y-2">
-                  
-                  {/* Edit Sales */}
-                  <div className="flex justify-between items-center">
-                     <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 font-medium">
-                       {hasPerm('canEditSales') ? <ShoppingCart size={14} className="text-blue-500"/> : <Lock size={14} className="text-slate-400"/>}
-                       Editar Vendas
-                     </div>
-                     <button onClick={() => handlePermissionToggle(u.id, 'canEditSales')} disabled={isMe || u.isBanned || isHighLevel} className={`w-8 h-4 rounded-full p-0.5 transition-colors flex items-center ${hasPerm('canEditSales') ? 'bg-[#003366]' : 'bg-slate-300 dark:bg-slate-600 justify-start'}`}>
-                       <div className={`w-3 h-3 bg-white rounded-full shadow-sm ${hasPerm('canEditSales') ? 'ml-auto' : ''}`}></div>
-                     </button>
-                  </div>
-
-                  {/* Edit Inventory */}
-                  <div className="flex justify-between items-center">
-                     <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 font-medium">
-                       {hasPerm('canEditInventory') ? <Package size={14} className="text-green-500"/> : <Lock size={14} className="text-slate-400"/>}
-                       Editar Inventário
-                     </div>
-                     <button onClick={() => handlePermissionToggle(u.id, 'canEditInventory')} disabled={isMe || u.isBanned || isHighLevel} className={`w-8 h-4 rounded-full p-0.5 transition-colors flex items-center ${hasPerm('canEditInventory') ? 'bg-[#003366]' : 'bg-slate-300 dark:bg-slate-600 justify-start'}`}>
-                       <div className={`w-3 h-3 bg-white rounded-full shadow-sm ${hasPerm('canEditInventory') ? 'ml-auto' : ''}`}></div>
-                     </button>
-                  </div>
-
-                  {/* Edit Expenses */}
-                  <div className="flex justify-between items-center">
-                     <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 font-medium">
-                       {hasPerm('canEditExpenses') ? <Wallet size={14} className="text-purple-500"/> : <Lock size={14} className="text-slate-400"/>}
-                       Editar Despesas
-                     </div>
-                     <button onClick={() => handlePermissionToggle(u.id, 'canEditExpenses')} disabled={isMe || u.isBanned || isHighLevel} className={`w-8 h-4 rounded-full p-0.5 transition-colors flex items-center ${hasPerm('canEditExpenses') ? 'bg-[#003366]' : 'bg-slate-300 dark:bg-slate-600 justify-start'}`}>
-                       <div className={`w-3 h-3 bg-white rounded-full shadow-sm ${hasPerm('canEditExpenses') ? 'ml-auto' : ''}`}></div>
-                     </button>
-                  </div>
-
-                  {/* Edit Purchases */}
-                  <div className="flex justify-between items-center">
-                     <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 font-medium">
-                       {hasPerm('canEditPurchases') ? <ShoppingBag size={14} className="text-amber-500"/> : <Lock size={14} className="text-slate-400"/>}
-                       Efectuar Compras
-                     </div>
-                     <button onClick={() => handlePermissionToggle(u.id, 'canEditPurchases')} disabled={isMe || u.isBanned || isHighLevel} className={`w-8 h-4 rounded-full p-0.5 transition-colors flex items-center ${hasPerm('canEditPurchases') ? 'bg-[#003366]' : 'bg-slate-300 dark:bg-slate-600 justify-start'}`}>
-                       <div className={`w-3 h-3 bg-white rounded-full shadow-sm ${hasPerm('canEditPurchases') ? 'ml-auto' : ''}`}></div>
-                     </button>
-                  </div>
-
-                  {/* View Account Status */}
-                  <div className="flex justify-between items-center pt-2 border-t border-slate-200 dark:border-slate-600 mt-2">
-                     <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 font-medium">
-                       {hasPerm('viewAccountStatus') ? <Eye size={14} className="text-blue-500"/> : <EyeOff size={14} className="text-slate-400"/>}
-                       Ver Estado Conta
-                     </div>
-                     <button onClick={() => handlePermissionToggle(u.id, 'viewAccountStatus')} disabled={isMe || u.isBanned || isHighLevel} className={`w-8 h-4 rounded-full p-0.5 transition-colors flex items-center ${hasPerm('viewAccountStatus') ? 'bg-[#003366]' : 'bg-slate-300 dark:bg-slate-600 justify-start'}`}>
-                       <div className={`w-3 h-3 bg-white rounded-full shadow-sm ${hasPerm('viewAccountStatus') ? 'ml-auto' : ''}`}></div>
-                     </button>
-                  </div>
-
-                </div>
+                <button 
+                  onClick={() => openPermissionMatrix(u)}
+                  disabled={isMe || u.isBanned || isHighLevel}
+                  className="w-full py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg text-xs font-bold text-[#003366] dark:text-white hover:bg-slate-50 dark:hover:bg-slate-700 transition-all flex items-center justify-center gap-2"
+                >
+                  <Filter size={14} /> Gerir Permissões Granulares
+                </button>
               </div>
-
-              {/* SAVE BUTTON FOR PERMISSIONS */}
-              {hasPendingChanges && (
-                  <button 
-                    onClick={() => handleSavePermissions(u.id)}
-                    className="w-full mb-4 py-2 bg-blue-600 text-white font-bold rounded-xl shadow-lg shadow-blue-200 animate-slide-up hover:bg-blue-700 flex items-center justify-center gap-2 text-sm"
-                  >
-                    <Save size={16} /> Atualizar Permissões
-                  </button>
-              )}
 
               {/* Actions */}
               <div className="pt-4 border-t border-slate-100 dark:border-slate-700 space-y-3">
@@ -376,6 +315,176 @@ const UserManagement: React.FC = () => {
                 </div>
             </div>
         </footer>
+
+        {/* PERMISSION MATRIX MODAL */}
+        {editingUser && tempPermissions && (
+          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+            <div className="bg-white dark:bg-slate-900 w-full max-w-4xl max-h-[90vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-scale-in">
+              {/* Modal Header */}
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-[#003366] rounded-2xl flex items-center justify-center text-white font-bold text-xl">
+                    {editingUser.name.charAt(0)}
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-[#003366] dark:text-white">Matriz de Permissões</h2>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">Configurando acessos para {editingUser.name}</p>
+                  </div>
+                </div>
+                <button onClick={closePermissionMatrix} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors">
+                  <XCircle size={24} className="text-slate-400" />
+                </button>
+              </div>
+
+              {/* Modal Content - Scrollable Matrix */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
+                
+                {/* Section Helper */}
+                {Object.entries({
+                  "1. ADMINISTRAÇÃO DO SISTEMA": [
+                    { key: 'admin_users_view', label: 'Ver Usuários' },
+                    { key: 'admin_users_create', label: 'Criar Usuário' },
+                    { key: 'admin_users_edit', label: 'Editar Usuário' },
+                    { key: 'admin_users_delete', label: 'Eliminar Usuário' },
+                    { key: 'admin_users_permissions', label: 'Alterar Permissões' },
+                    { key: 'admin_global_admin', label: 'Acesso Total (Super Admin)', color: 'text-red-600' },
+                    { key: 'admin_global_read_only', label: 'Modo Somente Leitura Global' },
+                    { key: 'admin_global_block_hours', label: 'Bloquear Acesso Fora do Horário' },
+                    { key: 'admin_logs_view', label: 'Ver Logs do Sistema' },
+                    { key: 'admin_history_view', label: 'Ver Histórico de Alterações' },
+                  ],
+                  "2. ATENDIMENTO DIRECTO": [
+                    { key: 'direct_service_view', label: 'Ver Atendimento Directo' },
+                    { key: 'direct_service_execute', label: 'Efectuar Atendimento Directo' },
+                    { key: 'direct_service_reports', label: 'Ver Relatórios de Atendimento' },
+                    { key: 'direct_service_void', label: 'Anular Atendimento' },
+                  ],
+                  "3. CONTROLE DE VENDAS": [
+                    { key: 'sales_view', label: 'Ver Controle de Vendas' },
+                    { key: 'sales_execute', label: 'Efectuar Vendas' },
+                    { key: 'sales_edit', label: 'Efectuar Alterações em Controle de Vendas' },
+                    { key: 'sales_void', label: 'Anular Venda' },
+                    { key: 'sales_view_margins', label: 'Ver Margem de Lucro Global' },
+                  ],
+                  "4. INVENTÁRIO": [
+                    { key: 'inventory_view', label: 'Ver Inventário' },
+                    { key: 'inventory_product_create', label: 'Criar Produto' },
+                    { key: 'inventory_product_edit', label: 'Editar Produto' },
+                    { key: 'inventory_product_delete', label: 'Eliminar Produto' },
+                    { key: 'inventory_edit', label: 'Efectuar Alterações em Inventário' },
+                    { key: 'inventory_stock_adjust', label: 'Ajuste Manual de Estoque' },
+                    { key: 'inventory_category_manage', label: 'Alterar Categoria' },
+                    { key: 'inventory_view_costs', label: 'Ver Custo Real do Produto' },
+                  ],
+                  "5. PREÇOS & PROMOÇÕES": [
+                    { key: 'prices_view', label: 'Ver Preços & Compras' },
+                    { key: 'prices_edit', label: 'Alterar Preços' },
+                    { key: 'prices_mix_match', label: 'Configurar Mix & Match' },
+                    { key: 'prices_promo_create', label: 'Criar Promoção' },
+                    { key: 'prices_promo_delete', label: 'Eliminar Promoção' },
+                  ],
+                  "6. CENTRAL DE COMPRAS": [
+                    { key: 'purchases_view', label: 'Ver Compras' },
+                    { key: 'purchases_execute', label: 'Efectuar Compras' },
+                    { key: 'purchases_simulate', label: 'Efectuar Simulações de Compras' },
+                    { key: 'purchases_void', label: 'Anular Compra' },
+                    { key: 'purchases_edit_finalized', label: 'Editar Compra Após Finalização' },
+                    { key: 'purchases_reopen', label: 'Reabrir Compra' },
+                    { key: 'purchases_approve', label: 'Aprovar Compra' },
+                  ],
+                  "7. DESPESAS": [
+                    { key: 'expenses_view', label: 'Ver Despesas' },
+                    { key: 'expenses_execute', label: 'Efectuar Despesas' },
+                    { key: 'expenses_approve', label: 'Aprovar Despesas' },
+                    { key: 'expenses_void', label: 'Anular Despesa' },
+                  ],
+                  "8. ESTADO DE CONTA & FINANCEIRO": [
+                    { key: 'finance_view', label: 'Ver Estado de Conta' },
+                    { key: 'finance_edit', label: 'Fazer Alterações em Estado de Conta' },
+                    { key: 'finance_card_create', label: 'Criar Cartão Corporativo' },
+                    { key: 'finance_card_delete', label: 'Eliminar Cartão' },
+                    { key: 'finance_transfer', label: 'Transferir Saldo entre Cartões' },
+                    { key: 'finance_approve_movement', label: 'Aprovar Movimentação' },
+                    { key: 'finance_reports_view', label: 'Ver Relatórios Financeiros' },
+                    { key: 'finance_export', label: 'Exportar Relatórios (PDF/Excel)' },
+                  ],
+                  "9. CALENDÁRIO MARGUEL": [
+                    { key: 'calendar_view', label: 'Ver Calendário Marguel' },
+                    { key: 'calendar_event_create', label: 'Criar Evento' },
+                    { key: 'calendar_event_edit', label: 'Editar Evento' },
+                    { key: 'calendar_event_delete', label: 'Eliminar Evento' },
+                  ],
+                  "10. SISTEMA & CONFIGURAÇÕES": [
+                    { key: 'settings_edit', label: 'Alterar Configurações Gerais' },
+                    { key: 'sync_manage', label: 'Ativar/Desativar WiFi/Sincronização' },
+                    { key: 'backup_manage', label: 'Gerir Backup' },
+                    { key: 'restore_system', label: 'Restaurar Sistema' },
+                  ]
+                }).map(([section, perms]) => (
+                  <div key={section} className="space-y-4">
+                    <h3 className="text-sm font-black text-[#003366] dark:text-blue-400 border-b border-slate-100 dark:border-slate-800 pb-2 flex items-center gap-2">
+                      <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                      {section}
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3">
+                      {perms.map((p) => (
+                        <div key={p.key} className="flex items-center justify-between p-2 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-xl transition-colors">
+                          <span className={`text-xs font-medium ${p.color || 'text-slate-600 dark:text-slate-300'}`}>{p.label}</span>
+                          <button 
+                            onClick={() => handleTempPermissionToggle(p.key as keyof UserPermissions)}
+                            className={`w-10 h-5 rounded-full p-1 transition-all flex items-center ${tempPermissions[p.key as keyof UserPermissions] ? 'bg-green-500' : 'bg-slate-300 dark:bg-slate-700 justify-start'}`}
+                          >
+                            <div className={`w-3 h-3 bg-white rounded-full shadow-sm transform transition-transform ${tempPermissions[p.key as keyof UserPermissions] ? 'translate-x-5' : ''}`}></div>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    {/* Limits for specific sections */}
+                    {section.includes("COMPRAS") && (
+                      <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-2xl border border-blue-100 dark:border-blue-800/50">
+                        <label className="text-xs font-bold text-blue-700 dark:text-blue-300 block mb-2">Limite Máximo por Compra (Kz)</label>
+                        <input 
+                          type="number" 
+                          value={tempPermissions.purchases_limit}
+                          onChange={(e) => handleTempLimitChange('purchases_limit', e.target.value)}
+                          className="w-full bg-white dark:bg-slate-800 border-none rounded-xl py-2 px-4 text-sm soft-ui-inset"
+                        />
+                      </div>
+                    )}
+                    {section.includes("DESPESAS") && (
+                      <div className="mt-4 p-4 bg-red-50 dark:bg-red-900/20 rounded-2xl border border-red-100 dark:border-red-800/50">
+                        <label className="text-xs font-bold text-red-700 dark:text-red-300 block mb-2">Limite Máximo por Despesa (Kz)</label>
+                        <input 
+                          type="number" 
+                          value={tempPermissions.expenses_limit}
+                          onChange={(e) => handleTempLimitChange('expenses_limit', e.target.value)}
+                          className="w-full bg-white dark:bg-slate-800 border-none rounded-xl py-2 px-4 text-sm soft-ui-inset"
+                        />
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-6 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-end gap-3">
+                <button 
+                  onClick={closePermissionMatrix}
+                  className="px-6 py-2 text-slate-500 font-bold hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-all"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={savePermissions}
+                  className="px-8 py-2 bg-[#003366] text-white font-bold rounded-xl shadow-lg shadow-blue-200 dark:shadow-none hover:scale-[1.02] active:scale-95 transition-all flex items-center gap-2"
+                >
+                  <Save size={18} /> Salvar Matriz
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
     </div>
   );
 };

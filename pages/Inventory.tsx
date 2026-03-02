@@ -1,12 +1,13 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { Package, Thermometer, Edit2, Edit3, Bell, Plus, Search, ChevronUp, ChevronDown, AlertTriangle, Save, X, CheckCircle, Check, Trash2, Settings, ClipboardList, Send, ArrowRight, History, Lock, WifiOff, CloudOff, CloudUpload, CloudCheck } from 'lucide-react';
+import { Package, Thermometer, Edit2, Edit3, Bell, Plus, Search, ChevronUp, ChevronDown, AlertTriangle, Save, X, CheckCircle, Check, Trash2, Settings, ClipboardList, Send, ArrowRight, History, Lock, WifiOff } from 'lucide-react';
 import SoftCard from '../components/SoftCard';
 import { useProducts } from '../contexts/ProductContext';
 import { useAuth } from '../App';
-import { UserRole, InventoryLog, Equipment } from '../types'; // Importar tipos centralizados
+import { UserRole, InventoryLog, Equipment, UserPermissions } from '../types'; // Importar tipos centralizados
 import { useLayout } from '../contexts/LayoutContext';
 import SyncStatus from '../components/SyncStatus';
+import { hasPermission } from '../src/utils/permissions';
 
 const Inventory: React.FC = () => {
   const { 
@@ -24,14 +25,23 @@ const Inventory: React.FC = () => {
     isDayLocked,
     equipments,
     addEquipment,
+    updateEquipment,
     updateEquipmentQty,
     removeEquipment,
-    isSyncing,
     hasPendingChanges,
     syncData
   } = useProducts();
   const { user } = useAuth();
   const { sidebarMode, triggerHaptic } = useLayout();
+
+  // Permission Checks
+  const canCreateProduct = hasPermission(user, 'inventory_product_create');
+  const canEditProduct = hasPermission(user, 'inventory_product_edit');
+  const canDeleteProduct = hasPermission(user, 'inventory_product_delete');
+  const canAdjustStock = hasPermission(user, 'inventory_stock_adjust');
+  const canViewCosts = hasPermission(user, 'inventory_view_costs');
+  const canManageCategories = hasPermission(user, 'inventory_category_manage');
+  const canEditInventory = hasPermission(user, 'inventory_edit');
   
   // Monitor de Rede: Tenta sincronizar assim que a rede volta
   useEffect(() => {
@@ -70,6 +80,12 @@ const Inventory: React.FC = () => {
   const [showAddEquipModal, setShowAddEquipModal] = useState(false);
   const [newEquipName, setNewEquipName] = useState('');
   const [newEquipQty, setNewEquipQty] = useState('');
+  const [newEquipCategory, setNewEquipCategory] = useState('Geral');
+  const [newEquipStatus, setNewEquipStatus] = useState<'Operacional' | 'Danificado' | 'Em Manutenção'>('Operacional');
+  const [newEquipObs, setNewEquipObs] = useState('');
+  
+  const [editEquipModal, setEditEquipModal] = useState<{isOpen: boolean, data: Equipment | null}>({ isOpen: false, data: null });
+  const [deleteEquipConfirmation, setDeleteEquipConfirmation] = useState<{isOpen: boolean, equipId: string | null, equipName: string | null}>({ isOpen: false, equipId: null, equipName: null });
   
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showDateEditModal, setShowDateEditModal] = useState(false);
@@ -147,31 +163,66 @@ const Inventory: React.FC = () => {
   // --- EQUIPMENT HANDLERS ---
 
   const handleAddEquipment = () => {
-    if(isLocked) return;
+    if(isLocked || !canEditInventory) return;
     if (!newEquipName || !newEquipQty) return;
     
     triggerHaptic('success');
-    addEquipment(newEquipName, parseInt(newEquipQty)); // Chamada global
+    addEquipment({
+      name: newEquipName,
+      qty: parseInt(newEquipQty),
+      status: newEquipStatus,
+      category: newEquipCategory,
+      observations: newEquipObs
+    });
     
     setNewEquipName('');
     setNewEquipQty('');
+    setNewEquipCategory('Geral');
+    setNewEquipStatus('Operacional');
+    setNewEquipObs('');
     setShowAddEquipModal(false);
     showToast('Item registrado no banco local');
   };
 
-  const handleRemoveEquipment = (id: string) => {
-    if(isLocked || !isAdmin) return;
+  const handleUpdateEquipment = () => {
+    if(isLocked || !canEditInventory || !editEquipModal.data) return;
     
-    if(window.confirm("Remover permanentemente?")) {
-        triggerHaptic('warning');
-        removeEquipment(id); // Chamada global
-        showToast('Equipamento removido.');
-    }
+    triggerHaptic('success');
+    const { id, ...updates } = editEquipModal.data;
+    updateEquipment(id, updates);
+    
+    setEditEquipModal({ isOpen: false, data: null });
+    showToast('Equipamento atualizado com sucesso.');
+  };
+
+  const confirmRemoveEquipment = () => {
+    if(isLocked || !canEditInventory || !deleteEquipConfirmation.equipId) return;
+    
+    triggerHaptic('warning');
+    removeEquipment(deleteEquipConfirmation.equipId);
+    setDeleteEquipConfirmation({ isOpen: false, equipId: null, equipName: null });
+    showToast('Equipamento removido permanentemente.');
+  };
+
+  const handleRemoveEquipment = (id: string) => {
+    if(isLocked || !canEditInventory) return;
+    const equip = equipments.find(e => e.id === id);
+    if (!equip) return;
+    
+    setDeleteEquipConfirmation({
+      isOpen: true,
+      equipId: id,
+      equipName: equip.name
+    });
   };
 
   const startInventoryCount = () => {
     if(isLocked) {
         alert("Dia Bloqueado.");
+        return;
+    }
+    if (!canAdjustStock) {
+        alert("Sem permissão para ajuste de stock.");
         return;
     }
     triggerHaptic('impact');
@@ -279,6 +330,17 @@ const Inventory: React.FC = () => {
         alert("Dia Bloqueado. Edição de produto não permitida.");
         return;
     }
+    
+    if (product && !canEditProduct) {
+        alert("Sem permissão para editar produtos.");
+        return;
+    }
+    
+    if (!product && !canCreateProduct) {
+        alert("Sem permissão para criar produtos.");
+        return;
+    }
+
     triggerHaptic('selection');
     if (product) {
       setProductModal({ isOpen: true, data: { ...product, originalStock: product.stock } });
@@ -344,6 +406,10 @@ const Inventory: React.FC = () => {
         alert("Dia Bloqueado.");
         return;
     }
+    if (!canDeleteProduct) {
+        alert("Sem permissão para eliminar produtos.");
+        return;
+    }
     triggerHaptic('warning');
     setDeleteConfirmation({ isOpen: true, product });
   };
@@ -376,7 +442,7 @@ const Inventory: React.FC = () => {
   };
 
   const handleUpdateMinStock = (productId: string, newMin: string) => {
-    if(isLocked) return;
+    if(isLocked || !canAdjustStock) return;
     const val = parseInt(newMin);
     if (!isNaN(val)) {
         updateProduct(productId, { minStock: val });
@@ -403,25 +469,6 @@ const Inventory: React.FC = () => {
   return (
     <div className="p-4 md:p-8 space-y-8 animate-fade-in relative pb-20">
       
-      {/* STATUS DE SINCRONIZAÇÃO (Floating Indicator) */}
-      <div className="fixed bottom-24 right-6 z-50">
-        {hasPendingChanges ? (
-          <div 
-            onClick={() => { triggerHaptic('impact'); syncData(); }}
-            className={`flex items-center gap-2 px-4 py-2 rounded-full shadow-lg cursor-pointer transition-all ${
-              isSyncing ? 'bg-blue-500 animate-pulse' : 'bg-amber-500 hover:scale-105'
-            } text-white text-xs font-bold`}
-          >
-            {isSyncing ? <CloudUpload size={16} className="animate-bounce" /> : <CloudOff size={16} />}
-            {isSyncing ? 'Sincronizando...' : 'Alterações Pendentes (Offline)'}
-          </div>
-        ) : (
-          <div className="flex items-center gap-2 px-4 py-2 bg-green-500/10 text-green-600 rounded-full text-[10px] font-black border border-green-200">
-            <CloudCheck size={14} /> DADOS SINCRONIZADOS
-          </div>
-        )}
-      </div>
-
       {/* GLOBAL TOAST */}
       {toast.show && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] animate-fade-slide-up">
@@ -446,7 +493,7 @@ const Inventory: React.FC = () => {
         </div>
         <div className="flex flex-1 items-center justify-center md:justify-end gap-2 w-full md:w-auto">
           <SyncStatus />
-          {isAdmin && (
+          {canManageCategories && (
              <button 
                onClick={() => { triggerHaptic('selection'); setCategoryModal(true); }}
                disabled={isLocked}
@@ -455,13 +502,15 @@ const Inventory: React.FC = () => {
                <Settings size={20} /> Categorias
              </button>
           )}
-          <button 
-            onClick={() => handleOpenProductModal()}
-            disabled={isLocked}
-            className={`pill-button px-6 py-3 font-bold flex items-center justify-center gap-2 shadow-lg flex-1 md:flex-none ${isLocked ? 'bg-slate-400 text-white cursor-not-allowed' : 'bg-[#003366] text-white shadow-blue-200'}`}
-          >
-            {isLocked ? <Lock size={20} /> : <Plus size={20} />} Novo Produto
-          </button>
+          {canCreateProduct && (
+            <button 
+              onClick={() => handleOpenProductModal()}
+              disabled={isLocked}
+              className={`pill-button px-6 py-3 font-bold flex items-center justify-center gap-2 shadow-lg flex-1 md:flex-none ${isLocked ? 'bg-slate-400 text-white cursor-not-allowed' : 'bg-[#003366] text-white shadow-blue-200'}`}
+            >
+              {isLocked ? <Lock size={20} /> : <Plus size={20} />} Novo Produto
+            </button>
+          )}
         </div>
       </header>
 
@@ -658,7 +707,7 @@ const Inventory: React.FC = () => {
                               >
                                 {isLocked ? <Lock size={18} /> : <Edit2 size={18} />}
                               </button>
-                              {isAdmin && (
+                              {canEditInventory && (
                                 <button 
                                   onClick={() => handleRequestDelete(item)}
                                   disabled={isLocked}
@@ -715,26 +764,44 @@ const Inventory: React.FC = () => {
                <div className="space-y-4 animate-fade-in">
                  <div className="max-h-[500px] overflow-y-auto custom-scrollbar space-y-4 pr-1">
                    {equipments.map((item) => (
-                     <SoftCard key={item.id} className="bg-slate-50/50 dark:bg-slate-800/50 relative group pr-10">
-                       <div className="flex justify-between items-start mb-2">
-                         <p className="font-bold text-[#003366] dark:text-white">{item.name}</p>
+                     <SoftCard key={item.id} className="bg-slate-50/50 dark:bg-slate-800/50 relative group pr-12">
+                       <div className="flex justify-between items-start mb-1">
+                         <div>
+                           <p className="font-bold text-[#003366] dark:text-white">{item.name}</p>
+                           {item.category && <p className="text-[10px] text-slate-400 font-bold uppercase">{item.category}</p>}
+                         </div>
                          <span className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase ${item.status === 'Operacional' ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'}`}>
                            {item.status}
                          </span>
                        </div>
+                       
+                       {item.observations && (
+                         <p className="text-[10px] text-slate-500 dark:text-slate-400 italic mb-2 line-clamp-1">{item.observations}</p>
+                       )}
+
                        <div className="flex justify-between items-end">
                           <p className="text-3xl font-black text-[#003366] dark:text-white">{item.qty}</p>
                           <p className="text-xs text-slate-400 font-medium">Anterior: {item.prevQty}</p>
                        </div>
                        {isAdmin && (
-                           <button 
-                               onClick={() => handleRemoveEquipment(item.id)}
-                               disabled={isLocked}
-                               className={`absolute top-1/2 -translate-y-1/2 right-2 p-2 rounded-full transition-all ${isLocked ? 'text-slate-300' : 'text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20'}`}
-                               title="Remover Equipamento"
-                           >
-                               {isLocked ? <Lock size={16} /> : <Trash2 size={16} />}
-                           </button>
+                           <div className="absolute top-1/2 -translate-y-1/2 right-2 flex flex-col gap-1">
+                               <button 
+                                   onClick={() => setEditEquipModal({ isOpen: true, data: { ...item } })}
+                                   disabled={isLocked}
+                                   className={`p-2 rounded-full transition-all ${isLocked ? 'text-slate-300' : 'text-slate-300 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20'}`}
+                                   title="Editar Equipamento"
+                               >
+                                   <Edit3 size={16} />
+                               </button>
+                               <button 
+                                   onClick={() => handleRemoveEquipment(item.id)}
+                                   disabled={isLocked}
+                                   className={`p-2 rounded-full transition-all ${isLocked ? 'text-slate-300' : 'text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20'}`}
+                                   title="Remover Equipamento"
+                               >
+                                   {isLocked ? <Lock size={16} /> : <Trash2 size={16} />}
+                               </button>
+                           </div>
                        )}
                      </SoftCard>
                    ))}
@@ -833,24 +900,163 @@ const Inventory: React.FC = () => {
            <div className="bg-white dark:bg-[#0d1b2a] rounded-3xl p-6 w-full max-w-sm shadow-2xl relative">
               <h3 className="text-lg font-bold text-[#003366] dark:text-white mb-4">Adicionar Item/Mobília</h3>
               <div className="space-y-4">
-                 <input 
-                   type="text" 
-                   placeholder="Nome (Ex: Mesa de Plástico)"
-                   value={newEquipName}
-                   onChange={(e) => setNewEquipName(e.target.value)}
-                   className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border-none soft-ui-inset dark:text-white"
-                 />
-                 <input 
-                   type="number" 
-                   placeholder="Quantidade Atual"
-                   value={newEquipQty}
-                   onChange={(e) => setNewEquipQty(e.target.value)}
-                   className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border-none soft-ui-inset dark:text-white"
-                 />
-                 <div className="flex gap-3">
+                 <div>
+                   <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Nome do Item</label>
+                   <input 
+                     type="text" 
+                     placeholder="Ex: Mesa de Plástico"
+                     value={newEquipName}
+                     onChange={(e) => setNewEquipName(e.target.value)}
+                     className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border-none soft-ui-inset dark:text-white"
+                   />
+                 </div>
+                 <div className="grid grid-cols-2 gap-3">
+                   <div>
+                     <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Quantidade</label>
+                     <input 
+                       type="number" 
+                       placeholder="0"
+                       value={newEquipQty}
+                       onChange={(e) => setNewEquipQty(e.target.value)}
+                       className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border-none soft-ui-inset dark:text-white"
+                     />
+                   </div>
+                   <div>
+                     <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Categoria</label>
+                     <select 
+                       value={newEquipCategory}
+                       onChange={(e) => setNewEquipCategory(e.target.value)}
+                       className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border-none soft-ui-inset dark:text-white text-sm"
+                     >
+                       <option value="Geral">Geral</option>
+                       <option value="Mobília">Mobília</option>
+                       <option value="Equipamento">Equipamento</option>
+                       <option value="Eletrónico">Eletrónico</option>
+                     </select>
+                   </div>
+                 </div>
+                 <div>
+                   <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Estado</label>
+                   <select 
+                     value={newEquipStatus}
+                     onChange={(e) => setNewEquipStatus(e.target.value as any)}
+                     className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border-none soft-ui-inset dark:text-white text-sm"
+                   >
+                     <option value="Operacional">Operacional</option>
+                     <option value="Danificado">Danificado</option>
+                     <option value="Em Manutenção">Em Manutenção</option>
+                   </select>
+                 </div>
+                 <div>
+                   <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Observações</label>
+                   <textarea 
+                     placeholder="Notas adicionais..."
+                     value={newEquipObs}
+                     onChange={(e) => setNewEquipObs(e.target.value)}
+                     className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border-none soft-ui-inset dark:text-white text-sm h-20 resize-none"
+                   />
+                 </div>
+                 <div className="flex gap-3 pt-2">
                     <button onClick={() => setShowAddEquipModal(false)} className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-300 font-bold rounded-xl">Cancelar</button>
                     <button onClick={handleAddEquipment} className="flex-1 py-3 bg-[#003366] text-white font-bold rounded-xl">Adicionar</button>
                  </div>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {/* --- MODAL: EDITAR EQUIPAMENTO --- */}
+      {editEquipModal.isOpen && editEquipModal.data && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-fade-in">
+           <div className="bg-white dark:bg-[#0d1b2a] rounded-3xl p-6 w-full max-w-sm shadow-2xl relative">
+              <h3 className="text-lg font-bold text-[#003366] dark:text-white mb-4">Editar Item/Mobília</h3>
+              <div className="space-y-4">
+                 <div>
+                   <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Nome do Item</label>
+                   <input 
+                     type="text" 
+                     value={editEquipModal.data.name}
+                     onChange={(e) => setEditEquipModal({ ...editEquipModal, data: { ...editEquipModal.data!, name: e.target.value } })}
+                     className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border-none soft-ui-inset dark:text-white"
+                   />
+                 </div>
+                 <div className="grid grid-cols-2 gap-3">
+                   <div>
+                     <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Quantidade</label>
+                     <input 
+                       type="number" 
+                       value={editEquipModal.data.qty}
+                       onChange={(e) => setEditEquipModal({ ...editEquipModal, data: { ...editEquipModal.data!, qty: parseInt(e.target.value) || 0 } })}
+                       className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border-none soft-ui-inset dark:text-white"
+                     />
+                   </div>
+                   <div>
+                     <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Categoria</label>
+                     <select 
+                       value={editEquipModal.data.category || 'Geral'}
+                       onChange={(e) => setEditEquipModal({ ...editEquipModal, data: { ...editEquipModal.data!, category: e.target.value } })}
+                       className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border-none soft-ui-inset dark:text-white text-sm"
+                     >
+                       <option value="Geral">Geral</option>
+                       <option value="Mobília">Mobília</option>
+                       <option value="Equipamento">Equipamento</option>
+                       <option value="Eletrónico">Eletrónico</option>
+                     </select>
+                   </div>
+                 </div>
+                 <div>
+                   <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Estado</label>
+                   <select 
+                     value={editEquipModal.data.status}
+                     onChange={(e) => setEditEquipModal({ ...editEquipModal, data: { ...editEquipModal.data!, status: e.target.value as any } })}
+                     className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border-none soft-ui-inset dark:text-white text-sm"
+                   >
+                     <option value="Operacional">Operacional</option>
+                     <option value="Danificado">Danificado</option>
+                     <option value="Em Manutenção">Em Manutenção</option>
+                   </select>
+                 </div>
+                 <div>
+                   <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Observações</label>
+                   <textarea 
+                     value={editEquipModal.data.observations || ''}
+                     onChange={(e) => setEditEquipModal({ ...editEquipModal, data: { ...editEquipModal.data!, observations: e.target.value } })}
+                     className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border-none soft-ui-inset dark:text-white text-sm h-20 resize-none"
+                   />
+                 </div>
+                 <div className="flex gap-3 pt-2">
+                    <button onClick={() => setEditEquipModal({ isOpen: false, data: null })} className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-300 font-bold rounded-xl">Cancelar</button>
+                    <button onClick={handleUpdateEquipment} className="flex-1 py-3 bg-[#003366] text-white font-bold rounded-xl">Salvar Alterações</button>
+                 </div>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {/* --- MODAL: CONFIRMAR ELIMINAÇÃO --- */}
+      {deleteEquipConfirmation.isOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-fade-in">
+           <div className="bg-white dark:bg-[#0d1b2a] rounded-3xl p-6 w-full max-w-sm shadow-2xl relative text-center">
+              <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full flex items-center justify-center mx-auto mb-4">
+                 <Trash2 size={32} />
+              </div>
+              <h3 className="text-xl font-bold text-[#003366] dark:text-white mb-2">Eliminar Item?</h3>
+              <p className="text-slate-500 dark:text-slate-400 text-sm mb-6">
+                Tem certeza que deseja eliminar <span className="font-bold text-red-600">"{deleteEquipConfirmation.equipName}"</span>? Esta ação não pode ser desfeita.
+              </p>
+              <div className="flex gap-3">
+                 <button 
+                   onClick={() => setDeleteEquipConfirmation({ isOpen: false, equipId: null, equipName: null })} 
+                   className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-300 font-bold rounded-xl"
+                 >
+                   Cancelar
+                 </button>
+                 <button 
+                   onClick={confirmRemoveEquipment} 
+                   className="flex-1 py-3 bg-red-600 text-white font-bold rounded-xl shadow-lg hover:bg-red-700 active:scale-95 transition-all"
+                 >
+                   Confirmar
+                 </button>
               </div>
            </div>
         </div>

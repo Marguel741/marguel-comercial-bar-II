@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
-import { Product, PurchaseRecord, Transaction, SalesReport, Expense, InventoryLog, PriceHistoryLog, Equipment, Card, StockOperationLog } from '../types';
+import { Product, PurchaseRecord, Transaction, SalesReport, Expense, InventoryLog, PriceHistoryLog, Equipment, Card, StockOperationLog, AuditLog } from '../types';
 
 const INITIAL_PRODUCTS: Product[] = [
   { id: 'pepsi', name: 'Pepsi', sellPrice: 500, buyPrice: 250, stock: 0, minStock: 24, category: 'Refrigerantes', packSize: 24, packType: 'Grade' },
@@ -65,6 +65,7 @@ interface ProductContextType {
   salesReports: SalesReport[];
   expenses: Expense[];
   inventoryHistory: InventoryLog[];
+  auditLogs: AuditLog[];
   stockOperationHistory: StockOperationLog[];
   priceHistory: PriceHistoryLog[];
   systemDate: Date;
@@ -88,10 +89,12 @@ interface ProductContextType {
   addPurchase: (items: Record<string, number>, source: 'Prices' | 'Inventory' | 'Sales', completedBy: string, attachments?: string[]) => void;
   getPurchasesByDate: (dateStr: string) => Record<string, number>;
   getTodayPurchases: () => Record<string, number>;
-  processTransaction: (type: 'deposit' | 'withdraw', account: 'main' | 'savings' | string, amount: number, description: string, category?: string) => void;
-  processCashTPADebit: (origin: 'Cash' | 'TPA', amount: number, note: string) => void;
+  processTransaction: (type: 'deposit' | 'withdraw', account: 'main' | 'savings' | string, amount: number, description: string, category?: string, referenceId?: string, referenceType?: Transaction['referenceType'], performedBy?: string) => void;
+  processCashTPADebit: (origin: 'Cash' | 'TPA', amount: number, note: string, referenceId?: string, referenceType?: Transaction['referenceType'], performedBy?: string) => void;
   addSalesReport: (report: SalesReport) => void;
-  addEquipment: (name: string, qty: number) => void;
+  addAuditLog: (log: Omit<AuditLog, 'id' | 'timestamp'>) => void;
+  addEquipment: (equipment: Omit<Equipment, 'id' | 'prevQty'>) => void;
+  updateEquipment: (id: string, updates: Partial<Equipment>) => void;
   updateEquipmentQty: (id: string, newQty: number) => void;
   removeEquipment: (id: string) => void;
   addCard: (card: Omit<Card, 'id'>) => void;
@@ -211,6 +214,13 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     } catch { return []; }
   });
 
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => {
+    try {
+      const saved = localStorage.getItem('mg_audit_logs');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+
   const [stockOperationHistory, setStockOperationHistory] = useState<StockOperationLog[]>(() => {
     try {
       const saved = localStorage.getItem('mg_stock_operation_history');
@@ -288,6 +298,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     } catch { return []; }
   });
 
+  useEffect(() => { localStorage.setItem('mg_audit_logs', JSON.stringify(auditLogs)); }, [auditLogs]);
   useEffect(() => { localStorage.setItem('mg_products', JSON.stringify(products)); }, [products]);
   useEffect(() => { localStorage.setItem('mg_purchases', JSON.stringify(purchases)); }, [purchases]);
   useEffect(() => { localStorage.setItem('mg_expenses', JSON.stringify(expenses)); }, [expenses]);
@@ -355,7 +366,16 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     setCategories(categories.filter(c => c !== category));
   };
 
-  const processTransaction = (type: 'deposit' | 'withdraw', account: 'main' | 'savings' | string, amount: number, description: string, category?: string) => {
+  const processTransaction = (
+    type: 'deposit' | 'withdraw', 
+    account: 'main' | 'savings' | string, 
+    amount: number, 
+    description: string, 
+    category?: string, 
+    referenceId?: string, 
+    referenceType?: Transaction['referenceType'],
+    performedBy?: string
+  ) => {
     let accountName = '';
     
     if (account === 'main') {
@@ -385,13 +405,16 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       category: category || accountName || 'Cartão',
       amount: amount,
       date: systemDate.toLocaleDateString('pt-AO', {day:'2-digit', month:'short'}) + ', ' + systemDate.toLocaleTimeString('pt-AO', {hour:'2-digit', minute:'2-digit'}),
-      description: description
+      description: description,
+      referenceId,
+      referenceType,
+      performedBy
     };
 
     setTransactions(prev => [newTrans, ...prev]);
   };
 
-  const processCashTPADebit = (origin: 'Cash' | 'TPA', amount: number, note: string) => {
+  const processCashTPADebit = (origin: 'Cash' | 'TPA', amount: number, note: string, referenceId?: string, referenceType?: Transaction['referenceType'], performedBy?: string) => {
     if (origin === 'Cash') {
       setCashBalance(prev => prev - amount);
     } else {
@@ -404,7 +427,10 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       category: `Débito ${origin}`,
       amount: amount,
       date: systemDate.toLocaleDateString('pt-AO', {day:'2-digit', month:'short'}) + ', ' + systemDate.toLocaleTimeString('pt-AO', {hour:'2-digit', minute:'2-digit'}),
-      description: note
+      description: note,
+      referenceId,
+      referenceType,
+      performedBy
     };
 
     setTransactions(prev => [newTrans, ...prev]);
@@ -474,7 +500,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     // 4. Débito Financeiro
     if (totalValue > 0) {
-        processTransaction('withdraw', 'main', totalValue, 'Compra de estoque', 'Compra de Estoque');
+        processTransaction('withdraw', 'main', totalValue, 'Compra de estoque', 'Compra de Estoque', purchaseId, 'purchase', completedBy);
     }
 
     // 5. Fila de Sincronização
@@ -518,6 +544,15 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       timestamp: Date.now()
     };
     setSyncQueue(prev => [...prev, action]);
+  };
+
+  const addAuditLog = (log: Omit<AuditLog, 'id' | 'timestamp'>) => {
+    const newLog: AuditLog = {
+      ...log,
+      id: crypto.randomUUID(),
+      timestamp: Date.now()
+    };
+    setAuditLogs(prev => [newLog, ...prev]);
   };
 
   const [equipments, setEquipments] = useState<Equipment[]>(() => {
@@ -566,15 +601,20 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   }, [isOnline, isSyncing, products]);
 
-  const addEquipment = (name: string, qty: number) => {
+  const addEquipment = (equipment: Omit<Equipment, 'id' | 'prevQty'>) => {
     const newEquip: Equipment = {
+        ...equipment,
         id: Date.now().toString(),
-        name,
-        qty,
-        prevQty: qty,
-        status: 'Operacional'
+        prevQty: equipment.qty
     };
     setEquipments(prev => [...prev, newEquip]);
+    markAsPending();
+  };
+
+  const updateEquipment = (id: string, updates: Partial<Equipment>) => {
+    setEquipments(prev => prev.map(eq => 
+        eq.id === id ? { ...eq, ...updates } : eq
+    ));
     markAsPending();
   };
 
@@ -619,8 +659,8 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       addExpense, deleteExpense, updateExpense,
       addInventoryLog, addProduct, updateProduct, deleteProduct, addCategory, editCategory, removeCategory,
       addPurchase, getPurchasesByDate, getTodayPurchases, processTransaction, processCashTPADebit,
-      addSalesReport, stockOperationHistory,
-      equipments, addEquipment, updateEquipmentQty, removeEquipment,
+      addSalesReport, addAuditLog, stockOperationHistory, auditLogs,
+      equipments, addEquipment, updateEquipment, updateEquipmentQty, removeEquipment,
       addCard, updateCard, deleteCard,
       isSyncing, hasPendingChanges, syncData
     }}>

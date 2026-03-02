@@ -1,23 +1,27 @@
 
 import React, { useState, useRef } from 'react';
-import { Landmark, Wallet, CreditCard, History, PlusCircle, X, ArrowUpRight, ArrowDownLeft, Calendar, Wifi, TrendingUp, TrendingDown, MinusCircle, FileText, Plus, Check, Edit2, Trash2, Palette, Loader2 } from 'lucide-react';
+import { Landmark, Wallet, CreditCard, History, PlusCircle, X, ArrowUpRight, ArrowDownLeft, Calendar, Wifi, TrendingUp, TrendingDown, MinusCircle, FileText, Plus, Check, Edit2, Trash2, Palette, Loader2, Clock, Package, CheckCircle, Info } from 'lucide-react';
 import SoftCard from '../components/SoftCard';
 import { useLayout } from '../contexts/LayoutContext';
 import SyncStatus from '../components/SyncStatus';
 import { useProducts } from '../contexts/ProductContext';
-import { Card } from '../types';
+import { useAuth } from '../App';
+import { Card, Transaction } from '../types';
 
 const AccountStatus: React.FC = () => {
   const { sidebarMode, triggerHaptic } = useLayout();
+  const { user } = useAuth();
   const { 
     cards, addCard, updateCard, deleteCard, 
     transactions, processTransaction, 
-    cashBalance, tpaBalance, processCashTPADebit 
+    cashBalance, tpaBalance, processCashTPADebit,
+    purchases, expenses, salesReports, stockOperationHistory, products
   } = useProducts();
 
   // Modals
   const [showTransModal, setShowTransModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
   const [showCreateCardModal, setShowCreateCardModal] = useState(false);
   const [showCashTPAModal, setShowCashTPAModal] = useState<{isOpen: boolean, type: 'Cash' | 'TPA' | null}>({isOpen: false, type: null});
@@ -69,7 +73,16 @@ const AccountStatus: React.FC = () => {
     triggerHaptic('success');
     const val = parseFloat(amount.replace(/\s/g, ''));
     
-    processTransaction(transType, targetAccount, val, note);
+    processTransaction(
+      transType, 
+      targetAccount, 
+      val, 
+      note, 
+      undefined, 
+      undefined, 
+      transType === 'deposit' ? 'deposit' : 'withdrawal',
+      user?.name || 'Desconhecido'
+    );
 
     setShowTransModal(false);
     setShowSuccessPopup(true);
@@ -112,7 +125,14 @@ const AccountStatus: React.FC = () => {
     if (!cashTPAAmount || !cashTPANote.trim() || !showCashTPAModal.type) return;
 
     const val = parseFloat(cashTPAAmount.replace(/\s/g, ''));
-    processCashTPADebit(showCashTPAModal.type, val, cashTPANote);
+    processCashTPADebit(
+      showCashTPAModal.type, 
+      val, 
+      cashTPANote, 
+      undefined, 
+      'withdrawal',
+      user?.name || 'Desconhecido'
+    );
 
     triggerHaptic('success');
     setShowCashTPAModal({ isOpen: false, type: null });
@@ -574,7 +594,11 @@ const AccountStatus: React.FC = () => {
               <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
                  <div className="space-y-3">
                     {transactions.map((t) => (
-                       <div key={t.id} className="bg-white dark:bg-[#0d1b2a] p-4 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm flex justify-between items-center">
+                       <div 
+                          key={t.id} 
+                          onClick={() => { triggerHaptic('selection'); setSelectedTransaction(t); }}
+                          className="bg-white dark:bg-[#0d1b2a] p-4 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm flex justify-between items-center cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group"
+                       >
                           <div className="flex items-center gap-4">
                              <div className={`p-3 rounded-xl ${t.type === 'entrada' ? 'bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400' : 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400'}`}>
                                 {t.type === 'entrada' ? <ArrowDownLeft size={20} /> : <ArrowUpRight size={20} />}
@@ -600,7 +624,201 @@ const AccountStatus: React.FC = () => {
         </div>
       )}
 
-      {/* --- MODAL: CONFIRMAR ELIMINAÇÃO DE CARTÃO --- */}
+      {/* --- MODAL: DETALHES DO MOVIMENTO --- */}
+      {selectedTransaction && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white dark:bg-slate-800 w-full max-w-lg rounded-[32px] shadow-2xl overflow-hidden relative flex flex-col max-h-[90vh]">
+            {/* Header */}
+            <div className={`p-6 text-white flex justify-between items-center ${selectedTransaction.type === 'entrada' ? 'bg-green-600' : 'bg-red-600'}`}>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest opacity-80">Detalhes do Movimento</p>
+                <h2 className="text-2xl font-black">{selectedTransaction.category}</h2>
+              </div>
+              <button 
+                onClick={() => setSelectedTransaction(null)}
+                className="p-2 bg-white/20 hover:bg-white/40 rounded-full transition-colors"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 overflow-y-auto custom-scrollbar space-y-6">
+              {/* Resumo Principal */}
+              <div className="flex justify-between items-end border-b border-slate-100 dark:border-slate-700 pb-4">
+                <div>
+                  <p className="text-xs text-slate-400 font-bold uppercase mb-1">Valor</p>
+                  <p className={`text-4xl font-black ${selectedTransaction.type === 'entrada' ? 'text-green-600' : 'text-red-600'}`}>
+                    {selectedTransaction.type === 'entrada' ? '+' : '-'}{selectedTransaction.amount.toLocaleString('pt-AO')} Kz
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-slate-400 font-bold uppercase mb-1">Data e Hora</p>
+                  <p className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1 justify-end">
+                    <Clock size={14} /> {selectedTransaction.date}
+                  </p>
+                </div>
+              </div>
+
+              {/* Detalhes Específicos baseados no referenceType */}
+              <div className="space-y-4">
+                {/* 1. COMPRA DE STOCK */}
+                {selectedTransaction.referenceType === 'purchase' && (
+                  <div className="space-y-4 animate-slide-up">
+                    <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-2xl border border-blue-100 dark:border-blue-800">
+                      <h4 className="font-bold text-blue-700 dark:text-blue-400 mb-3 flex items-center gap-2">
+                        <Package size={18} /> Itens Comprados
+                      </h4>
+                      <div className="space-y-2">
+                        {purchases.find(p => p.id === selectedTransaction.referenceId)?.items && 
+                          Object.entries(purchases.find(p => p.id === selectedTransaction.referenceId)!.items).map(([prodId, qty]) => {
+                            const prod = products.find(p => p.id === prodId);
+                            const op = stockOperationHistory.find(log => log.referenceId === selectedTransaction.referenceId && log.productId === prodId);
+                            return (
+                              <div key={prodId} className="flex justify-between items-center bg-white dark:bg-slate-700 p-3 rounded-xl shadow-sm">
+                                <div>
+                                  <p className="font-bold text-slate-800 dark:text-white">{prod?.name || 'Produto Desconhecido'}</p>
+                                  <p className="text-[10px] text-slate-500 font-bold uppercase">Qtd: {qty} {prod?.packType || 'un.'}</p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-xs font-bold text-slate-400 uppercase">Stock</p>
+                                  <p className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                                    {op ? `${op.qtyBefore} → ${op.qtyAfter}` : '-'}
+                                  </p>
+                                </div>
+                              </div>
+                            );
+                          })
+                        }
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="p-4 bg-slate-50 dark:bg-slate-700 rounded-2xl">
+                        <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Responsável</p>
+                        <p className="font-bold text-slate-700 dark:text-slate-200">{selectedTransaction.performedBy || 'N/A'}</p>
+                      </div>
+                      <div className="p-4 bg-slate-50 dark:bg-slate-700 rounded-2xl">
+                        <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Origem</p>
+                        <p className="font-bold text-slate-700 dark:text-slate-200">
+                          {purchases.find(p => p.id === selectedTransaction.referenceId)?.source || 'N/A'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 2. DESPESA */}
+                {selectedTransaction.referenceType === 'expense' && (
+                  <div className="space-y-4 animate-slide-up">
+                    <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-2xl border border-red-100 dark:border-red-800">
+                      <h4 className="font-bold text-red-700 dark:text-red-400 mb-2 flex items-center gap-2">
+                        <FileText size={18} /> Detalhes da Despesa
+                      </h4>
+                      <p className="text-sm text-slate-600 dark:text-slate-300 italic mb-4">
+                        "{expenses.find(e => e.id === selectedTransaction.referenceId)?.notes || 'Sem notas adicionais.'}"
+                      </p>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-[10px] text-slate-400 font-bold uppercase">Categoria</p>
+                          <p className="font-bold text-slate-700 dark:text-slate-200">
+                            {expenses.find(e => e.id === selectedTransaction.referenceId)?.category || 'N/A'}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-slate-400 font-bold uppercase">Responsável</p>
+                          <p className="font-bold text-slate-700 dark:text-slate-200">{selectedTransaction.performedBy || 'N/A'}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. FECHO DE DIA */}
+                {selectedTransaction.referenceType === 'day_closure' && (
+                  <div className="space-y-4 animate-slide-up">
+                    <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-2xl border border-green-100 dark:border-green-800">
+                      <h4 className="font-bold text-green-700 dark:text-green-400 mb-3 flex items-center gap-2">
+                        <TrendingUp size={18} /> Resumo do Fecho
+                      </h4>
+                      {(() => {
+                        const report = salesReports.find(r => r.id === selectedTransaction.referenceId);
+                        if (!report) return <p className="text-xs text-slate-500">Relatório não encontrado.</p>;
+                        return (
+                          <div className="space-y-3">
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="bg-white dark:bg-slate-700 p-3 rounded-xl">
+                                <p className="text-[10px] text-slate-400 font-bold uppercase">Total Vendido</p>
+                                <p className="font-black text-green-600">{report.totals.lifted.toLocaleString('pt-AO')} Kz</p>
+                              </div>
+                              <div className="bg-white dark:bg-slate-700 p-3 rounded-xl">
+                                <p className="text-[10px] text-slate-400 font-bold uppercase">Divergência</p>
+                                <p className={`font-black ${report.totals.discrepancy < 0 ? 'text-red-500' : 'text-green-500'}`}>
+                                  {report.totals.discrepancy.toLocaleString('pt-AO')} Kz
+                                </p>
+                              </div>
+                            </div>
+                            <div className="p-3 bg-white dark:bg-slate-700 rounded-xl">
+                              <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Confirmado Por</p>
+                              <p className="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2">
+                                <CheckCircle size={14} className="text-green-500" /> {report.closedBy}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                )}
+
+                {/* 4. DEPÓSITO / LEVANTAMENTO MANUAL */}
+                {(selectedTransaction.referenceType === 'deposit' || selectedTransaction.referenceType === 'withdrawal') && (
+                  <div className="space-y-4 animate-slide-up">
+                    <div className="p-4 bg-slate-50 dark:bg-slate-700 rounded-2xl border border-slate-200 dark:border-slate-600">
+                      <h4 className="font-bold text-slate-700 dark:text-slate-300 mb-2 flex items-center gap-2">
+                        <Info size={18} /> Informação Adicional
+                      </h4>
+                      <p className="text-sm text-slate-600 dark:text-slate-300 mb-4">
+                        {selectedTransaction.description}
+                      </p>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-[10px] text-slate-400 font-bold uppercase">Operador</p>
+                          <p className="font-bold text-slate-700 dark:text-slate-200">{selectedTransaction.performedBy || 'N/A'}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-slate-400 font-bold uppercase">Tipo</p>
+                          <p className="font-bold text-slate-700 dark:text-slate-200 uppercase text-xs">
+                            {selectedTransaction.referenceType === 'deposit' ? 'Depósito Manual' : 'Débito Manual'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Caso padrão se não houver referenceType */}
+                {!selectedTransaction.referenceType && (
+                  <div className="p-4 bg-slate-50 dark:bg-slate-700 rounded-2xl">
+                    <p className="text-sm text-slate-600 dark:text-slate-300">
+                      {selectedTransaction.description}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-6 bg-slate-50 dark:bg-slate-900/50 border-t border-slate-100 dark:border-slate-700 flex justify-end">
+              <button 
+                onClick={() => setSelectedTransaction(null)}
+                className="px-8 py-3 bg-[#003366] text-white font-bold rounded-2xl shadow-lg hover:scale-105 transition-all active:scale-95"
+              >
+                Fechar Detalhes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {showDeleteConfirm.isOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-white dark:bg-slate-800 w-full max-w-md rounded-[32px] shadow-2xl overflow-hidden relative border border-slate-100 dark:border-slate-700">

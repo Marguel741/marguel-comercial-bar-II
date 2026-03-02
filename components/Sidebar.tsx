@@ -25,6 +25,7 @@ import { useAuth } from '../App';
 import { UserRole } from '../types';
 import { useLayout } from '../contexts/LayoutContext';
 import { useProducts } from '../contexts/ProductContext';
+import { hasPermission } from '../src/utils/permissions';
 
 const Sidebar: React.FC = () => {
   const { user, logout } = useAuth();
@@ -37,14 +38,14 @@ const Sidebar: React.FC = () => {
   const STANDARD_ROLES = [UserRole.PROPRIETARIO, UserRole.ADMIN_GERAL, UserRole.GERENTE, UserRole.COLABORADOR_EFETIVO, UserRole.FUNCIONARIO];
 
   const navItems = [
-    { to: '/', icon: LayoutDashboard, label: 'Página Inicial', roles: ALL_ROLES },
-    { to: '/direct-service', icon: MonitorPlay, label: 'Atendimento Directo', roles: HIGH_LEVEL_ROLES },
-    { to: '/sales', icon: ShoppingCart, label: 'Controle de Vendas', roles: STANDARD_ROLES },
-    { to: '/calendar', icon: CalendarRange, label: 'Calendário Marguel', roles: HIGH_LEVEL_ROLES },
-    { to: '/inventory', icon: Package, label: 'Inventário', roles: ALL_ROLES },
-    { to: '/prices', icon: DollarSign, label: 'Preços & Compras', roles: ALL_ROLES },
-    { to: '/expenses', icon: Wallet, label: 'Despesas', roles: ALL_ROLES },
-    { to: '/account', icon: BarChart3, label: 'Estado da Conta', roles: ALL_ROLES, permission: 'viewAccountStatus' },
+    { to: '/', icon: LayoutDashboard, label: 'Página Inicial', permission: 'admin_global_admin' as const, alwaysShow: true },
+    { to: '/direct-service', icon: MonitorPlay, label: 'Atendimento Directo', permission: 'direct_service_view' as const },
+    { to: '/sales', icon: ShoppingCart, label: 'Controle de Vendas', permission: 'sales_view' as const },
+    { to: '/calendar', icon: CalendarRange, label: 'Calendário Marguel', permission: 'calendar_view' as const },
+    { to: '/inventory', icon: Package, label: 'Inventário', permission: 'inventory_view' as const },
+    { to: '/prices', icon: DollarSign, label: 'Preços & Compras', permission: 'prices_view' as const },
+    { to: '/expenses', icon: Wallet, label: 'Despesas', permission: 'expenses_view' as const },
+    { to: '/account', icon: BarChart3, label: 'Estado da Conta', permission: 'finance_view' as const },
   ];
 
   const handleAppRefresh = () => {
@@ -71,17 +72,11 @@ const Sidebar: React.FC = () => {
 
   const filteredNavItems = navItems.filter(item => {
     if (!user) return false;
-    const hasRole = item.roles.includes(user.role);
-    if (!hasRole) return false;
-    
-    if (item.permission === 'viewAccountStatus') {
-      if (user.role === UserRole.PROPRIETARIO || user.role === UserRole.ADMIN_GERAL) return true;
-      return user.permissions?.viewAccountStatus === true; 
-    }
-    return true;
+    if (item.alwaysShow) return true;
+    return hasPermission(user, item.permission);
   });
 
-  const canViewUsers = user?.role === UserRole.PROPRIETARIO || user?.role === UserRole.ADMIN_GERAL;
+  const canViewUsers = hasPermission(user, 'admin_users_view');
   const isDev = user?.role === UserRole.PROPRIETARIO || user?.role === UserRole.ADMIN_GERAL; 
 
   const getInitials = (name?: string) => {

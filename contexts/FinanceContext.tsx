@@ -1,8 +1,9 @@
 import React, { createContext, useContext, ReactNode } from 'react';
 import { useProducts } from './ProductContext';
+import { Transaction } from '../types';
 
 interface FinanceContextType {
-  addTransaction: (type: 'entrada' | 'saida', category: string, amount: number, description: string) => void;
+  addTransaction: (type: 'entrada' | 'saida', category: string, amount: number, description: string, referenceId?: string, referenceType?: Transaction['referenceType'], performedBy?: string) => void;
 }
 
 const FinanceContext = createContext<FinanceContextType | undefined>(undefined);
@@ -10,7 +11,7 @@ const FinanceContext = createContext<FinanceContextType | undefined>(undefined);
 export const FinanceProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { processTransaction } = useProducts();
 
-  const addTransaction = (type: 'entrada' | 'saida', category: string, amount: number, description: string) => {
+  const addTransaction = (type: 'entrada' | 'saida', category: string, amount: number, description: string, referenceId?: string, referenceType?: Transaction['referenceType'], performedBy?: string) => {
     // Map 'entrada' -> 'deposit', 'saida' -> 'withdraw'
     const transType = type === 'entrada' ? 'deposit' : 'withdraw';
     
@@ -18,7 +19,7 @@ export const FinanceProvider: React.FC<{ children: ReactNode }> = ({ children })
     // Note: The 'category' parameter is currently not fully utilized because ProductContext 
     // hardcodes the category based on the account type. 
     // However, the description is passed through.
-    processTransaction(transType, 'main', amount, description);
+    processTransaction(transType, 'main', amount, description, category, referenceId, referenceType, performedBy);
   };
 
   return (

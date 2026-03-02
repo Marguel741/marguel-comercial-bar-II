@@ -42,6 +42,11 @@ interface DailyReport {
   topProducts: { name: string; qty: number; total: number }[];
   itemsSnapshot: any[];
   closedBy: string;
+  stockSnapshot?: {
+    initial: Record<string, string>;
+    final: Record<string, string>;
+  };
+  notes?: string;
   
   // Compatibility fields for Dashboard
   date?: string;
@@ -55,20 +60,106 @@ interface DailyReport {
 }
 
 const Sales: React.FC = () => {
-  const { products, addProduct, updateProduct, getTodayPurchases, addPurchase, salesReports: contextSalesReports, addSalesReport } = useProducts();
+  const { products, addProduct, updateProduct, getPurchasesByDate, getTodayPurchases, addPurchase, salesReports: contextSalesReports, addSalesReport } = useProducts();
   const { sidebarMode, triggerHaptic } = useLayout();
   const { user } = useAuth();
   const { addTransaction } = useFinance();
 
+  // Use context reports, cast to DailyReport[] if needed
+  const salesReports = contextSalesReports as unknown as DailyReport[];
+
   const pageTopRef = useRef<HTMLDivElement>(null);
-  const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0]);
+  const todayISO = new Date().toISOString().split('T')[0];
+  const [reportDate, setReportDate] = useState(todayISO);
+
+  // Bloqueio de datas futuras
+  useEffect(() => {
+    if (reportDate > todayISO) {
+      setReportDate(todayISO);
+    }
+  }, [reportDate, todayISO]);
 
   const [initialStock, setInitialStock] = useState<Record<string, string>>({});
   const [endingStock, setEndingStock] = useState<Record<string, string>>({});
   
+  // Effect to handle Initial Stock Snapshot and Report Loading
+  useEffect(() => {
+    // 1. Check if a finalized report exists for this date in the context
+    const existingReport = salesReports.find(r => {
+      const reportDateISO = r.dateISO ? r.dateISO.split('T')[0] : r.date;
+      return reportDateISO === reportDate;
+    });
+    
+    if (existingReport) {
+      const init: Record<string, string> = {};
+      const end: Record<string, string> = {};
+      const bds: Record<string, any> = {};
+      
+      // Load from itemsSnapshot if available, otherwise from stockSnapshot
+      if (existingReport.itemsSnapshot) {
+        existingReport.itemsSnapshot.forEach((item: any) => {
+          init[item.id] = item.init.toString();
+          end[item.id] = item.end.toString();
+          if (item.breakdown) bds[item.id] = item.breakdown;
+        });
+      } else if (existingReport.stockSnapshot) {
+        Object.assign(init, existingReport.stockSnapshot.initial);
+        Object.assign(end, existingReport.stockSnapshot.final);
+      }
+      
+      setInitialStock(init);
+      setEndingStock(end);
+      setBreakdowns(bds);
+      setIsDayClosed(true);
+      setIsFinancialsConfirmed(true);
+      
+      const fin = existingReport.financials || {
+        cash: existingReport.cash || 0,
+        transfer: existingReport.transfer || 0,
+        ticket: 0,
+        lunch: existingReport.lunchExpense || 0,
+        justification: existingReport.notes || ''
+      };
+
+      setFinancials({
+        cash: fin.cash.toString(),
+        transfer: fin.transfer.toString(),
+        ticket: (fin as any).ticket?.toString() || '0',
+        lunch: fin.lunch.toString(),
+        discrepancyJustification: fin.justification || ''
+      });
+      return;
+    }
+
+    // 2. If no finalized report, handle snapshot logic
+    setIsDayClosed(false);
+    setIsFinancialsConfirmed(false);
+    setEndingStock({});
+    setBreakdowns({});
+    setFinancials({ cash: '', transfer: '', ticket: '', lunch: '', discrepancyJustification: '' });
+
+    const snapshotKey = `mg_initial_stock_v2_${reportDate}`;
+    const savedSnapshot = localStorage.getItem(snapshotKey);
+    
+    if (savedSnapshot) {
+      setInitialStock(JSON.parse(savedSnapshot));
+    } else {
+      // Create new snapshot from current inventory
+      // This happens the first time the page is opened for a specific date
+      const newSnapshot: Record<string, string> = {};
+      products.forEach(p => {
+        newSnapshot[p.id] = p.stock.toString();
+      });
+      setInitialStock(newSnapshot);
+      localStorage.setItem(snapshotKey, JSON.stringify(newSnapshot));
+    }
+  }, [reportDate, salesReports, products]);
+
   const purchasedStock = useMemo(() => {
-    return getTodayPurchases(); 
-  }, [getTodayPurchases, products, reportDate]);
+    // Convert reportDate (YYYY-MM-DD) to pt-AO format for matching purchases
+    const d = new Date(reportDate + 'T12:00:00');
+    return getPurchasesByDate(d.toLocaleDateString('pt-AO'));
+  }, [getPurchasesByDate, products, reportDate]);
 
   const [quickPurchaseModal, setQuickPurchaseModal] = useState<{isOpen: boolean, productId: string | null}>({isOpen: false, productId: null});
   const [quickPurchaseQty, setQuickPurchaseQty] = useState('');
@@ -94,9 +185,6 @@ const Sales: React.FC = () => {
 
   const [isDayClosed, setIsDayClosed] = useState(false);
   const [showCloseModal, setShowCloseModal] = useState(false);
-
-  // Use context reports, cast to DailyReport[] if needed
-  const salesReports = contextSalesReports as unknown as DailyReport[];
   
   const [historyFilter, setHistoryFilter] = useState<'day' | 'week' | 'month' | 'quarter' | 'semester' | 'year' | 'all'>('week');
   const [viewHistoryReport, setViewHistoryReport] = useState<DailyReport | null>(null);
@@ -265,6 +353,11 @@ const Sales: React.FC = () => {
 
   const handleInitialClose = () => {
     if (isReadOnly) return;
+    if (reportDate > todayISO) {
+        triggerHaptic('error');
+        alert("❌ DATA INVÁLIDA\n\nNão é permitido fechar dias futuros.");
+        return;
+    }
     if (calculatedData.hasStockError) {
         triggerHaptic('error');
         alert("⛔ IMPEDIMENTO DE FECHO\n\nExistem produtos com Stock Negativo.");
@@ -295,6 +388,13 @@ const Sales: React.FC = () => {
     
     await new Promise(resolve => setTimeout(resolve, 800));
     setSyncState({ status: 'syncing', step: 'Validando Fecho no Servidor...', progress: 60 });
+    
+    if (reportDate > todayISO) {
+        setSyncState({ status: 'error', step: 'ERRO: Data Futura Bloqueada pelo Servidor.', progress: 100 });
+        triggerHaptic('error');
+        alert("O servidor rejeitou o fecho: Datas futuras não são permitidas.");
+        return;
+    }
 
     await new Promise(resolve => setTimeout(resolve, 800));
     setSyncState({ status: 'syncing', step: 'Notificando Usuários e Administradores...', progress: 80 });
@@ -313,16 +413,22 @@ const Sales: React.FC = () => {
         }
     });
 
+    const reportId = Date.now().toString();
+    const performer = user?.name || 'Sistema';
+
     addTransaction(
       'entrada',
       'corporate',
       totalLifted,
-      `Fecho do Dia (${reportDate}) - Levantamento: ${totalLifted.toLocaleString('pt-AO')} Kz`
+      `Fecho do Dia (${reportDate}) - Levantamento: ${totalLifted.toLocaleString('pt-AO')} Kz`,
+      reportId,
+      'day_closure',
+      performer
     );
 
     const reportTimestamp = new Date(reportDate + 'T12:00:00'); 
     const newReport: DailyReport = {
-      id: Date.now().toString(),
+      id: reportId,
       dateISO: reportTimestamp.toISOString(),
       displayDate: reportTimestamp.toLocaleDateString('pt-AO', { year: 'numeric', month: 'long', day: 'numeric' }),
       weekday: reportTimestamp.toLocaleDateString('pt-AO', { weekday: 'long' }),
@@ -341,7 +447,7 @@ const Sales: React.FC = () => {
         justification: financials.discrepancyJustification
       },
       topProducts: calculatedData.salesChartData.slice(0, 5).map(i => ({ name: i.name, qty: i.Quantidade, total: i.Total })),
-      itemsSnapshot: calculatedData.items.filter(i => i.soldQty !== 0),
+      itemsSnapshot: calculatedData.items.filter(i => i.soldQty !== 0 || i.init !== 0 || i.end !== 0),
       closedBy: user?.name || 'Sistema',
       
       // Compatibility fields for Dashboard
@@ -357,6 +463,12 @@ const Sales: React.FC = () => {
       transfer: declaredTransfer,
       lunchExpense: lunchExpense,
       discrepancy: discrepancy
+    };
+
+    // Save snapshot to report for persistence
+    (newReport as any).stockSnapshot = {
+      initial: initialStock,
+      final: endingStock
     };
 
     addSalesReport(newReport as any);
@@ -463,7 +575,13 @@ const Sales: React.FC = () => {
           <h1 className="text-3xl font-bold text-[#003366] dark:text-white">Controle de Vendas</h1>
           <div className="flex items-center gap-3 mt-1 group">
              <Calendar size={18} className="text-[#003366] dark:text-blue-400" />
-             <input type="date" value={reportDate} onChange={(e) => setReportDate(e.target.value)} className="bg-transparent text-[#003366] dark:text-blue-400 font-bold outline-none cursor-pointer" />
+             <input 
+               type="date" 
+               value={reportDate} 
+               max={todayISO}
+               onChange={(e) => setReportDate(e.target.value)} 
+               className="bg-transparent text-[#003366] dark:text-blue-400 font-bold outline-none cursor-pointer" 
+             />
           </div>
         </div>
         <div className="flex-1 flex items-center justify-center md:justify-end w-full md:w-auto gap-4">
