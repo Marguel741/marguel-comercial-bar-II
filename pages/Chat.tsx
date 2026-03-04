@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import SoftCard from '../components/SoftCard';
 import { useLayout } from '../contexts/LayoutContext';
-import { useAuth } from '../App';
+import { useAuth } from '../contexts/AuthContext';
 import { ChatMessage, User, MessageType } from '../types';
 
 // MOCK USERS DATA (Simulando uma API/Contexto)

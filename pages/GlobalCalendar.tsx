@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { useProducts } from '../contexts/ProductContext';
 import { useLayout } from '../contexts/LayoutContext';
-import { useAuth } from '../App';
+import { useAuth } from '../contexts/AuthContext';
 import { UserRole } from '../types';
 import SoftCard from '../components/SoftCard';
 import { formatKz, roundKz } from '../src/utils';
@@ -264,8 +264,8 @@ const GlobalCalendar: React.FC = () => {
                      <div>
                         <h2 className="text-2xl font-black text-[#003366] dark:text-white">{selectedDayDetail}</h2>
                         <div className="flex gap-2 mt-1">
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${dayData.isLocked ? 'bg-red-500 text-white' : 'bg-green-500 text-white'}`}>
-                                {dayData.isLocked ? 'Relatório Bloqueado' : 'Edição Aberta'}
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${dayData.isLocked ? 'bg-red-600 text-white shadow-[0_0_10px_rgba(220,38,38,0.3)]' : 'bg-green-500 text-white'}`}>
+                                {dayData.isLocked ? 'DIA BLOQUEADO (IMUTÁVEL)' : 'Edição Aberta'}
                             </span>
                             {dayData.report && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 uppercase">Caixa Fechado</span>}
                         </div>
@@ -275,12 +275,12 @@ const GlobalCalendar: React.FC = () => {
                      {isAdminOrOwner && (
                         <button 
                            onClick={() => {
-                              triggerHaptic(dayData.isLocked ? 'success' : 'warning');
+                              triggerHaptic('warning');
                               toggleDayLock(selectedDayDetail);
                            }}
-                           className={`h-12 px-6 rounded-2xl font-black text-sm transition-all flex items-center gap-2 ${dayData.isLocked ? 'bg-white text-slate-600 shadow-sm border border-slate-200 hover:bg-slate-50' : 'bg-red-600 text-white shadow-lg shadow-red-900/20 hover:bg-red-700'}`}
+                           className={`h-12 px-6 rounded-2xl font-black text-sm transition-all flex items-center gap-2 ${dayData.isLocked ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed' : 'bg-red-600 text-white shadow-lg shadow-red-900/20 hover:bg-red-700'}`}
                         >
-                           {dayData.isLocked ? <><Unlock size={18} /> Reabrir Dia</> : <><Lock size={18} /> Bloquear Gestão</>}
+                           {dayData.isLocked ? <><Lock size={18} /> BLOQUEADO</> : <><Lock size={18} /> Bloquear Gestão</>}
                         </button>
                      )}
                      <button onClick={() => setSelectedDayDetail(null)} className="p-3 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors">

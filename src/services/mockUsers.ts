@@ -47,5 +47,14 @@ export const getMockUsers = (): User[] => {
 export const saveMockUsers = (users: User[]) => {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(users));
   // Dispatch a custom event to notify other parts of the app that the user DB has changed
-  window.dispatchEvent(new CustomEvent('mg_users_updated'));
+  if (typeof window !== 'undefined') {
+    let event;
+    try {
+      event = new CustomEvent('mg_users_updated');
+    } catch (e) {
+      event = document.createEvent('CustomEvent');
+      (event as any).initCustomEvent('mg_users_updated', true, true, null);
+    }
+    window.dispatchEvent(event);
+  }
 };

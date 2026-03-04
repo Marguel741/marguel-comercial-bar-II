@@ -3,5 +3,6 @@ export const roundKz = (value: number): number => {
 };
 
 export const formatKz = (value: number): string => {
-  return value.toLocaleString('pt-AO', { maximumFractionDigits: 0 }) + ' Kz';
+  if (value === undefined || value === null) return '0 Kz';
+  return (value || 0).toLocaleString('pt-AO', { maximumFractionDigits: 0 }) + ' Kz';
 };

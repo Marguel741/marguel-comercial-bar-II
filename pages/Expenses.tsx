@@ -7,7 +7,7 @@ import {
 import SoftCard from '../components/SoftCard';
 import { useLayout } from '../contexts/LayoutContext';
 import SyncStatus from '../components/SyncStatus';
-import { useAuth } from '../App';
+import { useAuth } from '../contexts/AuthContext';
 import { useProducts } from '../contexts/ProductContext';
 import { Expense } from '../types';
 
@@ -22,14 +22,29 @@ const Expenses: React.FC = () => {
     systemDate, 
     isDayLocked, 
     processTransaction,
-    categories
+    expenseCategories,
+    addExpenseCategory,
+    updateExpenseCategory,
+    deleteExpenseCategory
   } = useProducts();
 
   const isLocked = isDayLocked(systemDate);
 
+  const activeExpenseCategories = useMemo(() => 
+    expenseCategories.filter(cat => cat.isActive), 
+    [expenseCategories]
+  );
+
   // --- Estados ---
   // Formulário
-  const [formData, setFormData] = useState({ title: '', amount: '', category: 'Operacional', notes: '' });
+  const [formData, setFormData] = useState({ title: '', amount: '', category: '', notes: '' });
+  
+  useEffect(() => {
+    if (activeExpenseCategories.length > 0 && !formData.category) {
+      setFormData(prev => ({ ...prev, category: activeExpenseCategories[0].name }));
+    }
+  }, [activeExpenseCategories]);
+
   // Múltiplos Anexos
   const [attachments, setAttachments] = useState<string[]>([]);
   // Feedback
@@ -39,8 +54,14 @@ const Expenses: React.FC = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState<Expense | null>(null);
   const [showFullReport, setShowFullReport] = useState(false);
+  const [showCategoryManager, setShowCategoryManager] = useState(false);
   const [reportSearch, setReportSearch] = useState('');
   const [viewImageIndex, setViewImageIndex] = useState<number | null>(null);
+
+  // Categoria Manager State
+  const [newCatName, setNewCatName] = useState('');
+  const [editingCatId, setEditingCatId] = useState<string | null>(null);
+  const [editingCatName, setEditingCatName] = useState('');
 
   // Refs
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -87,7 +108,7 @@ const Expenses: React.FC = () => {
       return;
     }
     triggerHaptic('selection');
-    setFormData({ title: '', amount: '', category: 'Operacional', notes: '' });
+    setFormData({ title: '', amount: '', category: activeExpenseCategories[0]?.name || '', notes: '' });
     setAttachments([]);
     titleInputRef.current?.focus();
     // Scroll to top on mobile
@@ -125,7 +146,7 @@ const Expenses: React.FC = () => {
     showToast('Despesa registrada com sucesso!');
     
     // Reset Form
-    setFormData({ title: '', amount: '', category: 'Operacional', notes: '' });
+    setFormData({ title: '', amount: '', category: activeExpenseCategories[0]?.name || '', notes: '' });
     setAttachments([]);
   };
 
@@ -215,6 +236,12 @@ const Expenses: React.FC = () => {
         <div className="flex-1 flex items-center justify-center md:justify-end w-full md:w-auto gap-4">
           <SyncStatus />
           <button 
+            onClick={() => setShowCategoryManager(true)}
+            className="p-3 bg-white text-[#003366] border border-slate-200 rounded-xl hover:bg-slate-50 transition-all flex items-center gap-2 font-bold text-xs"
+          >
+            <Tag size={16} /> Categorias
+          </button>
+          <button 
             onClick={handleNewExpenseClick}
             className="pill-button px-6 py-3 bg-red-500 text-white font-bold flex items-center justify-center gap-2 shadow-lg shadow-red-100 w-full md:w-auto hover:bg-red-600 transition-all active:scale-95"
           >
@@ -269,8 +296,8 @@ const Expenses: React.FC = () => {
                   className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-700 border-none outline-none focus:ring-2 focus:ring-[#003366] dark:text-white"
                 >
                   <option value="">Selecione uma categoria</option>
-                  {categories.map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
+                  {activeExpenseCategories.map(cat => (
+                    <option key={cat.id} value={cat.name}>{cat.name}</option>
                   ))}
                 </select>
               </div>
@@ -421,12 +448,9 @@ const Expenses: React.FC = () => {
                       onChange={(e) => setEditData({...editData, category: e.target.value})}
                       className="w-full bg-white text-[#003366] rounded-lg p-2 font-bold outline-none text-sm"
                     >
-                      <option value="Operacional">Operacional</option>
-                      <option value="Pessoal">Pessoal</option>
-                      <option value="Stock">Stock (Compra)</option>
-                      <option value="Material">Material/Limpeza</option>
-                      <option value="Reparação">Reparação</option>
-                      <option value="Outros">Outros</option>
+                      {activeExpenseCategories.map(cat => (
+                        <option key={cat.id} value={cat.name}>{cat.name}</option>
+                      ))}
                     </select>
                   </div>
                   <div className="bg-white/10 rounded-xl p-2">
@@ -733,6 +757,127 @@ const Expenses: React.FC = () => {
                   </tbody>
                 </table>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL GESTÃO DE CATEGORIAS --- */}
+      {showCategoryManager && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[80] flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-md rounded-[32px] shadow-2xl overflow-hidden flex flex-col relative">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <h2 className="text-xl font-black text-[#003366] flex items-center gap-2">
+                <Tag size={24} /> Categorias Financeiras
+              </h2>
+              <button 
+                onClick={() => setShowCategoryManager(false)}
+                className="p-2 hover:bg-red-50 rounded-full text-slate-400 hover:text-red-500 transition-colors"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Adicionar Nova */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Nova Categoria</label>
+                <div className="flex gap-2">
+                  <input 
+                    type="text" 
+                    value={newCatName}
+                    onChange={(e) => setNewCatName(e.target.value)}
+                    placeholder="Ex: Marketing"
+                    className="flex-1 p-3 bg-slate-100 rounded-xl border-none outline-none focus:ring-2 focus:ring-[#003366]"
+                  />
+                  <button 
+                    onClick={() => {
+                      if (!newCatName.trim()) return;
+                      addExpenseCategory({ name: newCatName.trim(), isActive: true });
+                      setNewCatName('');
+                      triggerHaptic('success');
+                    }}
+                    className="p-3 bg-[#003366] text-white rounded-xl hover:opacity-90 transition-all"
+                  >
+                    <Plus size={20} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Lista */}
+              <div className="space-y-3 max-h-[40vh] overflow-y-auto pr-2 custom-scrollbar">
+                {expenseCategories.map(cat => (
+                  <div key={cat.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100 group">
+                    {editingCatId === cat.id ? (
+                      <div className="flex-1 flex gap-2">
+                        <input 
+                          type="text" 
+                          value={editingCatName}
+                          onChange={(e) => setEditingCatName(e.target.value)}
+                          className="flex-1 p-1 bg-white border border-slate-200 rounded outline-none"
+                          autoFocus
+                        />
+                        <button 
+                          onClick={() => {
+                            updateExpenseCategory(cat.id, { name: editingCatName });
+                            setEditingCatId(null);
+                            triggerHaptic('success');
+                          }}
+                          className="text-green-600 hover:bg-green-50 p-1 rounded"
+                        >
+                          <Check size={18} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-3">
+                        <div className={`w-2 h-2 rounded-full ${cat.isActive ? 'bg-green-500' : 'bg-slate-300'}`} />
+                        <span className={`font-bold ${cat.isActive ? 'text-[#003366]' : 'text-slate-400 line-through'}`}>
+                          {cat.name}
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button 
+                        onClick={() => {
+                          setEditingCatId(cat.id);
+                          setEditingCatName(cat.name);
+                        }}
+                        className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
+                      >
+                        <Edit2 size={14} />
+                      </button>
+                      <button 
+                        onClick={() => updateExpenseCategory(cat.id, { isActive: !cat.isActive })}
+                        className={`p-1.5 ${cat.isActive ? 'text-amber-500 hover:bg-amber-50' : 'text-green-500 hover:bg-green-50'} rounded-lg`}
+                        title={cat.isActive ? 'Desativar' : 'Ativar'}
+                      >
+                        {cat.isActive ? <X size={14} /> : <Check size={14} />}
+                      </button>
+                      <button 
+                        onClick={() => {
+                          if (window.confirm(`Eliminar categoria "${cat.name}"?`)) {
+                            deleteExpenseCategory(cat.id);
+                            triggerHaptic('warning');
+                          }
+                        }}
+                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            
+            <div className="p-6 bg-slate-50 border-t border-slate-100">
+              <button 
+                onClick={() => setShowCategoryManager(false)}
+                className="w-full py-3 bg-white border border-slate-200 text-[#003366] font-bold rounded-xl hover:bg-slate-100 transition-all"
+              >
+                Fechar
+              </button>
             </div>
           </div>
         </div>

@@ -5,7 +5,7 @@ import SoftCard from '../components/SoftCard';
 import { useLayout } from '../contexts/LayoutContext';
 import SyncStatus from '../components/SyncStatus';
 import { useProducts } from '../contexts/ProductContext';
-import { useAuth } from '../App';
+import { useAuth } from '../contexts/AuthContext';
 import { Card, Transaction } from '../types';
 
 const AccountStatus: React.FC = () => {
@@ -15,8 +15,11 @@ const AccountStatus: React.FC = () => {
     cards, addCard, updateCard, deleteCard, 
     transactions, processTransaction, 
     cashBalance, tpaBalance, processCashTPADebit,
-    purchases, expenses, salesReports, stockOperationHistory, products
+    purchases, expenses, salesReports, stockOperationHistory, products,
+    isDayLocked, systemDate
   } = useProducts();
+
+  const isLocked = isDayLocked(systemDate);
 
   // Modals
   const [showTransModal, setShowTransModal] = useState(false);
@@ -69,6 +72,12 @@ const AccountStatus: React.FC = () => {
   const handleTransaction = (e: React.FormEvent) => {
     e.preventDefault();
     if (!amount || !note.trim()) return;
+
+    if (isLocked) {
+      triggerHaptic('error');
+      alert('Operação Negada: O dia atual está bloqueado.');
+      return;
+    }
 
     triggerHaptic('success');
     const val = parseFloat(amount.replace(/\s/g, ''));
@@ -123,6 +132,12 @@ const AccountStatus: React.FC = () => {
   const handleCashTPADebit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!cashTPAAmount || !cashTPANote.trim() || !showCashTPAModal.type) return;
+
+    if (isLocked) {
+      triggerHaptic('error');
+      alert('Operação Negada: O dia atual está bloqueado.');
+      return;
+    }
 
     const val = parseFloat(cashTPAAmount.replace(/\s/g, ''));
     processCashTPADebit(
@@ -210,11 +225,23 @@ const AccountStatus: React.FC = () => {
         <div className="flex items-center gap-4">
           <SyncStatus />
           <button 
-            onClick={() => { triggerHaptic('impact'); setShowCreateCardModal(true); }}
-          className="bg-[#003366] text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 hover:scale-105 transition-all shadow-lg"
-        >
-          <Plus size={20} /> Criar Cartão
-        </button>
+            onClick={() => { 
+              if (isLocked) {
+                triggerHaptic('error');
+                return;
+              }
+              triggerHaptic('impact'); 
+              setShowCreateCardModal(true); 
+            }}
+            disabled={isLocked}
+            className={`px-6 py-3 rounded-2xl font-bold flex items-center gap-2 transition-all shadow-lg ${
+              isLocked 
+                ? 'bg-slate-300 text-slate-500 cursor-not-allowed' 
+                : 'bg-[#003366] text-white hover:scale-105'
+            }`}
+          >
+            <Plus size={20} /> Criar Cartão
+          </button>
         </div>
       </header>
 
@@ -302,18 +329,38 @@ const AccountStatus: React.FC = () => {
             {/* Quick Actions */}
             <div className="flex gap-3">
                 <button 
-                    onClick={() => openTransactionModal('deposit', card.id)}
+                    onClick={() => {
+                      if (isLocked) {
+                        triggerHaptic('error');
+                        return;
+                      }
+                      openTransactionModal('deposit', card.id);
+                    }}
+                    disabled={isLocked}
                     className={`flex-1 py-3 font-bold rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all shadow-sm ${
-                      card.type === 'Poupança' 
-                        ? 'bg-gradient-to-r from-amber-500 to-yellow-600 text-white' 
-                        : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[#003366] dark:text-blue-400 hover:bg-slate-50 dark:hover:bg-slate-700'
+                      isLocked
+                        ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                        : card.type === 'Poupança' 
+                          ? 'bg-gradient-to-r from-amber-500 to-yellow-600 text-white' 
+                          : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[#003366] dark:text-blue-400 hover:bg-slate-50 dark:hover:bg-slate-700'
                     }`}
                 >
                     {card.type === 'Poupança' ? <PlusCircle size={20} /> : <ArrowDownLeft size={20} />} Depositar
                 </button>
                 <button 
-                    onClick={() => openTransactionModal('withdraw', card.id)}
-                    className="flex-1 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold rounded-2xl flex items-center justify-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-95 transition-all shadow-sm"
+                    onClick={() => {
+                      if (isLocked) {
+                        triggerHaptic('error');
+                        return;
+                      }
+                      openTransactionModal('withdraw', card.id);
+                    }}
+                    disabled={isLocked}
+                    className={`flex-1 py-3 font-bold rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all shadow-sm ${
+                      isLocked
+                        ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                        : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
+                    }`}
                 >
                     {card.type === 'Poupança' ? <MinusCircle size={20} /> : <ArrowUpRight size={20} />} Debitar
                 </button>
@@ -334,8 +381,15 @@ const AccountStatus: React.FC = () => {
       {/* SECÇÃO INFERIOR: DETALHES E HISTÓRICO */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-4">
         <SoftCard 
-          className="flex items-center gap-4 cursor-pointer hover:scale-[1.02] transition-transform"
-          onClick={() => { triggerHaptic('selection'); setShowCashTPAModal({ isOpen: true, type: 'Cash' }); }}
+          className={`flex items-center gap-4 transition-all ${isLocked ? 'opacity-50 grayscale cursor-not-allowed' : 'cursor-pointer hover:scale-[1.02]'}`}
+          onClick={() => { 
+            if (isLocked) {
+              triggerHaptic('error');
+              return;
+            }
+            triggerHaptic('selection'); 
+            setShowCashTPAModal({ isOpen: true, type: 'Cash' }); 
+          }}
         >
           <div className="p-4 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded-2xl">
             <Wallet size={28} />
@@ -347,8 +401,15 @@ const AccountStatus: React.FC = () => {
         </SoftCard>
 
         <SoftCard 
-          className="flex items-center gap-4 cursor-pointer hover:scale-[1.02] transition-transform"
-          onClick={() => { triggerHaptic('selection'); setShowCashTPAModal({ isOpen: true, type: 'TPA' }); }}
+          className={`flex items-center gap-4 transition-all ${isLocked ? 'opacity-50 grayscale cursor-not-allowed' : 'cursor-pointer hover:scale-[1.02]'}`}
+          onClick={() => { 
+            if (isLocked) {
+              triggerHaptic('error');
+              return;
+            }
+            triggerHaptic('selection'); 
+            setShowCashTPAModal({ isOpen: true, type: 'TPA' }); 
+          }}
         >
           <div className="p-4 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-2xl">
             <CreditCard size={28} />
@@ -653,11 +714,60 @@ const AccountStatus: React.FC = () => {
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="text-xs text-slate-400 font-bold uppercase mb-1">Data e Hora</p>
-                  <p className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1 justify-end">
-                    <Clock size={14} /> {selectedTransaction.date}
+                  <p className="text-xs text-slate-400 font-bold uppercase mb-1">Status</p>
+                  <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                    selectedTransaction.status === 'CANCELADO' ? 'bg-red-100 text-red-600' :
+                    selectedTransaction.status === 'AJUSTADO' ? 'bg-amber-100 text-amber-600' :
+                    'bg-green-100 text-green-600'
+                  }`}>
+                    {selectedTransaction.status || 'ATIVO'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Grid de Informações Gerais */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-4 bg-slate-50 dark:bg-slate-700/50 rounded-2xl border border-slate-100 dark:border-slate-700">
+                  <p className="text-[10px] text-slate-400 font-bold uppercase mb-1 flex items-center gap-1">
+                    <Clock size={10} /> Data e Hora
+                  </p>
+                  <p className="font-bold text-slate-700 dark:text-slate-200 text-sm">{selectedTransaction.date}</p>
+                </div>
+                <div className="p-4 bg-slate-50 dark:bg-slate-700/50 rounded-2xl border border-slate-100 dark:border-slate-700">
+                  <p className="text-[10px] text-slate-400 font-bold uppercase mb-1 flex items-center gap-1">
+                    <Calendar size={10} /> Dia Operacional
+                  </p>
+                  <p className="font-bold text-slate-700 dark:text-slate-200 text-sm">{selectedTransaction.operationalDay || selectedTransaction.date.split(',')[0]}</p>
+                </div>
+                <div className="p-4 bg-slate-50 dark:bg-slate-700/50 rounded-2xl border border-slate-100 dark:border-slate-700">
+                  <p className="text-[10px] text-slate-400 font-bold uppercase mb-1 flex items-center gap-1">
+                    <CheckCircle size={10} /> Responsável
+                  </p>
+                  <p className="font-bold text-slate-700 dark:text-slate-200 text-sm">{selectedTransaction.performedBy || 'N/A'}</p>
+                </div>
+                <div className="p-4 bg-slate-50 dark:bg-slate-700/50 rounded-2xl border border-slate-100 dark:border-slate-700">
+                  <p className="text-[10px] text-slate-400 font-bold uppercase mb-1 flex items-center gap-1">
+                    <History size={10} /> Tipo
+                  </p>
+                  <p className="font-bold text-slate-700 dark:text-slate-200 text-sm uppercase text-[10px]">
+                    {selectedTransaction.referenceType === 'purchase' ? 'Compra' :
+                     selectedTransaction.referenceType === 'expense' ? 'Despesa' :
+                     selectedTransaction.referenceType === 'sales_report' ? 'Venda' :
+                     selectedTransaction.referenceType === 'deposit' ? 'Depósito' :
+                     selectedTransaction.referenceType === 'withdrawal' ? 'Levantamento' :
+                     selectedTransaction.referenceType === 'day_closure' ? 'Fecho' : 'Ajuste'}
                   </p>
                 </div>
+              </div>
+
+              {/* Descrição / Nota */}
+              <div className="p-4 bg-slate-50 dark:bg-slate-700/50 rounded-2xl border border-slate-100 dark:border-slate-700">
+                <p className="text-[10px] text-slate-400 font-bold uppercase mb-2 flex items-center gap-1">
+                  <FileText size={10} /> Nota / Descrição
+                </p>
+                <p className="text-sm text-slate-600 dark:text-slate-300 font-medium leading-relaxed">
+                  {selectedTransaction.description || 'Sem descrição adicional.'}
+                </p>
               </div>
 
               {/* Detalhes Específicos baseados no referenceType */}
@@ -692,18 +802,6 @@ const AccountStatus: React.FC = () => {
                         }
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="p-4 bg-slate-50 dark:bg-slate-700 rounded-2xl">
-                        <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Responsável</p>
-                        <p className="font-bold text-slate-700 dark:text-slate-200">{selectedTransaction.performedBy || 'N/A'}</p>
-                      </div>
-                      <div className="p-4 bg-slate-50 dark:bg-slate-700 rounded-2xl">
-                        <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Origem</p>
-                        <p className="font-bold text-slate-700 dark:text-slate-200">
-                          {purchases.find(p => p.id === selectedTransaction.referenceId)?.source || 'N/A'}
-                        </p>
-                      </div>
-                    </div>
                   </div>
                 )}
 
@@ -714,9 +812,6 @@ const AccountStatus: React.FC = () => {
                       <h4 className="font-bold text-red-700 dark:text-red-400 mb-2 flex items-center gap-2">
                         <FileText size={18} /> Detalhes da Despesa
                       </h4>
-                      <p className="text-sm text-slate-600 dark:text-slate-300 italic mb-4">
-                        "{expenses.find(e => e.id === selectedTransaction.referenceId)?.notes || 'Sem notas adicionais.'}"
-                      </p>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <p className="text-[10px] text-slate-400 font-bold uppercase">Categoria</p>
@@ -725,8 +820,10 @@ const AccountStatus: React.FC = () => {
                           </p>
                         </div>
                         <div>
-                          <p className="text-[10px] text-slate-400 font-bold uppercase">Responsável</p>
-                          <p className="font-bold text-slate-700 dark:text-slate-200">{selectedTransaction.performedBy || 'N/A'}</p>
+                          <p className="text-[10px] text-slate-400 font-bold uppercase">Origem</p>
+                          <p className="font-bold text-slate-700 dark:text-slate-200">
+                            {expenses.find(e => e.id === selectedTransaction.referenceId)?.user || 'N/A'}
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -748,20 +845,28 @@ const AccountStatus: React.FC = () => {
                             <div className="grid grid-cols-2 gap-3">
                               <div className="bg-white dark:bg-slate-700 p-3 rounded-xl">
                                 <p className="text-[10px] text-slate-400 font-bold uppercase">Total Vendido</p>
-                                <p className="font-black text-green-600">{report.totals.lifted.toLocaleString('pt-AO')} Kz</p>
+                                <p className="font-black text-green-600">{report.totals?.lifted?.toLocaleString('pt-AO') || report.totalLifted?.toLocaleString('pt-AO')} Kz</p>
                               </div>
                               <div className="bg-white dark:bg-slate-700 p-3 rounded-xl">
                                 <p className="text-[10px] text-slate-400 font-bold uppercase">Divergência</p>
-                                <p className={`font-black ${report.totals.discrepancy < 0 ? 'text-red-500' : 'text-green-500'}`}>
-                                  {report.totals.discrepancy.toLocaleString('pt-AO')} Kz
+                                <p className={`font-black ${(report.totals?.discrepancy || report.discrepancy || 0) < 0 ? 'text-red-500' : 'text-green-500'}`}>
+                                  {(report.totals?.discrepancy || report.discrepancy || 0).toLocaleString('pt-AO')} Kz
                                 </p>
                               </div>
                             </div>
-                            <div className="p-3 bg-white dark:bg-slate-700 rounded-xl">
-                              <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Confirmado Por</p>
-                              <p className="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2">
-                                <CheckCircle size={14} className="text-green-500" /> {report.closedBy}
-                              </p>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="p-3 bg-white dark:bg-slate-700 rounded-xl">
+                                <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Fechado Por</p>
+                                <p className="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2 text-xs">
+                                  <Clock size={12} className="text-blue-500" /> {report.closedBy}
+                                </p>
+                              </div>
+                              <div className="p-3 bg-white dark:bg-slate-700 rounded-xl">
+                                <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Confirmado Por</p>
+                                <p className="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2 text-xs">
+                                  <CheckCircle size={12} className="text-green-500" /> {report.confirmedBy || 'Pendente'}
+                                </p>
+                              </div>
                             </div>
                           </div>
                         );
@@ -769,41 +874,12 @@ const AccountStatus: React.FC = () => {
                     </div>
                   </div>
                 )}
+              </div>
 
-                {/* 4. DEPÓSITO / LEVANTAMENTO MANUAL */}
-                {(selectedTransaction.referenceType === 'deposit' || selectedTransaction.referenceType === 'withdrawal') && (
-                  <div className="space-y-4 animate-slide-up">
-                    <div className="p-4 bg-slate-50 dark:bg-slate-700 rounded-2xl border border-slate-200 dark:border-slate-600">
-                      <h4 className="font-bold text-slate-700 dark:text-slate-300 mb-2 flex items-center gap-2">
-                        <Info size={18} /> Informação Adicional
-                      </h4>
-                      <p className="text-sm text-slate-600 dark:text-slate-300 mb-4">
-                        {selectedTransaction.description}
-                      </p>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <p className="text-[10px] text-slate-400 font-bold uppercase">Operador</p>
-                          <p className="font-bold text-slate-700 dark:text-slate-200">{selectedTransaction.performedBy || 'N/A'}</p>
-                        </div>
-                        <div>
-                          <p className="text-[10px] text-slate-400 font-bold uppercase">Tipo</p>
-                          <p className="font-bold text-slate-700 dark:text-slate-200 uppercase text-xs">
-                            {selectedTransaction.referenceType === 'deposit' ? 'Depósito Manual' : 'Débito Manual'}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Caso padrão se não houver referenceType */}
-                {!selectedTransaction.referenceType && (
-                  <div className="p-4 bg-slate-50 dark:bg-slate-700 rounded-2xl">
-                    <p className="text-sm text-slate-600 dark:text-slate-300">
-                      {selectedTransaction.description}
-                    </p>
-                  </div>
-                )}
+              {/* ID da Transação */}
+              <div className="pt-4 border-t border-slate-100 dark:border-slate-700">
+                <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">ID da Transação</p>
+                <p className="font-mono text-[10px] text-slate-400">{selectedTransaction.id}</p>
               </div>
             </div>
 

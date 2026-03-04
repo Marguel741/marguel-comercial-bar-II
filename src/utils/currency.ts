@@ -3,7 +3,8 @@
  * Ensures the value is treated as an integer.
  */
 export const formatKz = (value: number): string => {
-  return Math.round(value).toLocaleString('pt-AO');
+  if (value === undefined || value === null) return '0';
+  return Math.round(value || 0).toLocaleString('pt-AO');
 };
 
 /**

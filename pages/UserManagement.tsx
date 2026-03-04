@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Search, Filter, Shield, User as UserIcon, CheckCircle, XCircle, AlertTriangle, MoreVertical, Ban, Eye, EyeOff, DollarSign, Lock, ShoppingCart, Package, Wallet, ShoppingBag, Save, RefreshCw } from 'lucide-react';
 import SoftCard from '../components/SoftCard';
 import { User, UserRole, UserPermissions } from '../types';
-import { useAuth } from '../App';
+import { useAuth } from '../contexts/AuthContext';
 import { useLayout } from '../contexts/LayoutContext';
 import { DEFAULT_PERMISSIONS } from '../src/utils/permissions';
 import { getMockUsers, saveMockUsers } from '../src/services/mockUsers';
@@ -365,6 +365,8 @@ const UserManagement: React.FC = () => {
                     { key: 'sales_edit', label: 'Efectuar Alterações em Controle de Vendas' },
                     { key: 'sales_void', label: 'Anular Venda' },
                     { key: 'sales_view_margins', label: 'Ver Margem de Lucro Global' },
+                    { key: 'sales_closure', label: 'Efectuar Fecho de Dia' },
+                    { key: 'sales_reopen', label: 'Reabrir Dia Operacional' },
                   ],
                   "4. INVENTÁRIO": [
                     { key: 'inventory_view', label: 'Ver Inventário' },

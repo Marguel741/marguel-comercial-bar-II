@@ -3,7 +3,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { Package, Thermometer, Edit2, Edit3, Bell, Plus, Search, ChevronUp, ChevronDown, AlertTriangle, Save, X, CheckCircle, Check, Trash2, Settings, ClipboardList, Send, ArrowRight, History, Lock, WifiOff } from 'lucide-react';
 import SoftCard from '../components/SoftCard';
 import { useProducts } from '../contexts/ProductContext';
-import { useAuth } from '../App';
+import { useAuth } from '../contexts/AuthContext';
 import { UserRole, InventoryLog, Equipment, UserPermissions } from '../types'; // Importar tipos centralizados
 import { useLayout } from '../contexts/LayoutContext';
 import SyncStatus from '../components/SyncStatus';
@@ -386,6 +386,10 @@ const Inventory: React.FC = () => {
   };
 
   const handleAddStock = (amount: number) => {
+    if (isLocked) {
+      triggerHaptic('error');
+      return;
+    }
     triggerHaptic('impact');
     setProductModal(prev => {
       if (!prev.data) return prev;
@@ -416,6 +420,10 @@ const Inventory: React.FC = () => {
 
   // Executa a eliminação após confirmação no modal
   const handleConfirmDelete = () => {
+    if (isLocked) {
+      triggerHaptic('error');
+      return;
+    }
     if (deleteConfirmation.product) {
         triggerHaptic('error'); // Haptic forte para delete
         deleteProduct(deleteConfirmation.product.id);
@@ -425,6 +433,10 @@ const Inventory: React.FC = () => {
   };
 
   const handleAddCategory = () => {
+    if (isLocked) {
+      triggerHaptic('error');
+      return;
+    }
     if (newCategoryName.trim()) {
       triggerHaptic('success');
       addCategory(newCategoryName.trim());
@@ -434,6 +446,10 @@ const Inventory: React.FC = () => {
   };
 
   const handleRemoveCategory = (cat: string) => {
+    if (isLocked) {
+      triggerHaptic('error');
+      return;
+    }
     triggerHaptic('warning');
     if (window.confirm(`Deseja remover a categoria "${cat}"?`)) {
       removeCategory(cat);

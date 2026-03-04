@@ -49,7 +49,14 @@ export const openDB = (retries = 3): Promise<IDBDatabase> => {
       } else {
         const error = new Error("CRITICAL: Failed to open IndexedDB after 3 attempts.");
         if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('db-critical-error', { detail: error }));
+            let event;
+            try {
+                event = new CustomEvent('db-critical-error', { detail: error });
+            } catch (e) {
+                event = document.createEvent('CustomEvent');
+                (event as any).initCustomEvent('db-critical-error', true, true, error);
+            }
+            window.dispatchEvent(event);
         }
         reject(error);
       }

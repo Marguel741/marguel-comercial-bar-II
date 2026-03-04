@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bell, Menu, Plus, ArrowUpDown, FileText, Calculator, Wallet, CreditCard, Package, TrendingDown, Clock, Box, TrendingUp, ChevronDown, ChevronUp, X, AlertTriangle, CheckCircle, LogOut, Settings, Moon, Sun, Monitor, User as UserIcon, Maximize2, Minimize2 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { useAuth } from '../App';
+import { useAuth } from '../contexts/AuthContext';
 import { useProducts } from '../contexts/ProductContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useLayout } from '../contexts/LayoutContext';
@@ -194,7 +194,7 @@ const Dashboard: React.FC = () => {
             id: `disc-${recentDiscrepancy.id}`,
             type: 'CRITICO',
             title: 'Divergência Financeira',
-            message: `Divergência de ${discrepancyVal.toLocaleString()} Kz em ${recentDiscrepancy.date || recentDiscrepancy.displayDate}`,
+            message: `Divergência de ${(discrepancyVal || 0).toLocaleString('pt-AO')} Kz em ${recentDiscrepancy.date || recentDiscrepancy.displayDate}`,
             icon: TrendingDown,
             color: 'red'
         });
@@ -551,7 +551,7 @@ const Dashboard: React.FC = () => {
                         />
                         <Tooltip 
                             contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                            formatter={(value: number, name: string) => [`${value.toLocaleString()} Kz`, name]}
+                            formatter={(value: number, name: string) => [`${(value || 0).toLocaleString('pt-AO')} Kz`, name]}
                             labelFormatter={(label, payload) => {
                                 if (payload && payload[0]) {
                                     return payload[0].payload.fullName || label;
@@ -593,12 +593,12 @@ const Dashboard: React.FC = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="bg-white dark:bg-[#0a192f] p-4 rounded-xl shadow-sm">
                             <h5 className="font-bold text-slate-600 dark:text-slate-300 mb-3 flex items-center gap-2"><TrendingUp size={16}/> Vendas</h5>
-                            <p className="text-2xl font-black text-[#003366] dark:text-blue-400 mb-2">{selectedChartDay.sales.toLocaleString()} Kz</p>
+                            <p className="text-2xl font-black text-[#003366] dark:text-blue-400 mb-2">{(selectedChartDay.sales || 0).toLocaleString('pt-AO')} Kz</p>
                             {selectedChartDay.details?.report ? (
                                 <div className="text-sm space-y-1 text-slate-500 dark:text-slate-400">
-                                    <p>Cash: <span className="font-medium">{(selectedChartDay.details.report.cash || selectedChartDay.details.report.financials?.cash || 0).toLocaleString()} Kz</span></p>
-                                    <p>TPA: <span className="font-medium">{(selectedChartDay.details.report.tpa || selectedChartDay.details.report.financials?.ticket || 0).toLocaleString()} Kz</span></p>
-                                    <p>Transferência: <span className="font-medium">{(selectedChartDay.details.report.transfer || selectedChartDay.details.report.financials?.transfer || 0).toLocaleString()} Kz</span></p>
+                                    <p>Cash: <span className="font-medium">{(selectedChartDay.details.report.cash || selectedChartDay.details.report.financials?.cash || 0).toLocaleString('pt-AO')} Kz</span></p>
+                                    <p>TPA: <span className="font-medium">{(selectedChartDay.details.report.tpa || selectedChartDay.details.report.financials?.ticket || 0).toLocaleString('pt-AO')} Kz</span></p>
+                                    <p>Transferência: <span className="font-medium">{(selectedChartDay.details.report.transfer || selectedChartDay.details.report.financials?.transfer || 0).toLocaleString('pt-AO')} Kz</span></p>
                                 </div>
                             ) : (
                                 <p className="text-sm text-slate-400 italic">Sem fecho registrado.</p>
@@ -607,13 +607,13 @@ const Dashboard: React.FC = () => {
 
                         <div className="bg-white dark:bg-[#0a192f] p-4 rounded-xl shadow-sm">
                             <h5 className="font-bold text-slate-600 dark:text-slate-300 mb-3 flex items-center gap-2"><TrendingDown size={16}/> Despesas</h5>
-                            <p className="text-2xl font-black text-red-500 mb-2">{selectedChartDay.expenses.toLocaleString()} Kz</p>
+                            <p className="text-2xl font-black text-red-500 mb-2">{(selectedChartDay.expenses || 0).toLocaleString('pt-AO')} Kz</p>
                             {selectedChartDay.details?.expenseList?.length > 0 ? (
                                 <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar">
                                     {selectedChartDay.details.expenseList.map((e: any) => (
                                         <div key={e.id} className="text-sm flex justify-between border-b border-slate-50 pb-1">
                                             <span className="text-slate-600">{e.title}</span>
-                                            <span className="font-bold text-red-500">{e.amount.toLocaleString()} Kz</span>
+                                            <span className="font-bold text-red-500">{(e.amount || 0).toLocaleString('pt-AO')} Kz</span>
                                         </div>
                                     ))}
                                 </div>

@@ -21,7 +21,7 @@ import {
   CalendarRange,
   FlaskConical
 } from 'lucide-react';
-import { useAuth } from '../App';
+import { useAuth } from '../contexts/AuthContext';
 import { UserRole } from '../types';
 import { useLayout } from '../contexts/LayoutContext';
 import { useProducts } from '../contexts/ProductContext';

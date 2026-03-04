@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { Search, ShoppingCart, Plus, Minus, Trash2, CheckCircle, Wallet, CreditCard, ArrowRightLeft, X, History, Clock, Eye, Wifi, WifiOff, Cloud, Loader2, Check, Filter, AlertCircle, Tag } from 'lucide-react';
 import { useProducts } from '../contexts/ProductContext';
 import { useLayout } from '../contexts/LayoutContext';
-import { useAuth } from '../App';
+import { useAuth } from '../contexts/AuthContext';
 import SoftCard from '../components/SoftCard';
 import { dbAddSale, dbGetAllSales, dbUpdateSale, DirectSale } from '../src/services/db';
 import { processSync, serverTimeOffset } from '../src/services/syncService';
@@ -17,9 +17,11 @@ interface Product {
 }
 
 const DirectService: React.FC = () => {
-  const { products, categories, updateProduct, processTransaction, addSalesReport } = useProducts();
+  const { products, categories, updateProduct, processTransaction, addSalesReport, isDayLocked, systemDate } = useProducts();
   const { triggerHaptic, sidebarMode } = useLayout();
   const { user } = useAuth();
+
+  const isLocked = isDayLocked(systemDate);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Todos');
@@ -180,6 +182,11 @@ const DirectService: React.FC = () => {
 
   // Cart Logic
   const addToCart = (product: Product) => {
+    if (isLocked) {
+      triggerHaptic('error');
+      alert('Operação Negada: O dia atual está bloqueado.');
+      return;
+    }
     triggerHaptic('impact');
     setCart(prev => ({
       ...prev,
@@ -254,6 +261,12 @@ const DirectService: React.FC = () => {
     if (Object.keys(cart).length === 0) {
         alert("O carrinho está vazio.");
         return;
+    }
+
+    if (isLocked) {
+      triggerHaptic('error');
+      alert('Operação Negada: O dia atual está bloqueado.');
+      return;
     }
 
     // Integrity Check (Pre-Transaction Validation)
@@ -551,6 +564,11 @@ const DirectService: React.FC = () => {
            <div className="flex justify-between items-center">
               {/* UI FIX: Added ml-20 to prevent overlap with Menu button */}
               <h1 className="text-2xl font-bold text-[#003366] dark:text-white ml-20">Atendimento Directo</h1>
+              {isLocked && (
+                <div className="flex items-center gap-2 bg-red-100 text-red-600 px-3 py-1 rounded-full text-xs font-black shadow-sm animate-pulse">
+                  <Lock size={14} /> DIA BLOQUEADO (IMUTÁVEL)
+                </div>
+              )}
               <div className="flex items-center gap-4">
                   {/* Offline/Online Indicator */}
                   <button 

@@ -33,6 +33,8 @@ export interface UserPermissions {
   sales_edit: boolean;
   sales_void: boolean;
   sales_view_margins: boolean;
+  sales_closure: boolean;
+  sales_reopen: boolean;
 
   // 4. INVENTÁRIO
   inventory_view: boolean;
@@ -167,6 +169,12 @@ export interface Sale {
   observations?: string;
 }
 
+export interface ExpenseCategory {
+  id: string;
+  name: string;
+  isActive: boolean;
+}
+
 export interface Expense {
   id: string;
   title: string;
@@ -264,6 +272,17 @@ export interface Transaction {
   referenceId?: string;
   referenceType?: 'purchase' | 'expense' | 'sales_report' | 'deposit' | 'withdrawal' | 'day_closure';
   performedBy?: string;
+  status?: 'ATIVO' | 'CANCELADO' | 'AJUSTADO';
+  operationalDay?: string;
+}
+
+export enum ClosureStatus {
+  ABERTO = 'ABERTO',
+  FECHO_PARCIAL_GERENTE = 'FECHO_PARCIAL_GERENTE',
+  FECHO_PARCIAL_FUNCIONARIO = 'FECHO_PARCIAL_FUNCIONARIO',
+  FECHO_PARCIAL_ADMIN = 'FECHO_PARCIAL_ADMIN',
+  FECHO_CONFIRMADO = 'FECHO_CONFIRMADO',
+  BLOQUEADO = 'BLOQUEADO'
 }
 
 export interface SalesReport {
@@ -284,6 +303,12 @@ export interface SalesReport {
     initial: Record<string, string>;
     final: Record<string, string>;
   };
+  // Double confirmation fields
+  status: ClosureStatus;
+  confirmedBy?: string;
+  confirmationTimestamp?: number;
+  unilateralAdminConfirmation?: boolean;
+  
   // Extended fields for detailed reporting
   dateISO?: string;
   displayDate?: string;

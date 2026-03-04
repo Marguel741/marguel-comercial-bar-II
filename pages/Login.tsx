@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { useAuth } from '../App';
+import { useAuth } from '../contexts/AuthContext';
 import { MGLogo } from '../constants';
 import { Mail, Lock, Key } from 'lucide-react';
 

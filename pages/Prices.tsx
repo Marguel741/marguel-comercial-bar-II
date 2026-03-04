@@ -12,7 +12,7 @@ import SoftCard from '../components/SoftCard';
 import { useProducts } from '../contexts/ProductContext';
 import { useLayout } from '../contexts/LayoutContext';
 import SyncStatus from '../components/SyncStatus';
-import { useAuth } from '../App';
+import { useAuth } from '../contexts/AuthContext';
 import { PriceHistoryLog, SavedProposal, PurchaseRecord, UserPermissions } from '../types';
 import { MGLogo } from '../constants';
 import { hasPermission } from '../src/utils/permissions';
@@ -686,7 +686,7 @@ const Prices: React.FC = () => {
                             <td className="p-6 align-middle">
                               <span className={`font-black text-sm px-4 py-2 rounded-xl flex items-center gap-2 w-fit ${profit >= 0 ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'}`}>
                                 {profit >= 0 ? <Plus size={14} /> : <Minus size={14} />}
-                                {Math.abs(profit).toLocaleString('pt-AO', {maximumFractionDigits: 1})} Kz
+                                {(Math.abs(profit) || 0).toLocaleString('pt-AO', {maximumFractionDigits: 1})} Kz
                               </span>
                             </td>
                             <td className="p-6 align-middle">

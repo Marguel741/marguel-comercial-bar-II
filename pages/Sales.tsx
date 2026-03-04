@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Save, Calculator, DollarSign, Calendar, TrendingDown, AlertCircle, PlusCircle, Wallet, CreditCard, ArrowRightLeft, CheckCircle, X, Send, MessageSquare, Clock, Plus, Printer, Lock, Unlock, BarChart2, ArrowUp, Filter, Eye, ChevronRight, RefreshCw, Database, Server, ShieldCheck, Smartphone, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react';
+import { Save, Calculator, DollarSign, Calendar, TrendingDown, AlertCircle, PlusCircle, Wallet, CreditCard, ArrowRightLeft, CheckCircle, X, Send, MessageSquare, Clock, Plus, Printer, Lock, Unlock, BarChart2, ArrowUp, Filter, Eye, ChevronRight, RefreshCw, Database, Server, ShieldCheck, Smartphone, ChevronDown, ChevronUp, AlertTriangle, Check } from 'lucide-react';
 import SoftCard from '../components/SoftCard';
 import { useProducts } from '../contexts/ProductContext';
 import { MGLogo } from '../constants';
@@ -15,8 +15,9 @@ import {
   Cell
 } from 'recharts';
 import { useLayout } from '../contexts/LayoutContext';
-import { useAuth } from '../App';
-import { UserRole } from '../types';
+import { useAuth } from '../contexts/AuthContext';
+import { UserRole, ClosureStatus } from '../types';
+import { hasPermission } from '../src/utils/permissions';
 import { useFinance } from '../contexts/FinanceContext';
 import SyncStatus from '../components/SyncStatus';
 
@@ -47,6 +48,11 @@ interface DailyReport {
     final: Record<string, string>;
   };
   notes?: string;
+  status?: ClosureStatus;
+  confirmedBy?: string;
+  confirmationTimestamp?: number;
+  unilateralAdminConfirmation?: boolean;
+  timestamp?: number;
   
   // Compatibility fields for Dashboard
   date?: string;
@@ -60,7 +66,7 @@ interface DailyReport {
 }
 
 const Sales: React.FC = () => {
-  const { products, addProduct, updateProduct, getPurchasesByDate, getTodayPurchases, addPurchase, salesReports: contextSalesReports, addSalesReport } = useProducts();
+  const { products, addProduct, updateProduct, getPurchasesByDate, getTodayPurchases, addPurchase, salesReports: contextSalesReports, addSalesReport, confirmSalesReport, isDayLocked, reopenDay } = useProducts();
   const { sidebarMode, triggerHaptic } = useLayout();
   const { user } = useAuth();
   const { addTransaction } = useFinance();
@@ -178,10 +184,10 @@ const Sales: React.FC = () => {
 
   const [isFinancialsConfirmed, setIsFinancialsConfirmed] = useState(false);
   const [syncState, setSyncState] = useState<{
-    status: 'idle' | 'syncing' | 'success';
-    step: string;
-    progress: number;
-  }>({ status: 'idle', step: '', progress: 0 });
+    status: 'idle' | 'syncing' | 'success' | 'error';
+    currentStep: number;
+    completedSteps: string[];
+  }>({ status: 'idle', currentStep: -1, completedSteps: [] });
 
   const [isDayClosed, setIsDayClosed] = useState(false);
   const [showCloseModal, setShowCloseModal] = useState(false);
@@ -195,8 +201,13 @@ const Sales: React.FC = () => {
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
   const [breakdowns, setBreakdowns] = useState<Record<string, { packs: number, singles: number, waste: number }>>({});
 
-  const canEditInitialStock = user?.role === UserRole.ADMIN_GERAL || user?.role === UserRole.PROPRIETARIO || user?.role === UserRole.GERENTE;
-  const isReadOnly = user?.role === UserRole.COLABORADOR_REMOTO;
+  const canEditInitialStock = hasPermission(user, 'sales_edit') && !isDayLocked(reportDate);
+  const canExecuteSales = hasPermission(user, 'sales_execute');
+  const canCloseDay = hasPermission(user, 'sales_closure');
+  const canReopenDay = hasPermission(user, 'sales_reopen');
+  
+  const isReadOnly = !canExecuteSales || isDayLocked(reportDate);
+  const isLocked = isDayLocked(reportDate);
 
   const showToast = (message: string) => {
     setToast({ show: true, message });
@@ -352,6 +363,11 @@ const Sales: React.FC = () => {
   };
 
   const handleInitialClose = () => {
+    if (!canCloseDay) {
+        triggerHaptic('error');
+        showToast("Sem permissão para realizar fecho.");
+        return;
+    }
     if (isReadOnly) return;
     if (reportDate > todayISO) {
         triggerHaptic('error');
@@ -381,53 +397,47 @@ const Sales: React.FC = () => {
     
     setShowCloseModal(false);
     triggerHaptic('impact');
-    setSyncState({ status: 'syncing', step: 'Iniciando Sincronização Segura...', progress: 10 });
+    setSyncState({ status: 'syncing', currentStep: 0, completedSteps: [] });
 
-    await new Promise(resolve => setTimeout(resolve, 800));
-    setSyncState({ status: 'syncing', step: 'Sincronizando Dados do Sistema...', progress: 35 });
+    // Step 1: Sincronização Segura
+    await new Promise(resolve => setTimeout(resolve, 1200));
+    setSyncState(prev => ({ ...prev, completedSteps: [...prev.completedSteps, 'security'], currentStep: 1 }));
     
-    await new Promise(resolve => setTimeout(resolve, 800));
-    setSyncState({ status: 'syncing', step: 'Validando Fecho no Servidor...', progress: 60 });
+    // Step 2: Dados do Sistema
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    setSyncState(prev => ({ ...prev, completedSteps: [...prev.completedSteps, 'database'], currentStep: 2 }));
     
     if (reportDate > todayISO) {
-        setSyncState({ status: 'error', step: 'ERRO: Data Futura Bloqueada pelo Servidor.', progress: 100 });
+        setSyncState(prev => ({ ...prev, status: 'error' }));
         triggerHaptic('error');
         alert("O servidor rejeitou o fecho: Datas futuras não são permitidas.");
         return;
     }
 
-    await new Promise(resolve => setTimeout(resolve, 800));
-    setSyncState({ status: 'syncing', step: 'Notificando Usuários e Administradores...', progress: 80 });
+    // Step 3: Servidores
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    setSyncState(prev => ({ ...prev, completedSteps: [...prev.completedSteps, 'server'], currentStep: 3 }));
+
+    // Step 4: Usuários e Admin
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    setSyncState(prev => ({ ...prev, completedSteps: [...prev.completedSteps, 'users'], currentStep: 4 }));
+
+    // Step 5: Sistema Financeiro
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    setSyncState(prev => ({ ...prev, completedSteps: [...prev.completedSteps, 'finance'], currentStep: 5 }));
 
     await new Promise(resolve => setTimeout(resolve, 800));
-    setSyncState({ status: 'syncing', step: 'Atualizando Stock e Financeiro no App...', progress: 95 });
-
-    calculatedData.items.forEach(item => {
-        if (item.soldQty > 0) {
-            const currentProduct = products.find(p => p.id === item.id);
-            if (currentProduct) {
-                updateProduct(item.id, {
-                    stock: Math.max(0, currentProduct.stock - item.soldQty)
-                });
-            }
-        }
-    });
 
     const reportId = Date.now().toString();
     const performer = user?.name || 'Sistema';
 
-    addTransaction(
-      'entrada',
-      'corporate',
-      totalLifted,
-      `Fecho do Dia (${reportDate}) - Levantamento: ${totalLifted.toLocaleString('pt-AO')} Kz`,
-      reportId,
-      'day_closure',
-      performer
-    );
+    const initialStatus = 
+      user?.role === UserRole.GERENTE ? ClosureStatus.FECHO_PARCIAL_GERENTE :
+      user?.role === UserRole.ADMIN_GERAL || user?.role === UserRole.PROPRIETARIO ? ClosureStatus.FECHO_PARCIAL_ADMIN :
+      ClosureStatus.FECHO_PARCIAL_FUNCIONARIO;
 
     const reportTimestamp = new Date(reportDate + 'T12:00:00'); 
-    const newReport: DailyReport = {
+    const newReport: DailyReport & { status: ClosureStatus } = {
       id: reportId,
       dateISO: reportTimestamp.toISOString(),
       displayDate: reportTimestamp.toLocaleDateString('pt-AO', { year: 'numeric', month: 'long', day: 'numeric' }),
@@ -449,6 +459,8 @@ const Sales: React.FC = () => {
       topProducts: calculatedData.salesChartData.slice(0, 5).map(i => ({ name: i.name, qty: i.Quantidade, total: i.Total })),
       itemsSnapshot: calculatedData.items.filter(i => i.soldQty !== 0 || i.init !== 0 || i.end !== 0),
       closedBy: user?.name || 'Sistema',
+      status: initialStatus,
+      timestamp: reportTimestamp.getTime(),
       
       // Compatibility fields for Dashboard
       date: reportTimestamp.toLocaleDateString('pt-AO'),
@@ -473,14 +485,14 @@ const Sales: React.FC = () => {
 
     addSalesReport(newReport as any);
     
-    setSyncState({ status: 'success', step: 'Dia Fechado e Stock Atualizado!', progress: 100 });
+    setSyncState(prev => ({ ...prev, status: 'success' }));
     triggerHaptic('success');
 
     setTimeout(() => {
-        setSyncState({ status: 'idle', step: '', progress: 0 });
+        setSyncState({ status: 'idle', currentStep: -1, completedSteps: [] });
         setIsDayClosed(true);
         pageTopRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, 1500);
+    }, 2500);
   };
 
   const getCloseButtonColor = () => {
@@ -489,19 +501,45 @@ const Sales: React.FC = () => {
     return 'bg-[#003366] text-white hover:opacity-90 shadow-blue-200';
   };
 
+  const handleReopenDay = () => {
+    if (!canReopenDay) {
+        triggerHaptic('error');
+        showToast("Sem permissão para reabrir o dia.");
+        return;
+    }
+    if (confirm("Deseja realmente reabrir este dia operacional? Isso permitirá novas alterações.")) {
+        reopenDay(reportDate);
+        showToast("Dia reaberto com sucesso!");
+        triggerHaptic('success');
+    }
+  };
+
   const getCloseButtonText = () => {
+    if (isLocked) return 'Dia Encerrado';
     if (calculatedData.hasStockError) return 'Erro de Stock';
     if (!isFinancialsConfirmed) return 'Confirmar Valores';
     return 'Fechar o Dia';
   };
 
+  const INACTIVITY_THRESHOLD_HOURS = 24;
+
   const getReportData = (report: any) => {
+      if (!report) return {
+          totals: { expected: 0, lifted: 0, discrepancy: 0, soldStock: 0 },
+          financials: { cash: 0, transfer: 0, ticket: 0, lunch: 0, justification: '' },
+          itemsSnapshot: [],
+          status: ClosureStatus.FECHO_PARCIAL_FUNCIONARIO,
+          displayDate: '',
+          weekday: '',
+          generatedAt: ''
+      };
       if (report.totals) return report; // New format
       
       // Old format (SalesReport)
       return {
           ...report,
-          displayDate: report.date, 
+          displayDate: report.date || '', 
+          status: report.status || ClosureStatus.FECHO_CONFIRMADO, // Assume old ones are confirmed
           totals: {
               soldStock: report.totalExpected || 0,
               lifted: report.totalLifted || 0,
@@ -521,30 +559,153 @@ const Sales: React.FC = () => {
   };
 
   if (isDayClosed || viewHistoryReport) {
-    const rawReport = viewHistoryReport || salesReports[0];
+    const rawReport = viewHistoryReport || salesReports.find(r => {
+      const reportDateISO = (r as any).dateISO ? (r as any).dateISO.split('T')[0] : r.date;
+      return reportDateISO === reportDate;
+    });
+    
     const reportData = getReportData(rawReport);
+    
+    const isConfirmed = reportData.status === ClosureStatus.FECHO_CONFIRMADO;
+    const canConfirm = !isConfirmed && (
+      (user?.role === UserRole.ADMIN_GERAL || user?.role === UserRole.PROPRIETARIO) ||
+      (user?.role === UserRole.GERENTE && reportData.closedBy !== user.name)
+    );
+
+    const hoursSinceClosure = (Date.now() - (reportData.timestamp || Date.now())) / (1000 * 60 * 60);
+    const isUnilateralAllowed = !isConfirmed && hoursSinceClosure > INACTIVITY_THRESHOLD_HOURS && (user?.role === UserRole.ADMIN_GERAL || user?.role === UserRole.PROPRIETARIO);
+
+    const handleFinalConfirmation = () => {
+      if (!canConfirm && !isUnilateralAllowed) return;
+      confirmSalesReport(reportData.id, user?.name || 'Admin', isUnilateralAllowed);
+      showToast("Fecho confirmado com sucesso!");
+      triggerHaptic('success');
+    };
+
     return (
         <div ref={pageTopRef} className="p-4 md:p-8 space-y-8 animate-fade-in pb-32 bg-[#F8FAFC] dark:bg-slate-900 min-h-screen">
+            {toast.show && (
+              <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] animate-fade-slide-up">
+                 <div className="bg-[#003366] text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-2 font-bold text-sm"><CheckCircle size={18} className="text-green-400" /> {toast.message}</div>
+              </div>
+            )}
             <div className="max-w-5xl mx-auto print:max-w-none">
                 <div className="flex justify-between items-center mb-8">
                     <button onClick={() => { viewHistoryReport ? setViewHistoryReport(null) : setIsDayClosed(false); }} className="text-slate-500 dark:text-slate-400 font-bold hover:text-[#003366] dark:hover:text-blue-400">← Voltar</button>
                     <button onClick={() => window.print()} className="pill-button px-6 py-3 bg-[#003366] text-white font-bold flex items-center gap-2 shadow-lg hover:opacity-90"><Printer size={20} /> Imprimir / PDF</button>
                 </div>
-                <SoftCard className="p-8">
-                   <h1 className="text-2xl font-black text-[#003366] dark:text-white uppercase mb-6">Relatório de Fecho - {reportData.displayDate}</h1>
-                   <div className="grid grid-cols-3 gap-6">
+                
+                <SoftCard className="p-8 mb-6">
+                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+                      <div>
+                        <h1 className="text-2xl font-black text-[#003366] dark:text-white uppercase">Relatório de Fecho - {reportData.displayDate}</h1>
+                        <p className="text-slate-500 font-medium">Iniciado por {reportData.closedBy} às {reportData.generatedAt}</p>
+                      </div>
+                      
+                      <div className="flex items-center gap-3">
+                        <div className={`px-4 py-2 rounded-full font-bold text-sm flex items-center gap-2 ${
+                          reportData.status === ClosureStatus.BLOQUEADO ? 'bg-red-100 text-red-700' :
+                          isConfirmed ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                        }`}>
+                          {reportData.status === ClosureStatus.BLOQUEADO ? <Lock size={18} /> :
+                           isConfirmed ? <ShieldCheck size={18} /> : <Clock size={18} />}
+                          {reportData.status === ClosureStatus.BLOQUEADO ? 'DIA BLOQUEADO (IMUTÁVEL)' :
+                           isConfirmed ? 'FECHO CONFIRMADO' : 'AGUARDANDO CONFIRMAÇÃO'}
+                        </div>
+                      </div>
+                   </div>
+
+                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                         <div className="p-6 bg-slate-50 dark:bg-slate-700/50 rounded-2xl border border-slate-100 dark:border-slate-700">
                             <p className="text-xs font-bold text-slate-400 uppercase">Total Vendido</p>
-                            <p className="text-2xl font-black text-[#003366] dark:text-white">{reportData.totals.soldStock.toLocaleString('pt-AO')} Kz</p>
+                            <p className="text-2xl font-black text-[#003366] dark:text-white">{(reportData.totals?.soldStock || 0).toLocaleString('pt-AO')} Kz</p>
                         </div>
                         <div className="p-6 bg-slate-50 dark:bg-slate-700/50 rounded-2xl border border-slate-100 dark:border-slate-700">
                             <p className="text-xs font-bold text-slate-400 uppercase">Total Levantado</p>
-                            <p className="text-2xl font-black text-[#003366] dark:text-white">{reportData.totals.lifted.toLocaleString('pt-AO')} Kz</p>
+                            <p className="text-2xl font-black text-[#003366] dark:text-white">{(reportData.totals?.lifted || 0).toLocaleString('pt-AO')} Kz</p>
                         </div>
-                         <div className={`p-6 rounded-2xl border ${reportData.totals.discrepancy !== 0 ? 'bg-amber-50' : 'bg-slate-50'}`}>
+                         <div className={`p-6 rounded-2xl border ${(reportData.totals?.discrepancy || 0) !== 0 ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-100'}`}>
                             <p className="text-xs font-bold text-slate-400 uppercase">Divergência</p>
-                            <p className="text-2xl font-black">{reportData.totals.discrepancy.toLocaleString('pt-AO')} Kz</p>
+                            <p className={`text-2xl font-black ${(reportData.totals?.discrepancy || 0) < 0 ? 'text-red-600' : (reportData.totals?.discrepancy || 0) > 0 ? 'text-green-600' : 'text-slate-600'}`}>
+                              {(reportData.totals?.discrepancy || 0).toLocaleString('pt-AO')} Kz
+                            </p>
                         </div>
+                   </div>
+
+                   {!isConfirmed && (
+                     <div className="p-6 bg-blue-50 dark:bg-blue-900/20 rounded-3xl border border-blue-100 dark:border-blue-800/50">
+                        <div className="flex items-start gap-4">
+                           <div className="p-3 bg-blue-100 dark:bg-blue-800 text-blue-600 dark:text-blue-300 rounded-2xl">
+                              <ShieldCheck size={24} />
+                           </div>
+                           <div className="flex-1">
+                              <h3 className="font-bold text-[#003366] dark:text-blue-300">Segunda Confirmação Necessária</h3>
+                              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+                                 Este fecho foi registado como <strong>{reportData.status.replace(/_/g, ' ')}</strong>. 
+                                 Para que o stock e o financeiro sejam atualizados globalmente, é necessária uma segunda confirmação por um administrador ou gerente diferente.
+                              </p>
+                              
+                              {(canConfirm || isUnilateralAllowed) && (
+                                <button 
+                                  onClick={handleFinalConfirmation}
+                                  className="mt-4 px-6 py-3 bg-[#003366] text-white font-bold rounded-xl shadow-lg hover:opacity-90 transition-all flex items-center gap-2"
+                                >
+                                  <CheckCircle size={20} />
+                                  {isUnilateralAllowed ? 'Confirmar Unilateralmente (Admin)' : 'Confirmar Fecho Definitivo'}
+                                </button>
+                              )}
+                              
+                              {!canConfirm && !isUnilateralAllowed && (
+                                <p className="mt-4 text-xs font-bold text-amber-600 bg-amber-50 dark:bg-amber-900/30 p-3 rounded-lg border border-amber-100 dark:border-amber-800 inline-block">
+                                   Aguardando confirmação de outro responsável.
+                                </p>
+                              )}
+                           </div>
+                        </div>
+                     </div>
+                   )}
+
+                   {isConfirmed && (
+                     <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-2xl border border-green-100 dark:border-green-800/50 flex items-center gap-3">
+                        <CheckCircle size={20} className="text-green-600" />
+                        <p className="text-sm font-bold text-green-700 dark:text-green-400">
+                           Fecho confirmado por {reportData.confirmedBy} em {new Date(reportData.confirmationTimestamp).toLocaleString('pt-AO')}
+                           {reportData.unilateralAdminConfirmation && ' (Intervenção Administrativa)'}
+                        </p>
+                     </div>
+                   )}
+                </SoftCard>
+
+                {/* Detailed Breakdown Section */}
+                <SoftCard className="p-0 overflow-hidden">
+                   <div className="p-4 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+                      <h3 className="font-bold text-[#003366] dark:text-white">Resumo de Vendas</h3>
+                   </div>
+                   <div className="overflow-x-auto">
+                      <table className="w-full text-sm text-left">
+                         <thead>
+                            <tr className="bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+                               <th className="p-4 font-bold">Produto</th>
+                               <th className="p-4 font-bold text-center">Inicial</th>
+                               <th className="p-4 font-bold text-center">Compra</th>
+                               <th className="p-4 font-bold text-center">Final</th>
+                               <th className="p-4 font-bold text-center">Vendido</th>
+                               <th className="p-4 font-bold text-right">Subtotal</th>
+                            </tr>
+                         </thead>
+                         <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                            {reportData.itemsSnapshot?.map((item: any) => (
+                               <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                                  <td className="p-4 font-bold text-slate-700 dark:text-slate-300">{item.name}</td>
+                                  <td className="p-4 text-center text-slate-500">{item.init}</td>
+                                  <td className="p-4 text-center text-green-600 font-medium">+{item.buy}</td>
+                                  <td className="p-4 text-center text-slate-500">{item.end}</td>
+                                  <td className="p-4 text-center font-bold text-slate-700 dark:text-slate-200">{item.soldQty}</td>
+                                  <td className="p-4 text-right font-bold text-[#003366] dark:text-blue-300">{item.revenue.toLocaleString('pt-AO')} Kz</td>
+                               </tr>
+                            ))}
+                         </tbody>
+                      </table>
                    </div>
                 </SoftCard>
             </div>
@@ -555,12 +716,122 @@ const Sales: React.FC = () => {
   return (
     <div ref={pageTopRef} className="p-4 md:p-8 space-y-8 animate-fade-in pb-32 relative min-h-screen">
       {syncState.status !== 'idle' && (
-        <div className="fixed inset-0 z-[110] bg-[#003366]/95 backdrop-blur-xl flex flex-col items-center justify-center text-white p-8 text-center animate-fade-in">
-            <h2 className="text-3xl font-black mb-2 tracking-tight">{syncState.status === 'success' ? 'Sucesso!' : 'Sincronizando...'}</h2>
-            <p className="text-blue-200 text-lg font-medium mb-8 max-w-md animate-pulse">{syncState.step}</p>
-            <div className="w-64 h-2 bg-white/10 rounded-full overflow-hidden mb-8">
-                <div className="h-full bg-gradient-to-r from-blue-400 to-green-400 transition-all duration-300" style={{ width: `${syncState.progress}%` }}></div>
-            </div>
+        <div className="fixed inset-0 z-[200] bg-[#001A33] flex items-center justify-center p-4 md:p-8 animate-fade-in overflow-hidden">
+          {/* Background Elements */}
+          <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-20">
+            <div className="absolute -top-24 -left-24 w-96 h-96 bg-blue-500 rounded-full blur-[120px] animate-pulse" />
+            <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-indigo-500 rounded-full blur-[120px] animate-pulse delay-700" />
+          </div>
+
+          <div className="w-full max-w-2xl bg-white/5 backdrop-blur-2xl rounded-[40px] border border-white/10 p-8 md:p-12 shadow-2xl relative z-10 flex flex-col items-center">
+            {syncState.status === 'success' ? (
+              <div className="text-center animate-fade-slide-up">
+                <div className="w-24 h-24 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg shadow-green-500/20">
+                  <CheckCircle size={48} className="text-white" />
+                </div>
+                <h2 className="text-4xl font-black text-white mb-2">Fecho Realizado!</h2>
+                <p className="text-blue-200 text-lg font-medium">Sincronização concluída com sucesso.</p>
+              </div>
+            ) : syncState.status === 'error' ? (
+              <div className="text-center animate-fade-slide-up">
+                <div className="w-24 h-24 bg-red-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg shadow-red-500/20">
+                  <AlertCircle size={48} className="text-white" />
+                </div>
+                <h2 className="text-4xl font-black text-white mb-2">Erro no Fecho</h2>
+                <p className="text-red-200 text-lg font-medium">A sincronização falhou. Tente novamente.</p>
+                <button 
+                  onClick={() => setSyncState({ status: 'idle', currentStep: -1, completedSteps: [] })}
+                  className="mt-8 px-8 py-3 bg-white/10 hover:bg-white/20 text-white font-bold rounded-2xl transition-all"
+                >
+                  Voltar
+                </button>
+              </div>
+            ) : (
+              <div className="w-full space-y-8">
+                <div className="text-center mb-10">
+                  <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-blue-500/20 rounded-full text-blue-300 text-xs font-black uppercase tracking-widest mb-4 border border-blue-500/30">
+                    <RefreshCw size={14} className="animate-spin" /> Sincronização em Curso
+                  </div>
+                  <h2 className="text-3xl md:text-4xl font-black text-white">Processando Fecho</h2>
+                  <p className="text-blue-300/60 font-medium mt-2">Aguarde enquanto validamos e salvamos os dados do dia.</p>
+                </div>
+
+                <div className="space-y-4">
+                  {[
+                    { id: 'security', label: 'Sincronização Segura', desc: 'Validando integridade de dados', icon: ShieldCheck },
+                    { id: 'database', label: 'Dados do Sistema', desc: 'Salvando registros do dia', icon: Database },
+                    { id: 'server', label: 'Servidores', desc: 'Atualizando servidores remotos', icon: Server },
+                    { id: 'users', label: 'Usuários e Admin', desc: 'Notificando responsáveis', icon: Smartphone },
+                    { id: 'finance', label: 'Sistema Financeiro', desc: 'Atualizando fluxos de caixa', icon: CreditCard },
+                  ].map((step, idx) => {
+                    const isCompleted = syncState.completedSteps.includes(step.id);
+                    const isCurrent = syncState.currentStep === idx;
+                    const isPending = !isCompleted && !isCurrent;
+
+                    return (
+                      <div 
+                        key={step.id}
+                        className={`flex items-center gap-4 p-4 rounded-3xl transition-all duration-500 border ${
+                          isCompleted 
+                            ? 'bg-green-500/10 border-green-500/20 opacity-100' 
+                            : isCurrent 
+                              ? 'bg-blue-500/20 border-blue-500/30 opacity-100 scale-[1.02] shadow-lg shadow-blue-500/10' 
+                              : 'bg-white/5 border-transparent opacity-40'
+                        }`}
+                      >
+                        <div className={`p-3 rounded-2xl transition-all duration-500 ${
+                          isCompleted 
+                            ? 'bg-green-500 text-white' 
+                            : isCurrent 
+                              ? 'bg-blue-500 text-white animate-pulse' 
+                              : 'bg-white/10 text-white/40'
+                        }`}>
+                          <step.icon size={24} />
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between">
+                            <h4 className={`font-bold transition-colors ${isPending ? 'text-white/40' : 'text-white'}`}>
+                              {step.label}
+                            </h4>
+                            {isCompleted ? (
+                              <span className="text-[10px] font-black text-green-400 uppercase tracking-widest flex items-center gap-1">
+                                <Check size={12} /> Concluído
+                              </span>
+                            ) : isCurrent ? (
+                              <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest animate-pulse">
+                                Processando...
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-black text-white/20 uppercase tracking-widest">
+                                Pendente
+                              </span>
+                            )}
+                          </div>
+                          <p className={`text-xs transition-colors ${isPending ? 'text-white/20' : 'text-white/60'}`}>
+                            {step.desc}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Overall Progress Bar */}
+                <div className="pt-6">
+                  <div className="flex justify-between text-[10px] font-black text-blue-300/40 uppercase tracking-widest mb-2">
+                    <span>Progresso Geral</span>
+                    <span>{Math.round((syncState.completedSteps.length / 5) * 100)}%</span>
+                  </div>
+                  <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-gradient-to-r from-blue-500 to-green-500 transition-all duration-1000 ease-out"
+                      style={{ width: `${(syncState.completedSteps.length / 5) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -586,7 +857,12 @@ const Sales: React.FC = () => {
         </div>
         <div className="flex-1 flex items-center justify-center md:justify-end w-full md:w-auto gap-4">
           <SyncStatus />
-          <button onClick={handleInitialClose} disabled={isReadOnly} className={`pill-button px-6 py-3 font-bold flex items-center justify-center gap-2 shadow-lg transition-all ${isReadOnly ? 'bg-slate-300 cursor-not-allowed text-slate-500' : getCloseButtonColor()}`}>
+          {isLocked && canReopenDay && (
+            <button onClick={handleReopenDay} className="pill-button px-6 py-3 font-bold flex items-center justify-center gap-2 shadow-lg transition-all bg-amber-500 text-white hover:bg-amber-600">
+              <Unlock size={20} /> Reabrir Dia
+            </button>
+          )}
+          <button onClick={handleInitialClose} disabled={isReadOnly && !isLocked} className={`pill-button px-6 py-3 font-bold flex items-center justify-center gap-2 shadow-lg transition-all ${isReadOnly && !isLocked ? 'bg-slate-300 cursor-not-allowed text-slate-500' : getCloseButtonColor()}`}>
             <Save size={20} /> {getCloseButtonText()}
           </button>
         </div>
@@ -767,7 +1043,7 @@ const Sales: React.FC = () => {
           {hasDiscrepancy && (
             <div className={`p-6 rounded-3xl text-white ${discrepancy < 0 ? 'bg-red-500' : 'bg-green-500'}`}>
                 <h4 className="font-black uppercase mb-1">{discrepancy < 0 ? 'Quebra de Caixa' : 'Sobra de Caixa'}</h4>
-                <p className="text-3xl font-black mb-4">{discrepancy.toLocaleString('pt-AO')} Kz</p>
+                <p className="text-3xl font-black mb-4">{(discrepancy || 0).toLocaleString('pt-AO')} Kz</p>
                 <textarea value={financials.discrepancyJustification} disabled={isReadOnly} onChange={(e) => setFinancials({...financials, discrepancyJustification: e.target.value})} className="w-full p-3 bg-white text-slate-800 rounded-xl font-medium outline-none" placeholder="Justifique a divergência..." rows={3} />
             </div>
           )}
@@ -786,8 +1062,8 @@ const Sales: React.FC = () => {
               </div>
               
               <div className="bg-slate-50 dark:bg-slate-700/50 rounded-2xl p-4 mb-6 space-y-2">
-                 <div className="flex justify-between text-sm"><span className="text-slate-500 dark:text-slate-400">Total Vendas:</span><span className="font-bold dark:text-white">{calculatedData.totalTheoreticalRevenue.toLocaleString('pt-AO')} Kz</span></div>
-                 <div className="flex justify-between text-sm"><span className="text-slate-500 dark:text-slate-400">Total Levantado:</span><span className="font-bold dark:text-white">{totalLifted.toLocaleString('pt-AO')} Kz</span></div>
+                 <div className="flex justify-between text-sm"><span className="text-slate-500 dark:text-slate-400">Total Vendas:</span><span className="font-bold dark:text-white">{(calculatedData.totalTheoreticalRevenue || 0).toLocaleString('pt-AO')} Kz</span></div>
+                 <div className="flex justify-between text-sm"><span className="text-slate-500 dark:text-slate-400">Total Levantado:</span><span className="font-bold dark:text-white">{(totalLifted || 0).toLocaleString('pt-AO')} Kz</span></div>
                  <div className={`flex justify-between text-sm font-bold ${discrepancy < 0 ? 'text-red-500' : 'text-green-500'}`}>
                     <span>Divergência:</span>
                     <span>{discrepancy.toLocaleString('pt-AO')} Kz</span>
