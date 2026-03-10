@@ -305,32 +305,41 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   };
 
   const reopenDay = useCallback((dateStr: string, reason: string = 'Correção de dados') => {
+    // 1. Verificação de permissão (Certifique-se que o usuário logado tem 'calendar_unlock')
     if (!hasPermission(user, 'calendar_unlock')) {
       alert("Você não possui permissão para desbloquear este dia.");
       return;
     }
 
-    setLockedDays(prev => {
-      if (!prev.includes(dateStr)) return prev;
-      return prev.filter(d => d !== dateStr);
-    });
+    // Normalização básica para evitar erros de comparação
+    const targetDate = dateStr.trim();
+
+    // 2. Remove o dia da lista de bloqueados (Usando filtro direto sem o if includes)
+    setLockedDays(prev => prev.filter(d => d.trim() !== targetDate));
     
-    // Update status in sales reports if exists
+    // 3. Atualiza o status nos Sales Reports
     setSalesReports(reports => reports.map(r => {
+      // Normaliza a data do relatório para comparação
       const reportDate = r.dateISO ? new Date(r.dateISO).toLocaleDateString('pt-AO') : r.date;
-      if (reportDate === dateStr || r.date === dateStr) {
+      
+      if (reportDate.trim() === targetDate || r.date.trim() === targetDate) {
         return { ...r, status: ClosureStatus.FECHO_CONFIRMADO };
       }
       return r;
     }));
 
+    // 4. Log de auditoria
     addAuditLog({
       action: 'DESBLOQUEIO_DIA',
       entity: 'Day',
-      entityId: dateStr,
-      details: `Dia ${dateStr} desbloqueado por ${user?.name || 'Admin'}. Motivo: ${reason}`,
+      entityId: targetDate,
+      details: `Dia ${targetDate} desbloqueado por ${user?.name || 'Admin'}. Motivo: ${reason}`,
       performedBy: user?.name || 'Admin'
     });
+
+    // Forçar salvamento imediato no localStorage (opcional, mas garante persistência)
+    // localStorage.setItem('mg_locked_days', JSON.stringify(lockedDays.filter(d => d !== targetDate)));
+
   }, [user, addAuditLog]);
 
   const checkDayLock = useCallback((date: Date | string) => {

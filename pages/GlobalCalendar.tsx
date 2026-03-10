@@ -33,7 +33,8 @@ const GlobalCalendar: React.FC = () => {
     // Novos estados do context para sincronização
     isSyncing,
     hasPendingChanges,
-    syncData
+    syncData,
+    lockedDays
   } = useProducts();
   
   const { triggerHaptic } = useLayout();
@@ -146,9 +147,11 @@ const GlobalCalendar: React.FC = () => {
       totalPurchased,
       totalExpenses,
       netBalance,
+      // AQUI: use diretamente a função do context
       isLocked: isDayLocked(selectedDayDetail)
     };
-  }, [selectedDayDetail, salesMap, inventoryMap, purchases, expenses, transactions, priceHistory, isDayLocked]);
+    // ADICIONE 'lockedDays' AQUI EMBAIXO:
+  }, [selectedDayDetail, salesMap, inventoryMap, purchases, expenses, transactions, priceHistory, isDayLocked, lockedDays]);
 
   return (
     <div className="p-4 md:p-8 space-y-8 animate-fade-in pb-24 relative">
