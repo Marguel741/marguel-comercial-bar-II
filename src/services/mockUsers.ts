@@ -34,32 +34,43 @@ const STORAGE_KEY = 'mg_users_db';
 
 export const getMockUsers = (): User[] => {
   const saved = localStorage.getItem(STORAGE_KEY);
+  
   if (saved) {
     try {
       const users = JSON.parse(saved) as User[];
-      // Merge with default permissions to ensure updates are reflected
-      return users.map(u => ({
-        ...u,
-        permissions: DEFAULT_PERMISSIONS[u.role] || u.permissions
-      }));
+      
+      return users.map(u => {
+        // CORREÇÃO: Se você quer que mudanças no código reflitam no site atual,
+        // mas quer manter a capacidade de editar depois, use um merge inteligente.
+        
+        const defaultPerms = DEFAULT_PERMISSIONS[u.role];
+        
+        return {
+          ...u,
+          // Se o usuário for Proprietário ou Admin, garantimos que ele pegue os defaults 
+          // do código para evitar que ele se auto-bloqueie por erro no LocalStorage
+          permissions: (u.role === UserRole.PROPRIETARIO || u.role === UserRole.ADMIN_GERAL)
+            ? { ...defaultPerms } 
+            : (u.permissions || { ...defaultPerms })
+        };
+      });
     } catch (e) {
+      console.error("Erro ao ler LocalStorage, resetando para DB padrão", e);
       return MOCK_USERS_DB;
     }
   }
+  
+  // Se não houver nada no LocalStorage, salva o padrão pela primeira vez
+  saveMockUsers(MOCK_USERS_DB);
   return MOCK_USERS_DB;
 };
 
 export const saveMockUsers = (users: User[]) => {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(users));
-  // Dispatch a custom event to notify other parts of the app that the user DB has changed
+  
   if (typeof window !== 'undefined') {
-    let event;
-    try {
-      event = new CustomEvent('mg_users_updated');
-    } catch (e) {
-      event = document.createEvent('CustomEvent');
-      (event as any).initCustomEvent('mg_users_updated', true, true, null);
-    }
+    // Notifica o AuthContext para atualizar o usuário logado imediatamente
+    const event = new CustomEvent('mg_users_updated');
     window.dispatchEvent(event);
   }
 };

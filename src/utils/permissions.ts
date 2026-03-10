@@ -89,27 +89,29 @@ export const DEFAULT_PERMISSIONS: Record<UserRole, UserPermissions> = {
 };
 
 export const hasPermission = (user: { permissions?: UserPermissions, role: UserRole } | null, permission: keyof UserPermissions): boolean => {
-  if (!user) return false;
+  if (!user || !user.permissions) return false;
   
-  // Super Admin check
-  if (user.permissions?.admin_global_admin) return true;
+  // 1. Super Admin (Proprietário) tem passe livre total
+  if (user.permissions.admin_global_admin === true) return true;
   
-  // Global Read Only check
+  // 2. Adicione '_unlock' e '_reopen' à lista de mutações
   const isMutation = permission.includes('_edit') || 
                      permission.includes('_execute') || 
                      permission.includes('_create') || 
                      permission.includes('_delete') ||
                      permission.includes('_void') ||
-                     permission.includes('_reopen') ||
                      permission.includes('_closure') ||
                      permission.includes('_adjust') ||
                      permission.includes('_manage') ||
+                     permission.includes('_unlock') || // ADICIONADO
+                     permission.includes('_reopen') || // ADICIONADO
                      permission.includes('_simulate');
 
-  if (user.permissions?.admin_global_read_only && isMutation) {
+  // 3. Se o modo "Apenas Leitura" estiver ativo, bloqueia a mutação
+  if (user.permissions.admin_global_read_only && isMutation) {
     return false;
   }
 
-  const value = user.permissions?.[permission];
+  const value = user.permissions[permission];
   return typeof value === 'boolean' ? value : false;
 };

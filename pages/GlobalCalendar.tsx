@@ -328,11 +328,15 @@ const GlobalCalendar: React.FC = () => {
                      {canManageLocks && (
                         <button 
                            onClick={() => {
+                              if (!selectedDayDetail) return;
+                              console.log("Tentando desbloquear:", selectedDayDetail); // LOG DE TESTE
                               if (dayData.isLocked) {
-                                 const reason = prompt("Deseja realmente desbloquear este dia? Isso permitirá novas alterações.\n\nInforme o motivo:", "Correção de dados");
+                                 const reason = prompt("Motivo:");
                                  if (reason !== null) {
                                     reopenDay(selectedDayDetail, reason);
                                     triggerHaptic('success');
+                                    // Forçar fechamento do modal ou refresh para testar
+                                    setSelectedDayDetail(null); 
                                  }
                                  return;
                               }
