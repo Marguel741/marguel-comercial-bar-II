@@ -329,19 +329,31 @@ const GlobalCalendar: React.FC = () => {
                         <button 
                            onClick={() => {
                               if (!selectedDayDetail) return;
-                              console.log("Tentando desbloquear:", selectedDayDetail); // LOG DE TESTE
+                              // No celular, o prompt() costuma ser bloqueado.
+                              // Vamos usar o confirm() que é muito mais estável em navegadores móveis.
                               if (dayData.isLocked) {
-                                 const reason = prompt("Motivo:");
-                                 if (reason !== null) {
-                                    reopenDay(selectedDayDetail, reason);
+                                 const confirmou = window.confirm(`Deseja realmente DESBLOQUEAR o dia ${selectedDayDetail}?`);
+                                 
+                                 if (confirmou) {
+                                    // Se o confirm funcionou, chamamos a função. 
+                                    // Vou passar um motivo padrão já que o prompt falha no celular.
+                                    reopenDay(selectedDayDetail, "Desbloqueio via Celular");
                                     triggerHaptic('success');
-                                    // Forçar fechamento do modal ou refresh para testar
-                                    setSelectedDayDetail(null); 
+                                    
+                                    // NÃO feche o modal imediatamente para você ver a mudança de cor!
+                                    // setSelectedDayDetail(null); 
+                                    
+                                    alert("Dia desbloqueado com sucesso!");
                                  }
                                  return;
                               }
-                              triggerHaptic('warning');
-                              lockDayManually(selectedDayDetail, user?.name || 'Admin');
+
+                              // Lógica de Bloqueio
+                              const confirmarBloqueio = window.confirm("Deseja BLOQUEAR este dia?");
+                              if (confirmarBloqueio) {
+                                 lockDayManually(selectedDayDetail, user?.name || 'Admin');
+                                 triggerHaptic('warning');
+                              }
                            }}
                            className={`h-12 px-6 rounded-2xl font-black text-sm transition-all flex items-center gap-2 ${dayData.isLocked ? 'bg-amber-500 text-white shadow-lg shadow-amber-900/20 hover:bg-amber-600' : 'bg-red-600 text-white shadow-lg shadow-red-900/20 hover:bg-red-700'}`}
                         >
