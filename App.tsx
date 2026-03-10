@@ -42,6 +42,9 @@ const AppContent: React.FC = () => {
 
   if (showSplash) return <SplashScreen onComplete={() => setShowSplash(false)} />;
 
+  // NOVA TRAVA: Se o AuthContext ainda está lendo o localStorage, não renderiza os Providers filhos
+  if (isLoading) return <div className="h-screen w-screen flex items-center justify-center bg-slate-900 text-white font-black tracking-tighter text-2xl animate-pulse">Carregando permissões...</div>;
+
   return (
     <ThemeProvider>
       <ProductProvider>

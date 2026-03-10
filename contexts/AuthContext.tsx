@@ -22,12 +22,13 @@ export const useAuth = () => {
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     // Initialize user from mock DB
     const users = getMockUsers();
     setUser(users[0]); // Default to first user (Admin)
+    setIsLoading(false);
     
     // Listen for user updates to refresh current session
     const handleUsersUpdated = () => {

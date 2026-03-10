@@ -267,102 +267,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     setAuditLogs(prev => [newLog, ...prev]);
   }, [getSystemDate]);
 
-  const isDayLocked = useCallback((date: Date | string) => {
-    let checkDateStr = '';
-    if (date instanceof Date) checkDateStr = date.toLocaleDateString('pt-AO');
-    else checkDateStr = date.includes('T') ? new Date(date).toLocaleDateString('pt-AO') : date;
-    return lockedDays.includes(checkDateStr);
-  }, [lockedDays]);
-
-  const toggleDayLock = (dateStr: string) => {
-    setLockedDays(prev => {
-      if (prev.includes(dateStr)) {
-        // Now it can be unlocked by reopenDay, but toggleDayLock itself won't unlock it if it's already there
-        // Actually, let's just make it toggleable if the user wants, but the prompt says "Desbloquear Gestão"
-        // So I'll keep it as is and let reopenDay handle unlocking.
-        return prev;
-      }
-      
-      // Update status in sales reports if exists
-      setSalesReports(reports => reports.map(r => {
-        const reportDateISO = r.dateISO ? r.dateISO.split('T')[0] : r.date;
-        if (reportDateISO === dateStr || r.date === dateStr) {
-          return { ...r, status: ClosureStatus.DIA_BLOQUEADO };
-        }
-        return r;
-      }));
-
-      addAuditLog({
-        action: 'BLOQUEIO_TOTAL_DIA',
-        entity: 'Day',
-        entityId: dateStr,
-        details: `Dia ${dateStr} bloqueado permanentemente.`,
-        performedBy: user?.name || 'Sistema/Admin'
-      });
-
-      return [...prev, dateStr];
-    });
-  };
-
-  const reopenDay = useCallback((dateStr: string, reason: string = 'Correção de dados') => {
-    // 1. Verificação de permissão (Certifique-se que o usuário logado tem 'calendar_unlock')
-    if (!hasPermission(user, 'calendar_unlock')) {
-      alert("Você não possui permissão para desbloquear este dia.");
-      return;
-    }
-
-    // Normalização básica para evitar erros de comparação
-    const targetDate = dateStr.trim();
-
-    // 2. Remove o dia da lista de bloqueados (Usando filtro direto sem o if includes)
-    setLockedDays(prev => prev.filter(d => d.trim() !== targetDate));
-    
-    // 3. Atualiza o status nos Sales Reports
-    setSalesReports(reports => reports.map(r => {
-      // Normaliza a data do relatório para comparação
-      const reportDate = r.dateISO ? new Date(r.dateISO).toLocaleDateString('pt-AO') : r.date;
-      
-      if (reportDate.trim() === targetDate || r.date.trim() === targetDate) {
-        return { ...r, status: ClosureStatus.FECHO_CONFIRMADO };
-      }
-      return r;
-    }));
-
-    // 4. Log de auditoria
-    addAuditLog({
-      action: 'DESBLOQUEIO_DIA',
-      entity: 'Day',
-      entityId: targetDate,
-      details: `Dia ${targetDate} desbloqueado por ${user?.name || 'Admin'}. Motivo: ${reason}`,
-      performedBy: user?.name || 'Admin'
-    });
-
-    // Forçar salvamento imediato no localStorage (opcional, mas garante persistência)
-    // localStorage.setItem('mg_locked_days', JSON.stringify(lockedDays.filter(d => d !== targetDate)));
-
-  }, [user, addAuditLog]);
-
-  const checkDayLock = useCallback((date: Date | string) => {
-    if (isDayLocked(date)) {
-      const dateStr = typeof date === 'string' ? date : date.toLocaleDateString('pt-AO');
-      
-      // Log the attempt
-      addAuditLog({
-        action: 'TENTATIVA_EDICAO_BLOQUEADA',
-        entity: 'Day',
-        entityId: dateStr,
-        details: `Tentativa de edição em dia bloqueado por ${user?.name || 'Desconhecido'}.`,
-        performedBy: user?.name || 'Sistema'
-      });
-
-      const msg = "Dia bloqueado. Contacte administrador";
-      if (typeof window !== 'undefined') {
-        window.alert(msg);
-      }
-      throw new Error(msg);
-    }
-  }, [isDayLocked, addAuditLog, user]);
-
   const [syncQueue, setSyncQueue] = useState<PendingAction[]>([]);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
@@ -539,6 +443,102 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   useEffect(() => { localStorage.setItem('mg_cards', JSON.stringify(cards)); }, [cards]);
   useEffect(() => { localStorage.setItem('mg_transactions', JSON.stringify(transactions)); }, [transactions]);
   useEffect(() => { localStorage.setItem('mg_sales_reports', JSON.stringify(salesReports)); }, [salesReports]);
+  
+  const isDayLocked = useCallback((date: Date | string) => {
+    let checkDateStr = '';
+    if (date instanceof Date) checkDateStr = date.toLocaleDateString('pt-AO');
+    else checkDateStr = date.includes('T') ? new Date(date).toLocaleDateString('pt-AO') : date;
+    return lockedDays.includes(checkDateStr);
+  }, [lockedDays]);
+
+  const toggleDayLock = (dateStr: string) => {
+    setLockedDays(prev => {
+      if (prev.includes(dateStr)) {
+        // Now it can be unlocked by reopenDay, but toggleDayLock itself won't unlock it if it's already there
+        // Actually, let's just make it toggleable if the user wants, but the prompt says "Desbloquear Gestão"
+        // So I'll keep it as is and let reopenDay handle unlocking.
+        return prev;
+      }
+      
+      // Update status in sales reports if exists
+      setSalesReports(reports => reports.map(r => {
+        const reportDateISO = r.dateISO ? r.dateISO.split('T')[0] : r.date;
+        if (reportDateISO === dateStr || r.date === dateStr) {
+          return { ...r, status: ClosureStatus.DIA_BLOQUEADO };
+        }
+        return r;
+      }));
+
+      addAuditLog({
+        action: 'BLOQUEIO_TOTAL_DIA',
+        entity: 'Day',
+        entityId: dateStr,
+        details: `Dia ${dateStr} bloqueado permanentemente.`,
+        performedBy: user?.name || 'Sistema/Admin'
+      });
+
+      return [...prev, dateStr];
+    });
+  };
+
+  const reopenDay = useCallback((dateStr: string, reason: string = 'Correção de dados') => {
+    // 1. Verificação de permissão
+    if (!hasPermission(user, 'calendar_unlock')) {
+      alert("Você não possui permissão para desbloquear este dia.");
+      return;
+    }
+
+    const targetDate = dateStr.trim();
+
+    // 2. Atualiza o estado e PERSISTE imediatamente
+    setLockedDays(prev => {
+      const newState = prev.filter(d => d.trim() !== targetDate);
+      // Garantia de salvamento imediato para evitar que o useEffect se atrase
+      localStorage.setItem('mg_locked_days', JSON.stringify(newState));
+      return newState;
+    });
+    
+    // 3. Atualiza o status nos Sales Reports
+    setSalesReports(reports => reports.map(r => {
+      const reportDate = r.dateISO ? new Date(r.dateISO).toLocaleDateString('pt-AO') : r.date;
+      if (reportDate.trim() === targetDate || r.date.trim() === targetDate) {
+        return { ...r, status: ClosureStatus.FECHO_CONFIRMADO };
+      }
+      return r;
+    }));
+
+    // 4. Log de auditoria
+    addAuditLog({
+      action: 'DESBLOQUEIO_DIA',
+      entity: 'Day',
+      entityId: targetDate,
+      details: `Dia ${targetDate} desbloqueado por ${user?.name || 'Admin'}. Motivo: ${reason}`,
+      performedBy: user?.name || 'Admin'
+    });
+
+    alert(`O dia ${targetDate} foi desbloqueado com sucesso!`);
+  }, [user, addAuditLog, setLockedDays, setSalesReports]);
+
+  const checkDayLock = useCallback((date: Date | string) => {
+    if (isDayLocked(date)) {
+      const dateStr = typeof date === 'string' ? date : date.toLocaleDateString('pt-AO');
+      
+      // Log the attempt
+      addAuditLog({
+        action: 'TENTATIVA_EDICAO_BLOQUEADA',
+        entity: 'Day',
+        entityId: dateStr,
+        details: `Tentativa de edição em dia bloqueado por ${user?.name || 'Desconhecido'}.`,
+        performedBy: user?.name || 'Sistema'
+      });
+
+      const msg = "Dia bloqueado. Contacte administrador";
+      if (typeof window !== 'undefined') {
+        window.alert(msg);
+      }
+      throw new Error(msg);
+    }
+  }, [isDayLocked, addAuditLog, user]);
   
   useEffect(() => {
       const handleStorage = () => {
