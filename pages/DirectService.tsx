@@ -7,6 +7,8 @@ import SoftCard from '../components/SoftCard';
 import { dbAddSale, dbGetAllSales, dbUpdateSale, DirectSale } from '../src/services/db';
 import { processSync, serverTimeOffset } from '../src/services/syncService';
 import { roundKz, formatKz } from '../src/utils';
+import { hasPermission } from '../src/utils/permissions';
+import AccessDenied from './AccessDenied';
 
 interface Product {
   id: string;
@@ -17,9 +19,13 @@ interface Product {
 }
 
 const DirectService: React.FC = () => {
-  const { products, categories, updateProduct, processTransaction, addSalesReport, isDayLocked, systemDate } = useProducts();
+  const { products, categories, updateProduct, processTransaction, addSalesReport, isDayLocked, systemDate, getSystemDate, addAuditLog } = useProducts();
   const { triggerHaptic, sidebarMode } = useLayout();
   const { user } = useAuth();
+
+  if (!hasPermission(user, 'direct_service_view')) {
+    return <AccessDenied />;
+  }
 
   const isLocked = isDayLocked(systemDate);
 
@@ -49,6 +55,17 @@ const DirectService: React.FC = () => {
   const [historyLimit, setHistoryLimit] = useState(50);
   
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Log page access
+  useEffect(() => {
+    addAuditLog({
+      action: 'ACESSO_PAGINA',
+      entity: 'Page',
+      entityId: 'DirectService',
+      details: `Usuário ${user?.name} acessou a página de Atendimento Directo.`,
+      performedBy: user?.name || 'Sistema'
+    });
+  }, [user, addAuditLog]);
 
   useEffect(() => {
       if (products.length > 0) setIsInitializing(false);
@@ -285,7 +302,7 @@ const DirectService: React.FC = () => {
     triggerHaptic('success');
     
     // 1. Create Sale Record (Independent History)
-    const now = new Date(Date.now() + serverTimeOffset);
+    const now = getSystemDate();
     const newSale: DirectSale = {
         id: `${now.getTime()}-${deviceId}`,
         uuid: crypto.randomUUID(), // Immutable

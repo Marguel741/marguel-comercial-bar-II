@@ -31,10 +31,8 @@ export interface UserPermissions {
   sales_view: boolean;
   sales_execute: boolean;
   sales_edit: boolean;
-  sales_void: boolean;
   sales_view_margins: boolean;
   sales_closure: boolean;
-  sales_reopen: boolean;
 
   // 4. INVENTÁRIO
   inventory_view: boolean;
@@ -44,7 +42,6 @@ export interface UserPermissions {
   inventory_edit: boolean;
   inventory_stock_adjust: boolean;
   inventory_category_manage: boolean;
-  inventory_view_costs: boolean;
 
   // 5. PREÇOS & PROMOÇÕES
   prices_view: boolean;
@@ -57,17 +54,12 @@ export interface UserPermissions {
   purchases_view: boolean;
   purchases_execute: boolean;
   purchases_simulate: boolean;
-  purchases_void: boolean;
-  purchases_edit_finalized: boolean;
-  purchases_reopen: boolean;
-  purchases_approve: boolean;
   purchases_limit: number; // Max value per purchase
 
   // 7. DESPESAS
   expenses_view: boolean;
   expenses_execute: boolean;
-  expenses_approve: boolean;
-  expenses_void: boolean;
+  expenses_category_manage: boolean;
   expenses_limit: number; // Max value per expense
 
   // 8. ESTADO DE CONTA & FINANCEIRO
@@ -75,16 +67,10 @@ export interface UserPermissions {
   finance_edit: boolean;
   finance_card_create: boolean;
   finance_card_delete: boolean;
-  finance_transfer: boolean;
-  finance_approve_movement: boolean;
-  finance_reports_view: boolean;
-  finance_export: boolean;
 
   // 9. CALENDÁRIO MARGUEL
   calendar_view: boolean;
-  calendar_event_create: boolean;
-  calendar_event_edit: boolean;
-  calendar_event_delete: boolean;
+  calendar_unlock: boolean;
 
   // 10. SISTEMA & CONFIGURAÇÕES
   settings_edit: boolean;
@@ -185,6 +171,7 @@ export interface Expense {
   user: string;
   attachments: string[];
   notes?: string;
+  origin?: string;
 }
 
 export interface Alert {
@@ -270,8 +257,9 @@ export interface Transaction {
   date: string;
   description: string;
   referenceId?: string;
-  referenceType?: 'purchase' | 'expense' | 'sales_report' | 'deposit' | 'withdrawal' | 'day_closure';
+  referenceType?: 'purchase' | 'expense' | 'sales_report' | 'deposit' | 'withdrawal' | 'day_closure' | 'reversal';
   performedBy?: string;
+  accountName?: string;
   status?: 'ATIVO' | 'CANCELADO' | 'AJUSTADO';
   operationalDay?: string;
 }
@@ -282,7 +270,9 @@ export enum ClosureStatus {
   FECHO_PARCIAL_FUNCIONARIO = 'FECHO_PARCIAL_FUNCIONARIO',
   FECHO_PARCIAL_ADMIN = 'FECHO_PARCIAL_ADMIN',
   FECHO_CONFIRMADO = 'FECHO_CONFIRMADO',
-  BLOQUEADO = 'BLOQUEADO'
+  CAIXA_FECHADA = 'CAIXA_FECHADA',
+  BLOQUEADO = 'BLOQUEADO',
+  DIA_BLOQUEADO = 'DIA_BLOQUEADO'
 }
 
 export interface SalesReport {
@@ -292,6 +282,7 @@ export interface SalesReport {
   totalExpected: number;
   totalLifted: number;
   discrepancy: number;
+  profit?: number;
   cash: number;
   tpa: number;
   transfer: number;
@@ -330,4 +321,13 @@ export interface SalesReport {
   topProducts?: { name: string; qty: number; total: number }[];
   itemsSnapshot?: any[];
   synced?: boolean;
+  justificationLog?: {
+    tipo: string;
+    valor_quebra_ou_sobra: number;
+    justificativa: string;
+    usuario: string;
+    data: string;
+    hora: number;
+  };
+  processedFinancials?: boolean;
 }

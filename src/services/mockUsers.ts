@@ -36,7 +36,12 @@ export const getMockUsers = (): User[] => {
   const saved = localStorage.getItem(STORAGE_KEY);
   if (saved) {
     try {
-      return JSON.parse(saved);
+      const users = JSON.parse(saved) as User[];
+      // Merge with default permissions to ensure updates are reflected
+      return users.map(u => ({
+        ...u,
+        permissions: DEFAULT_PERMISSIONS[u.role] || u.permissions
+      }));
     } catch (e) {
       return MOCK_USERS_DB;
     }

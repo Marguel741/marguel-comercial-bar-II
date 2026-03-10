@@ -29,7 +29,8 @@ const Inventory: React.FC = () => {
     updateEquipmentQty,
     removeEquipment,
     hasPendingChanges,
-    syncData
+    syncData,
+    getSystemDate
   } = useProducts();
   const { user } = useAuth();
   const { sidebarMode, triggerHaptic } = useLayout();
@@ -39,7 +40,6 @@ const Inventory: React.FC = () => {
   const canEditProduct = hasPermission(user, 'inventory_product_edit');
   const canDeleteProduct = hasPermission(user, 'inventory_product_delete');
   const canAdjustStock = hasPermission(user, 'inventory_stock_adjust');
-  const canViewCosts = hasPermission(user, 'inventory_view_costs');
   const canManageCategories = hasPermission(user, 'inventory_category_manage');
   const canEditInventory = hasPermission(user, 'inventory_edit');
   
@@ -70,9 +70,18 @@ const Inventory: React.FC = () => {
   const [savedAlertIds, setSavedAlertIds] = useState<Set<string>>(new Set());
 
   // Inventory Management State
-  const [nextInventoryDate, setNextInventoryDate] = useState(
-    new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-  );
+  const [nextInventoryDate, setNextInventoryDate] = useState(() => {
+    const d = new Date(systemDate);
+    d.setDate(d.getDate() + 15);
+    return d.toISOString().split('T')[0];
+  });
+
+  useEffect(() => {
+    const d = new Date(systemDate);
+    d.setDate(d.getDate() + 15);
+    setNextInventoryDate(d.toISOString().split('T')[0]);
+  }, [systemDate]);
+
   const [isInventoryDone, setIsInventoryDone] = useState(false);
   const [lastInventoryDate, setLastInventoryDate] = useState<string | null>('25/09/2024');
   
@@ -129,7 +138,7 @@ const Inventory: React.FC = () => {
       if (status.type === 'OK') return null;
       
       const daysLow = Math.floor(Math.random() * 5) + 1; 
-      const outOfStockDate = new Date();
+      const outOfStockDate = getSystemDate();
       outOfStockDate.setDate(outOfStockDate.getDate() - daysLow);
       
       return {
@@ -723,7 +732,7 @@ const Inventory: React.FC = () => {
                               >
                                 {isLocked ? <Lock size={18} /> : <Edit2 size={18} />}
                               </button>
-                              {canEditInventory && (
+                              {canDeleteProduct && (
                                 <button 
                                   onClick={() => handleRequestDelete(item)}
                                   disabled={isLocked}

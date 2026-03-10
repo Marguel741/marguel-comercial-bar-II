@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { User, UserRole } from '../types';
 import { getMockUsers } from '../src/services/mockUsers';
 
@@ -37,16 +37,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return () => window.removeEventListener('mg_users_updated', handleUsersUpdated);
   }, []);
 
-  const refreshUser = () => {
+  const refreshUser = useCallback(() => {
     const users = getMockUsers();
     setUser(prev => {
         if (!prev) return null;
         const updatedUser = users.find(u => u.id === prev.id);
         return updatedUser || prev;
     });
-  };
+  }, []);
 
-  const login = async (email: string, pass: string) => {
+  const login = useCallback(async (email: string, pass: string) => {
     setIsLoading(true);
     // Simulate API delay
     await new Promise(resolve => setTimeout(resolve, 800));
@@ -62,22 +62,31 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     
     setIsLoading(false);
     return false;
-  };
+  }, []);
 
-  const logout = () => {
+  const logout = useCallback(() => {
     setUser(null);
-  };
+  }, []);
 
-  const switchUser = (role: UserRole) => {
+  const switchUser = useCallback((role: UserRole) => {
     const users = getMockUsers();
     const targetUser = users.find(u => u.role === role);
     if (targetUser) {
         setUser(targetUser);
     }
-  };
+  }, []);
+
+  const value = React.useMemo(() => ({ 
+    user, 
+    login, 
+    logout, 
+    isLoading, 
+    switchUser, 
+    refreshUser 
+  }), [user, isLoading, login, logout, switchUser, refreshUser]);
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, isLoading, switchUser, refreshUser }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

@@ -7,10 +7,17 @@ import SyncStatus from '../components/SyncStatus';
 import { useProducts } from '../contexts/ProductContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, Transaction } from '../types';
+import { hasPermission } from '../src/utils/permissions';
+import AccessDenied from './AccessDenied';
 
 const AccountStatus: React.FC = () => {
   const { sidebarMode, triggerHaptic } = useLayout();
   const { user } = useAuth();
+  
+  if (!hasPermission(user, 'finance_view')) {
+    return <AccessDenied />;
+  }
+
   const { 
     cards, addCard, updateCard, deleteCard, 
     transactions, processTransaction, 
@@ -55,6 +62,11 @@ const AccountStatus: React.FC = () => {
   const [cashTPANote, setCashTPANote] = useState('');
 
   const openTransactionModal = (type: 'deposit' | 'withdraw', accountId: string) => {
+    if (!hasPermission(user, 'finance_edit')) {
+      triggerHaptic('error');
+      alert('Sem permissão para realizar alterações financeiras.');
+      return;
+    }
     setTransType(type);
     setTargetAccount(accountId);
     setAmount('');
@@ -170,7 +182,7 @@ const AccountStatus: React.FC = () => {
 
     if (card.balance > 0) {
       triggerHaptic('error');
-      alert(`Operação Negada: O cartão "${card.name}" possui um saldo de ${card.balance.toLocaleString('pt-AO')} Kz. É necessário zerar o saldo antes de eliminar o cartão.`);
+      alert(`Operação Negada: O cartão "${card.name}" possui um saldo de ${(card.balance || 0).toLocaleString('pt-AO')} Kz. É necessário zerar o saldo antes de eliminar o cartão.`);
       setShowDeleteConfirm({ isOpen: false, cardId: null });
       return;
     }
@@ -230,12 +242,17 @@ const AccountStatus: React.FC = () => {
                 triggerHaptic('error');
                 return;
               }
+              if (!hasPermission(user, 'finance_card_create')) {
+                triggerHaptic('error');
+                alert('Sem permissão para criar cartões.');
+                return;
+              }
               triggerHaptic('impact'); 
               setShowCreateCardModal(true); 
             }}
-            disabled={isLocked}
+            disabled={isLocked || !hasPermission(user, 'finance_card_create')}
             className={`px-6 py-3 rounded-2xl font-bold flex items-center gap-2 transition-all shadow-lg ${
-              isLocked 
+              isLocked || !hasPermission(user, 'finance_card_create')
                 ? 'bg-slate-300 text-slate-500 cursor-not-allowed' 
                 : 'bg-[#003366] text-white hover:scale-105'
             }`}
@@ -291,7 +308,7 @@ const AccountStatus: React.FC = () => {
 
                     <div className="space-y-1">
                         <p className="text-white/70 text-xs font-medium uppercase tracking-widest">Saldo Disponível</p>
-                        <h2 className="text-4xl font-mono font-black tracking-tight">{card.balance.toLocaleString('pt-AO')} Kz</h2>
+                        <h2 className="text-4xl font-mono font-black tracking-tight">{(card.balance || 0).toLocaleString('pt-AO')} Kz</h2>
                     </div>
 
                     <div className="flex justify-between items-end">
@@ -364,7 +381,7 @@ const AccountStatus: React.FC = () => {
                 >
                     {card.type === 'Poupança' ? <MinusCircle size={20} /> : <ArrowUpRight size={20} />} Debitar
                 </button>
-                {card.id !== 'main' && card.id !== 'savings' && (
+                {card.id !== 'main' && card.id !== 'savings' && hasPermission(user, 'finance_card_delete') && (
                   <button 
                     onClick={() => confirmDeleteCard(card.id)}
                     className="p-3 bg-red-50 dark:bg-red-900/20 text-red-500 rounded-2xl hover:bg-red-100 transition-all active:scale-95"
@@ -387,6 +404,11 @@ const AccountStatus: React.FC = () => {
               triggerHaptic('error');
               return;
             }
+            if (!hasPermission(user, 'finance_edit')) {
+              triggerHaptic('error');
+              alert('Sem permissão para realizar alterações financeiras.');
+              return;
+            }
             triggerHaptic('selection'); 
             setShowCashTPAModal({ isOpen: true, type: 'Cash' }); 
           }}
@@ -396,7 +418,7 @@ const AccountStatus: React.FC = () => {
           </div>
           <div>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Em Cash (Mão)</p>
-            <p className="text-2xl font-black text-[#003366] dark:text-white">{cashBalance.toLocaleString('pt-AO')} Kz</p>
+            <p className="text-2xl font-black text-[#003366] dark:text-white">{(cashBalance || 0).toLocaleString('pt-AO')} Kz</p>
           </div>
         </SoftCard>
 
@@ -405,6 +427,11 @@ const AccountStatus: React.FC = () => {
           onClick={() => { 
             if (isLocked) {
               triggerHaptic('error');
+              return;
+            }
+            if (!hasPermission(user, 'finance_edit')) {
+              triggerHaptic('error');
+              alert('Sem permissão para realizar alterações financeiras.');
               return;
             }
             triggerHaptic('selection'); 
@@ -416,7 +443,7 @@ const AccountStatus: React.FC = () => {
           </div>
           <div>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Em TPA (Banco)</p>
-            <p className="text-2xl font-black text-[#003366] dark:text-white">{tpaBalance.toLocaleString('pt-AO')} Kz</p>
+            <p className="text-2xl font-black text-[#003366] dark:text-white">{(tpaBalance || 0).toLocaleString('pt-AO')} Kz</p>
           </div>
         </SoftCard>
 
@@ -671,7 +698,7 @@ const AccountStatus: React.FC = () => {
                           </div>
                           <div className="text-right">
                              <p className={`font-black text-lg ${t.type === 'entrada' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                                {t.type === 'entrada' ? '+' : '-'}{t.amount.toLocaleString('pt-AO')} Kz
+                                {t.type === 'entrada' ? '+' : '-'}{(t.amount || 0).toLocaleString('pt-AO')} Kz
                              </p>
                              <p className="text-[10px] font-bold text-slate-400 uppercase flex items-center justify-end gap-1">
                                 <Calendar size={10} /> {t.date}
@@ -710,7 +737,7 @@ const AccountStatus: React.FC = () => {
                 <div>
                   <p className="text-xs text-slate-400 font-bold uppercase mb-1">Valor</p>
                   <p className={`text-4xl font-black ${selectedTransaction.type === 'entrada' ? 'text-green-600' : 'text-red-600'}`}>
-                    {selectedTransaction.type === 'entrada' ? '+' : '-'}{selectedTransaction.amount.toLocaleString('pt-AO')} Kz
+                    {selectedTransaction.type === 'entrada' ? '+' : '-'}{(selectedTransaction.amount || 0).toLocaleString('pt-AO')} Kz
                   </p>
                 </div>
                 <div className="text-right">
@@ -741,13 +768,27 @@ const AccountStatus: React.FC = () => {
                 </div>
                 <div className="p-4 bg-slate-50 dark:bg-slate-700/50 rounded-2xl border border-slate-100 dark:border-slate-700">
                   <p className="text-[10px] text-slate-400 font-bold uppercase mb-1 flex items-center gap-1">
+                    <History size={10} /> Tipo de Movimento
+                  </p>
+                  <p className="font-bold text-slate-700 dark:text-slate-200 text-sm uppercase">
+                    {selectedTransaction.type === 'entrada' ? 'Entrada' : 'Saída'}
+                  </p>
+                </div>
+                <div className="p-4 bg-slate-50 dark:bg-slate-700/50 rounded-2xl border border-slate-100 dark:border-slate-700">
+                  <p className="text-[10px] text-slate-400 font-bold uppercase mb-1 flex items-center gap-1">
+                    <CreditCard size={10} /> Conta / Cartão
+                  </p>
+                  <p className="font-bold text-slate-700 dark:text-slate-200 text-sm">{selectedTransaction.accountName || 'N/A'}</p>
+                </div>
+                <div className="p-4 bg-slate-50 dark:bg-slate-700/50 rounded-2xl border border-slate-100 dark:border-slate-700">
+                  <p className="text-[10px] text-slate-400 font-bold uppercase mb-1 flex items-center gap-1">
                     <CheckCircle size={10} /> Responsável
                   </p>
                   <p className="font-bold text-slate-700 dark:text-slate-200 text-sm">{selectedTransaction.performedBy || 'N/A'}</p>
                 </div>
                 <div className="p-4 bg-slate-50 dark:bg-slate-700/50 rounded-2xl border border-slate-100 dark:border-slate-700">
                   <p className="text-[10px] text-slate-400 font-bold uppercase mb-1 flex items-center gap-1">
-                    <History size={10} /> Tipo
+                    <Info size={10} /> Origem
                   </p>
                   <p className="font-bold text-slate-700 dark:text-slate-200 text-sm uppercase text-[10px]">
                     {selectedTransaction.referenceType === 'purchase' ? 'Compra' :
@@ -755,7 +796,8 @@ const AccountStatus: React.FC = () => {
                      selectedTransaction.referenceType === 'sales_report' ? 'Venda' :
                      selectedTransaction.referenceType === 'deposit' ? 'Depósito' :
                      selectedTransaction.referenceType === 'withdrawal' ? 'Levantamento' :
-                     selectedTransaction.referenceType === 'day_closure' ? 'Fecho' : 'Ajuste'}
+                     selectedTransaction.referenceType === 'day_closure' ? 'Fecho' : 
+                     selectedTransaction.referenceType === 'reversal' ? 'Reversão' : 'Ajuste'}
                   </p>
                 </div>
               </div>
@@ -845,7 +887,7 @@ const AccountStatus: React.FC = () => {
                             <div className="grid grid-cols-2 gap-3">
                               <div className="bg-white dark:bg-slate-700 p-3 rounded-xl">
                                 <p className="text-[10px] text-slate-400 font-bold uppercase">Total Vendido</p>
-                                <p className="font-black text-green-600">{report.totals?.lifted?.toLocaleString('pt-AO') || report.totalLifted?.toLocaleString('pt-AO')} Kz</p>
+                                <p className="font-black text-green-600">{(report.totals?.lifted || report.totalLifted || 0).toLocaleString('pt-AO')} Kz</p>
                               </div>
                               <div className="bg-white dark:bg-slate-700 p-3 rounded-xl">
                                 <p className="text-[10px] text-slate-400 font-bold uppercase">Divergência</p>

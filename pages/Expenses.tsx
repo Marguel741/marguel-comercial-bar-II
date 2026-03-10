@@ -9,6 +9,7 @@ import { useLayout } from '../contexts/LayoutContext';
 import SyncStatus from '../components/SyncStatus';
 import { useAuth } from '../contexts/AuthContext';
 import { useProducts } from '../contexts/ProductContext';
+import { hasPermission } from '../src/utils/permissions';
 import { Expense } from '../types';
 
 const Expenses: React.FC = () => {
@@ -20,6 +21,7 @@ const Expenses: React.FC = () => {
     deleteExpense, 
     updateExpense, 
     systemDate, 
+    getSystemDate,
     isDayLocked, 
     processTransaction,
     expenseCategories,
@@ -129,20 +131,20 @@ const Expenses: React.FC = () => {
     triggerHaptic('success');
     const amountVal = parseFloat(formData.amount);
     
+    const now = getSystemDate();
     const newExpense: Expense = {
       id: Date.now().toString(),
       title: formData.title,
       amount: amountVal,
       category: formData.category,
-      date: systemDate.toLocaleDateString('pt-AO'),
-      timestamp: systemDate.getTime(),
+      date: now.toLocaleDateString('pt-AO'),
+      timestamp: now.getTime(),
       user: user?.name?.split(' ')[0] || 'Desconhecido',
       attachments: attachments,
       notes: formData.notes
     };
 
     addExpense(newExpense);
-    processTransaction('withdraw', 'main', amountVal, `Despesa: ${formData.title}`, formData.category, newExpense.id, 'expense', newExpense.user);
     showToast('Despesa registrada com sucesso!');
     
     // Reset Form
@@ -155,11 +157,11 @@ const Expenses: React.FC = () => {
       showToast('Dia bloqueado.');
       return;
     }
-    if (window.confirm("Tem certeza que deseja apagar este registo?")) {
+    if (window.confirm("Tem certeza que deseja apagar este registo? O valor será devolvido à Conta Corrente.")) {
       triggerHaptic('warning');
-      deleteExpense(id);
+      deleteExpense(id, user?.name || 'Sistema');
       if (selectedExpense?.id === id) setSelectedExpense(null);
-      showToast('Despesa removida.');
+      showToast('Despesa removida e valor revertido.');
     }
   };
 
@@ -235,132 +237,148 @@ const Expenses: React.FC = () => {
         </div>
         <div className="flex-1 flex items-center justify-center md:justify-end w-full md:w-auto gap-4">
           <SyncStatus />
-          <button 
-            onClick={() => setShowCategoryManager(true)}
-            className="p-3 bg-white text-[#003366] border border-slate-200 rounded-xl hover:bg-slate-50 transition-all flex items-center gap-2 font-bold text-xs"
-          >
-            <Tag size={16} /> Categorias
-          </button>
-          <button 
-            onClick={handleNewExpenseClick}
-            className="pill-button px-6 py-3 bg-red-500 text-white font-bold flex items-center justify-center gap-2 shadow-lg shadow-red-100 w-full md:w-auto hover:bg-red-600 transition-all active:scale-95"
-          >
-            <Plus size={20} /> Nova Despesa
-          </button>
+          {hasPermission(user, 'expenses_category_manage') && (
+            <button 
+              onClick={() => setShowCategoryManager(true)}
+              className="p-3 bg-white text-[#003366] border border-slate-200 rounded-xl hover:bg-slate-50 transition-all flex items-center gap-2 font-bold text-xs"
+            >
+              <Tag size={16} /> Categorias
+            </button>
+          )}
+          {hasPermission(user, 'expenses_execute') && (
+            <button 
+              onClick={handleNewExpenseClick}
+              className="pill-button px-6 py-3 bg-red-500 text-white font-bold flex items-center justify-center gap-2 shadow-lg shadow-red-100 w-full md:w-auto hover:bg-red-600 transition-all active:scale-95"
+            >
+              <Plus size={20} /> Nova Despesa
+            </button>
+          )}
         </div>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* --- FORMULÁRIO DE REGISTRO --- */}
-        <SoftCard className={`space-y-6 h-fit ${isLocked ? 'opacity-50 pointer-events-none' : ''}`}>
-          <h3 className="font-bold text-[#003366] flex items-center gap-2">
-            <Wallet size={20} /> Registo Rápido
-          </h3>
-          <form onSubmit={handleRegisterExpense} className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Título da Despesa</label>
-              <div className="relative">
-                <FileText className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                <input 
-                  ref={titleInputRef}
-                  type="text" 
-                  value={formData.title} 
-                  onChange={(e) => handleInputChange('title', e.target.value)}
-                  placeholder="Ex: Pagamento Água" 
-                  className="w-full p-4 bg-slate-50 rounded-2xl border-none soft-ui-inset pl-12 focus:ring-2 focus:ring-[#003366] outline-none transition-all" 
-                  required 
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
+        {hasPermission(user, 'expenses_execute') ? (
+          <SoftCard className={`space-y-6 h-fit ${isLocked ? 'opacity-50 pointer-events-none' : ''}`}>
+            <h3 className="font-bold text-[#003366] flex items-center gap-2">
+              <Wallet size={20} /> Registo Rápido
+            </h3>
+            <form onSubmit={handleRegisterExpense} className="space-y-4">
               <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Valor (Kz)</label>
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Título da Despesa</label>
                 <div className="relative">
-                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">Kz</div>
+                  <FileText className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
                   <input 
-                    type="number" 
-                    value={formData.amount} 
-                    onChange={(e) => handleInputChange('amount', e.target.value)}
-                    placeholder="0" 
-                    className="w-full p-4 bg-slate-50 rounded-2xl border-none soft-ui-inset pl-12 font-bold text-red-500 focus:ring-2 focus:ring-red-200 outline-none transition-all" 
+                    ref={titleInputRef}
+                    type="text" 
+                    value={formData.title} 
+                    onChange={(e) => handleInputChange('title', e.target.value)}
+                    placeholder="Ex: Pagamento Água" 
+                    className="w-full p-4 bg-slate-50 rounded-2xl border-none soft-ui-inset pl-12 focus:ring-2 focus:ring-[#003366] outline-none transition-all" 
                     required 
                   />
                 </div>
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-bold text-slate-600 dark:text-slate-400">Categoria</label>
-                <select
-                  value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                  className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-700 border-none outline-none focus:ring-2 focus:ring-[#003366] dark:text-white"
-                >
-                  <option value="">Selecione uma categoria</option>
-                  {activeExpenseCategories.map(cat => (
-                    <option key={cat.id} value={cat.name}>{cat.name}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
 
-            {/* Novo Campo de Nota */}
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
-                <StickyNote size={12} /> Nota de Esclarecimento
-              </label>
-              <textarea 
-                value={formData.notes} 
-                onChange={(e) => handleInputChange('notes', e.target.value)}
-                placeholder="Detalhes adicionais, justificativa ou observações sobre esta despesa..." 
-                className="w-full p-4 bg-slate-50 rounded-2xl border-none soft-ui-inset focus:ring-2 focus:ring-[#003366] outline-none transition-all resize-none text-sm" 
-                rows={2} 
-              />
-            </div>
-
-            {/* Upload Section (Multiple) */}
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Comprovativos ({attachments.length}/4)</label>
-                {attachments.length > 0 && (
-                  <button type="button" onClick={() => setAttachments([])} className="text-[10px] text-red-500 font-bold hover:underline">Limpar Tudo</button>
-                )}
-              </div>
-              <input type="file" ref={fileInputRef} className="hidden" accept="image/*,.pdf" onChange={handleFileSelect} />
-              <div className="grid grid-cols-4 gap-2">
-                {/* Miniaturas */}
-                {attachments.map((att, idx) => (
-                  <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 group bg-slate-100">
-                    <img src={att} alt={`Anexo ${idx+1}`} className="w-full h-full object-cover" />
-                    <button 
-                      type="button" 
-                      onClick={() => removeAttachment(idx)}
-                      className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <X size={10} />
-                    </button>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Valor (Kz)</label>
+                  <div className="relative">
+                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">Kz</div>
+                    <input 
+                      type="number" 
+                      value={formData.amount} 
+                      onChange={(e) => handleInputChange('amount', e.target.value)}
+                      placeholder="0" 
+                      className="w-full p-4 bg-slate-50 rounded-2xl border-none soft-ui-inset pl-12 font-bold text-red-500 focus:ring-2 focus:ring-red-200 outline-none transition-all" 
+                      required 
+                    />
                   </div>
-                ))}
-                {/* Botão de Adicionar (Se < 4) */}
-                {attachments.length < 4 && (
-                  <div 
-                    onClick={() => fileInputRef.current?.click()}
-                    className="aspect-square border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center justify-center gap-1 text-slate-400 hover:text-[#003366] hover:border-[#003366] hover:bg-blue-50 transition-all cursor-pointer"
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-slate-600 dark:text-slate-400">Categoria</label>
+                  <select
+                    value={formData.category}
+                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                    className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-700 border-none outline-none focus:ring-2 focus:ring-[#003366] dark:text-white"
                   >
-                    <Camera size={20} />
-                    <span className="text-[9px] font-bold">Adicionar</span>
-                  </div>
-                )}
+                    <option value="">Selecione uma categoria</option>
+                    {activeExpenseCategories.map(cat => (
+                      <option key={cat.id} value={cat.name}>{cat.name}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
-            </div>
 
-            <button 
-              type="submit" 
-              className="w-full pill-button py-4 bg-[#003366] text-white font-bold text-lg mt-4 shadow-xl shadow-blue-200 hover:opacity-90 active:scale-95 transition-all flex items-center justify-center gap-2"
-            >
-              <Check size={20} /> Registrar Despesa
-            </button>
-          </form>
-        </SoftCard>
+              {/* Novo Campo de Nota */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
+                  <StickyNote size={12} /> Nota de Esclarecimento
+                </label>
+                <textarea 
+                  value={formData.notes} 
+                  onChange={(e) => handleInputChange('notes', e.target.value)}
+                  placeholder="Detalhes adicionais, justificativa ou observações sobre esta despesa..." 
+                  className="w-full p-4 bg-slate-50 rounded-2xl border-none soft-ui-inset focus:ring-2 focus:ring-[#003366] outline-none transition-all resize-none text-sm" 
+                  rows={2} 
+                />
+              </div>
+
+              {/* Upload Section (Multiple) */}
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Comprovativos ({attachments.length}/4)</label>
+                  {attachments.length > 0 && (
+                    <button type="button" onClick={() => setAttachments([])} className="text-[10px] text-red-500 font-bold hover:underline">Limpar Tudo</button>
+                  )}
+                </div>
+                <input type="file" ref={fileInputRef} className="hidden" accept="image/*,.pdf" onChange={handleFileSelect} />
+                <div className="grid grid-cols-4 gap-2">
+                  {/* Miniaturas */}
+                  {attachments.map((att, idx) => (
+                    <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 group bg-slate-100">
+                      <img src={att} alt={`Anexo ${idx+1}`} className="w-full h-full object-cover" />
+                      <button 
+                        type="button" 
+                        onClick={() => removeAttachment(idx)}
+                        className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X size={10} />
+                      </button>
+                    </div>
+                  ))}
+                  {/* Botão de Adicionar (Se < 4) */}
+                  {attachments.length < 4 && (
+                    <div 
+                      onClick={() => fileInputRef.current?.click()}
+                      className="aspect-square border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center justify-center gap-1 text-slate-400 hover:text-[#003366] hover:border-[#003366] hover:bg-blue-50 transition-all cursor-pointer"
+                    >
+                      <Camera size={20} />
+                      <span className="text-[9px] font-bold">Adicionar</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <button 
+                type="submit" 
+                className="w-full pill-button py-4 bg-[#003366] text-white font-bold text-lg mt-4 shadow-xl shadow-blue-200 hover:opacity-90 active:scale-95 transition-all flex items-center justify-center gap-2"
+              >
+                <Check size={20} /> Registrar Despesa
+              </button>
+            </form>
+          </SoftCard>
+        ) : (
+          <SoftCard className="flex flex-col items-center justify-center text-center p-12 space-y-4">
+            <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center text-slate-300">
+              <Wallet size={40} />
+            </div>
+            <div>
+              <h3 className="text-xl font-bold text-slate-800">Acesso Restrito</h3>
+              <p className="text-slate-500 text-sm">Você não tem permissão para registrar novas despesas.</p>
+            </div>
+          </SoftCard>
+        )}
 
         {/* --- LISTA DE HISTÓRICO --- */}
         <div className="space-y-6 flex flex-col h-full">
@@ -399,7 +417,7 @@ const Expenses: React.FC = () => {
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-xl font-black text-red-500">{ex.amount.toLocaleString('pt-AO')} Kz</p>
+                  <p className="text-xl font-black text-red-500">{(ex.amount || 0).toLocaleString('pt-AO')} Kz</p>
                   <p className="text-[10px] text-slate-400 font-bold uppercase">Por {ex.user}</p>
                 </div>
               </SoftCard>
@@ -486,7 +504,7 @@ const Expenses: React.FC = () => {
                       </div>
                     )}
                   </div>
-                  <p className={`${isCompactMode ? 'text-3xl mt-2' : 'text-5xl mt-4'} font-black opacity-90 tracking-tighter`}>{selectedExpense.amount.toLocaleString('pt-AO')} Kz</p>
+                  <p className={`${isCompactMode ? 'text-3xl mt-2' : 'text-5xl mt-4'} font-black opacity-90 tracking-tighter`}>{(selectedExpense.amount || 0).toLocaleString('pt-AO')} Kz</p>
                 </>
               )}
             </div>
@@ -680,7 +698,7 @@ const Expenses: React.FC = () => {
                   <Wallet size={20} />
                   <span className="text-xs font-bold uppercase">Total Filtrado</span>
                 </div>
-                <span className="text-2xl font-black text-red-600">{totalFiltered.toLocaleString('pt-AO')} Kz</span>
+                <span className="text-2xl font-black text-red-600">{(totalFiltered || 0).toLocaleString('pt-AO')} Kz</span>
               </div>
             </div>
 
@@ -721,7 +739,7 @@ const Expenses: React.FC = () => {
                             {ex.user}
                           </td>
                           <td className="p-4 text-right font-black text-red-500 whitespace-nowrap">
-                            {ex.amount.toLocaleString('pt-AO')} Kz
+                            {(ex.amount || 0).toLocaleString('pt-AO')} Kz
                           </td>
                           <td className="p-4 text-center">
                             {ex.attachments && ex.attachments.length > 0 ? (

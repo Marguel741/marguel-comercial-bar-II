@@ -32,12 +32,15 @@ const TestCycle: React.FC = () => {
     addPurchase,
     salesReports,
     systemDate, // Data GLOBAL
-    setSystemDate // Setter GLOBAL
+    setSystemDate, // Setter GLOBAL
+    resetTestData,
+    getSystemDate
   } = useProducts();
   const { sidebarMode, triggerHaptic } = useLayout();
 
   // Logs locais apenas para feedback visual
   const [dailyLog, setDailyLog] = useState<string[]>([]);
+  const [resetStep, setResetStep] = useState(0);
   
   // Format Date for Display
   const dateStr = systemDate.toLocaleDateString('pt-AO');
@@ -45,7 +48,7 @@ const TestCycle: React.FC = () => {
   // --- ACTIONS ---
 
   const logAction = (action: string) => {
-    const time = new Date().toLocaleTimeString('pt-AO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const time = getSystemDate().toLocaleTimeString('pt-AO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     setDailyLog(prev => [`[${dateStr} ${time}] ${action}`, ...prev]);
   };
 
@@ -85,7 +88,7 @@ const TestCycle: React.FC = () => {
     updateProduct(product.id, { stock: product.stock - qty });
     processTransaction('deposit', 'main', totalValue, `[SIMULADOR] Venda de ${qty}x ${product.name}`);
 
-    logAction(`💰 Venda Simulada: ${qty}x ${product.name} (+${totalValue.toLocaleString()} Kz)`);
+    logAction(`💰 Venda Simulada: ${qty}x ${product.name} (+${(totalValue || 0).toLocaleString()} Kz)`);
   };
 
   const simulateExpense = () => {
@@ -95,7 +98,7 @@ const TestCycle: React.FC = () => {
     // Uses System Date internally
     processTransaction('withdraw', 'main', amount, `[SIMULADOR] Despesa Diversa`);
     
-    logAction(`💸 Despesa Simulada: Pagamento diverso (-${amount.toLocaleString()} Kz)`);
+    logAction(`💸 Despesa Simulada: Pagamento diverso (-${(amount || 0).toLocaleString()} Kz)`);
   };
 
   const simulatePurchase = () => {
@@ -113,7 +116,7 @@ const TestCycle: React.FC = () => {
     );
     
     const cost = packQty * product.buyPrice * (product.packSize || 1);
-    logAction(`📦 Compra Simulada: ${packQty} Packs de ${product.name} (-${cost.toLocaleString()} Kz)`);
+    logAction(`📦 Compra Simulada: ${packQty} Packs de ${product.name} (-${(cost || 0).toLocaleString()} Kz)`);
   };
 
   const resetToToday = () => {
@@ -213,9 +216,32 @@ const TestCycle: React.FC = () => {
             {/* COLUMN 3: LOG & HISTORY */}
             <div className="space-y-6 lg:col-span-1">
                 <SoftCard className="h-full flex flex-col border-t-4 border-slate-400">
-                    <h3 className="font-bold text-slate-700 dark:text-white flex items-center gap-2 mb-4">
-                        <History size={20} className="text-slate-400" /> Log de Eventos (Sessão)
-                    </h3>
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="font-bold text-slate-700 dark:text-white flex items-center gap-2">
+                            <History size={20} className="text-slate-400" /> Log de Eventos (Sessão)
+                        </h3>
+                        <button 
+                            onClick={() => {
+                                if (resetStep === 0) {
+                                    setResetStep(1);
+                                    triggerHaptic('warning');
+                                } else {
+                                    resetTestData();
+                                    setResetStep(0);
+                                    logAction("🧹 Sistema resetado para o estado inicial.");
+                                }
+                            }}
+                            onMouseLeave={() => setResetStep(0)}
+                            className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${
+                                resetStep === 1 
+                                ? 'bg-red-500 text-white animate-pulse' 
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-red-500'
+                            }`}
+                        >
+                            <Trash2 size={12} />
+                            {resetStep === 1 ? 'Confirmar Limpeza?' : 'Limpar Dados'}
+                        </button>
+                    </div>
                     <div className="flex-1 bg-slate-50 dark:bg-slate-900 rounded-xl p-4 overflow-y-auto custom-scrollbar max-h-[400px] border border-slate-100 dark:border-slate-700 font-mono text-xs space-y-2">
                         {dailyLog.length === 0 && <p className="text-slate-400 italic text-center mt-10">Aguardando ações...</p>}
                         {dailyLog.map((log, i) => (
@@ -247,9 +273,9 @@ const TestCycle: React.FC = () => {
                                     <CheckCircle size={14} className="text-green-500" />
                                 </div>
                                 <div className="text-xs space-y-1 text-slate-500 dark:text-slate-400">
-                                    <div className="flex justify-between"><span>Vendas:</span> <span className="font-bold text-slate-700 dark:text-slate-200">{report.totalExpected.toLocaleString()}</span></div>
-                                    <div className="flex justify-between"><span>Despesas:</span> <span className="font-bold text-red-500">{report.lunchExpense.toLocaleString()}</span></div>
-                                    <div className="flex justify-between border-t border-slate-100 dark:border-slate-700 pt-1 mt-1"><span>Líquido:</span> <span className="font-bold text-green-600">{report.totalLifted.toLocaleString()}</span></div>
+                                    <div className="flex justify-between"><span>Vendas:</span> <span className="font-bold text-slate-700 dark:text-slate-200">{(report.totalExpected || 0).toLocaleString()}</span></div>
+                                    <div className="flex justify-between"><span>Despesas:</span> <span className="font-bold text-red-500">{(report.lunchExpense || 0).toLocaleString()}</span></div>
+                                    <div className="flex justify-between border-t border-slate-100 dark:border-slate-700 pt-1 mt-1"><span>Líquido:</span> <span className="font-bold text-green-600">{(report.totalLifted || 0).toLocaleString()}</span></div>
                                 </div>
                             </div>
                         ))

@@ -32,6 +32,7 @@ interface DailyReport {
     lifted: number;
     discrepancy: number;
     soldStock: number;
+    profit?: number;
   };
   financials: {
     cash: number;
@@ -63,10 +64,26 @@ interface DailyReport {
   transfer?: number;
   lunchExpense?: number;
   discrepancy?: number;
+  profit?: number;
 }
 
 const Sales: React.FC = () => {
-  const { products, addProduct, updateProduct, getPurchasesByDate, getTodayPurchases, addPurchase, salesReports: contextSalesReports, addSalesReport, confirmSalesReport, isDayLocked, reopenDay } = useProducts();
+  const { 
+    products, 
+    addProduct, 
+    updateProduct, 
+    getPurchasesByDate, 
+    getTodayPurchases, 
+    addPurchase, 
+    salesReports: contextSalesReports, 
+    addSalesReport, 
+    updateSalesReport,
+    updateSalesReportJustification,
+    confirmSalesReport, 
+    isDayLocked, 
+    reopenDay,
+    getSystemDate
+  } = useProducts();
   const { sidebarMode, triggerHaptic } = useLayout();
   const { user } = useAuth();
   const { addTransaction } = useFinance();
@@ -75,14 +92,25 @@ const Sales: React.FC = () => {
   const salesReports = contextSalesReports as unknown as DailyReport[];
 
   const pageTopRef = useRef<HTMLDivElement>(null);
-  const todayISO = new Date().toISOString().split('T')[0];
+  const todayISO = getSystemDate().toISOString().split('T')[0];
   const [reportDate, setReportDate] = useState(todayISO);
 
-  // Bloqueio de datas futuras
+  // Sync reportDate with systemDate
+  useEffect(() => {
+    setReportDate(todayISO);
+  }, [todayISO]);
+
+  // Bloqueio de datas futuras e limitação de ano
   useEffect(() => {
     if (reportDate > todayISO) {
       setReportDate(todayISO);
     }
+    // Ano inicial do sistema deve ser 2025
+    const year = reportDate.split('-')[0];
+    if (year && parseInt(year) < 2025) {
+      setReportDate('2025-01-01');
+    }
+    setHasManuallyOpened(false);
   }, [reportDate, todayISO]);
 
   const [initialStock, setInitialStock] = useState<Record<string, string>>({});
@@ -90,6 +118,8 @@ const Sales: React.FC = () => {
   
   // Effect to handle Initial Stock Snapshot and Report Loading
   useEffect(() => {
+    if (hasManuallyOpened) return;
+
     // 1. Check if a finalized report exists for this date in the context
     const existingReport = salesReports.find(r => {
       const reportDateISO = r.dateISO ? r.dateISO.split('T')[0] : r.date;
@@ -116,6 +146,7 @@ const Sales: React.FC = () => {
       setInitialStock(init);
       setEndingStock(end);
       setBreakdowns(bds);
+      setCurrentReportId(existingReport.id);
       setIsDayClosed(true);
       setIsFinancialsConfirmed(true);
       
@@ -139,6 +170,7 @@ const Sales: React.FC = () => {
 
     // 2. If no finalized report, handle snapshot logic
     setIsDayClosed(false);
+    setCurrentReportId(null);
     setIsFinancialsConfirmed(false);
     setEndingStock({});
     setBreakdowns({});
@@ -190,6 +222,8 @@ const Sales: React.FC = () => {
   }>({ status: 'idle', currentStep: -1, completedSteps: [] });
 
   const [isDayClosed, setIsDayClosed] = useState(false);
+  const [currentReportId, setCurrentReportId] = useState<string | null>(null);
+  const [hasManuallyOpened, setHasManuallyOpened] = useState(false);
   const [showCloseModal, setShowCloseModal] = useState(false);
   
   const [historyFilter, setHistoryFilter] = useState<'day' | 'week' | 'month' | 'quarter' | 'semester' | 'year' | 'all'>('week');
@@ -201,13 +235,15 @@ const Sales: React.FC = () => {
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
   const [breakdowns, setBreakdowns] = useState<Record<string, { packs: number, singles: number, waste: number }>>({});
 
-  const canEditInitialStock = hasPermission(user, 'sales_edit') && !isDayLocked(reportDate);
+  const isAdminOrOwner = user?.role === UserRole.PROPRIETARIO || user?.role === UserRole.ADMIN_GERAL;
+  const canEditInitialStock = hasPermission(user, 'sales_edit') && (!isDayLocked(reportDate) || isAdminOrOwner);
   const canExecuteSales = hasPermission(user, 'sales_execute');
   const canCloseDay = hasPermission(user, 'sales_closure');
-  const canReopenDay = hasPermission(user, 'sales_reopen');
+  const canReopenDay = isAdminOrOwner;
+  const canViewMargins = hasPermission(user, 'sales_view_margins');
   
-  const isReadOnly = !canExecuteSales || isDayLocked(reportDate);
-  const isLocked = isDayLocked(reportDate);
+  const isLocked = isDayLocked(reportDate) && !isAdminOrOwner;
+  const isReadOnly = !canExecuteSales || isLocked;
 
   const showToast = (message: string) => {
     setToast({ show: true, message });
@@ -308,9 +344,12 @@ const Sales: React.FC = () => {
       }
 
       totalTheoreticalRevenue += revenue;
+      const profit = revenue - (soldQty * product.buyPrice);
 
-      return { ...product, init, buy, end, soldQty, revenue, isPromo, breakdown, isBalanced, promoQty, promoPrice };
+      return { ...product, init, buy, end, soldQty, revenue, profit, isPromo, breakdown, isBalanced, promoQty, promoPrice };
     });
+
+    const totalTheoreticalProfit = items.reduce((acc, item) => acc + (item.profit || 0), 0);
 
     const salesChartData = items
       .filter(item => item.soldQty > 0)
@@ -322,7 +361,7 @@ const Sales: React.FC = () => {
         category: item.category
       }));
 
-    return { items, totalTheoreticalRevenue, salesChartData, hasStockError };
+    return { items, totalTheoreticalRevenue, totalTheoreticalProfit, salesChartData, hasStockError };
   }, [initialStock, purchasedStock, endingStock, products, breakdowns]);
 
   const declaredCash = parseFloat(financials.cash) || 0;
@@ -368,6 +407,11 @@ const Sales: React.FC = () => {
         showToast("Sem permissão para realizar fecho.");
         return;
     }
+    if (!canExecuteSales) {
+        triggerHaptic('error');
+        showToast("Sem permissão de execução de vendas para realizar fecho.");
+        return;
+    }
     if (isReadOnly) return;
     if (reportDate > todayISO) {
         triggerHaptic('error');
@@ -389,6 +433,11 @@ const Sales: React.FC = () => {
   };
 
   const confirmCloseDay = async () => {
+    if (isDayLocked(reportDate)) {
+      triggerHaptic('error');
+      alert('Este dia está bloqueado pela gestão e não pode ser alterado.');
+      return;
+    }
     if (hasDiscrepancy && !financials.discrepancyJustification) {
       triggerHaptic('error');
       showToast("Justifique a divergência.");
@@ -442,12 +491,13 @@ const Sales: React.FC = () => {
       dateISO: reportTimestamp.toISOString(),
       displayDate: reportTimestamp.toLocaleDateString('pt-AO', { year: 'numeric', month: 'long', day: 'numeric' }),
       weekday: reportTimestamp.toLocaleDateString('pt-AO', { weekday: 'long' }),
-      generatedAt: new Date().toLocaleTimeString('pt-AO'),
+      generatedAt: getSystemDate().toLocaleTimeString('pt-AO'),
       totals: {
         expected: totalExpected,
         lifted: totalLifted,
         discrepancy: discrepancy,
-        soldStock: calculatedData.totalTheoreticalRevenue
+        soldStock: calculatedData.totalTheoreticalRevenue,
+        profit: calculatedData.totalTheoreticalProfit
       },
       financials: {
         cash: declaredCash,
@@ -474,7 +524,8 @@ const Sales: React.FC = () => {
       tpa: declaredTicket,
       transfer: declaredTransfer,
       lunchExpense: lunchExpense,
-      discrepancy: discrepancy
+      discrepancy: discrepancy,
+      profit: calculatedData.totalTheoreticalProfit
     };
 
     // Save snapshot to report for persistence
@@ -566,10 +617,10 @@ const Sales: React.FC = () => {
     
     const reportData = getReportData(rawReport);
     
-    const isConfirmed = reportData.status === ClosureStatus.FECHO_CONFIRMADO;
+    const isConfirmed = reportData.status === ClosureStatus.FECHO_CONFIRMADO || reportData.status === ClosureStatus.CAIXA_FECHADA || reportData.status === ClosureStatus.BLOQUEADO;
     const canConfirm = !isConfirmed && (
       (user?.role === UserRole.ADMIN_GERAL || user?.role === UserRole.PROPRIETARIO) ||
-      (user?.role === UserRole.GERENTE && reportData.closedBy !== user.name)
+      (user?.name && reportData.closedBy !== user.name)
     );
 
     const hoursSinceClosure = (Date.now() - (reportData.timestamp || Date.now())) / (1000 * 60 * 60);
@@ -591,7 +642,22 @@ const Sales: React.FC = () => {
             )}
             <div className="max-w-5xl mx-auto print:max-w-none">
                 <div className="flex justify-between items-center mb-8">
-                    <button onClick={() => { viewHistoryReport ? setViewHistoryReport(null) : setIsDayClosed(false); }} className="text-slate-500 dark:text-slate-400 font-bold hover:text-[#003366] dark:hover:text-blue-400">← Voltar</button>
+                    <button 
+                      onClick={() => { 
+                        if (viewHistoryReport) {
+                          setViewHistoryReport(null);
+                        } else if (reportData.status !== ClosureStatus.FECHO_CONFIRMADO && reportData.status !== ClosureStatus.CAIXA_FECHADA && reportData.status !== ClosureStatus.BLOQUEADO) {
+                          setIsDayClosed(false);
+                          setIsFinancialsConfirmed(false);
+                          setHasManuallyOpened(true);
+                        } else {
+                          setIsDayClosed(false); 
+                        }
+                      }} 
+                      className="text-slate-500 dark:text-slate-400 font-bold hover:text-[#003366] dark:hover:text-blue-400 ml-[2cm]"
+                    >
+                      ← Voltar
+                    </button>
                     <button onClick={() => window.print()} className="pill-button px-6 py-3 bg-[#003366] text-white font-bold flex items-center gap-2 shadow-lg hover:opacity-90"><Printer size={20} /> Imprimir / PDF</button>
                 </div>
                 
@@ -630,7 +696,52 @@ const Sales: React.FC = () => {
                               {(reportData.totals?.discrepancy || 0).toLocaleString('pt-AO')} Kz
                             </p>
                         </div>
+                        {canViewMargins && (
+                          <div className="p-6 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl border border-emerald-100 dark:border-emerald-800">
+                              <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase">Margem de Lucro</p>
+                              <p className="text-2xl font-black text-emerald-700 dark:text-emerald-300">
+                                {(reportData.totals?.profit || 0).toLocaleString('pt-AO')} Kz
+                              </p>
+                          </div>
+                        )}
                    </div>
+
+                   {reportData.totals?.discrepancy !== 0 && (
+                     <div className={`p-6 rounded-3xl mb-8 ${reportData.totals?.discrepancy < 0 ? 'bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20' : 'bg-green-50 dark:bg-green-900/10 border border-green-100 dark:border-green-900/20'}`}>
+                        <h4 className={`font-black uppercase mb-2 ${reportData.totals?.discrepancy < 0 ? 'text-red-700 dark:text-red-400' : 'text-green-700 dark:text-green-400'}`}>
+                           Justificativa de {reportData.totals?.discrepancy < 0 ? 'Quebra' : 'Sobra'}
+                        </h4>
+                        <textarea 
+                           value={reportData.financials?.justification || ''} 
+                           disabled={isConfirmed || reportData.status === ClosureStatus.BLOQUEADO}
+                           onChange={(e) => updateSalesReport(reportData.id, { financials: { ...reportData.financials, justification: e.target.value } })}
+                           className="w-full p-4 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 font-medium text-slate-700 dark:text-slate-300 outline-none"
+                           placeholder="Descreva o motivo da divergência..."
+                           rows={3}
+                        />
+                        {!isConfirmed && reportData.status !== ClosureStatus.BLOQUEADO && (
+                           <button 
+                              onClick={() => {
+                                 const justificationData = {
+                                    tipo: "JUSTIFICATIVA_CAIXA",
+                                    valor_quebra_ou_sobra: reportData.totals?.discrepancy,
+                                    justificativa: reportData.financials?.justification,
+                                    usuario: user?.name || 'Desconhecido',
+                                    data: reportDate,
+                                    hora: Date.now()
+                                 };
+                                 updateSalesReportJustification(reportData.id, justificationData);
+                                 showToast("Justificativa registada com sucesso");
+                                 triggerHaptic('success');
+                              }}
+                              className="mt-4 px-6 py-3 bg-[#003366] text-white font-bold rounded-xl shadow-lg hover:opacity-90 transition-all flex items-center gap-2"
+                           >
+                              <MessageSquare size={18} />
+                              Submeter Justificativa
+                           </button>
+                        )}
+                     </div>
+                   )}
 
                    {!isConfirmed && (
                      <div className="p-6 bg-blue-50 dark:bg-blue-900/20 rounded-3xl border border-blue-100 dark:border-blue-800/50">
@@ -669,7 +780,7 @@ const Sales: React.FC = () => {
                      <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-2xl border border-green-100 dark:border-green-800/50 flex items-center gap-3">
                         <CheckCircle size={20} className="text-green-600" />
                         <p className="text-sm font-bold text-green-700 dark:text-green-400">
-                           Fecho confirmado por {reportData.confirmedBy} em {new Date(reportData.confirmationTimestamp).toLocaleString('pt-AO')}
+                           Fecho confirmado por {reportData.confirmedBy} em {reportData.confirmationTimestamp ? new Date(reportData.confirmationTimestamp).toLocaleString('pt-AO') : 'N/A'}
                            {reportData.unilateralAdminConfirmation && ' (Intervenção Administrativa)'}
                         </p>
                      </div>
@@ -701,7 +812,7 @@ const Sales: React.FC = () => {
                                   <td className="p-4 text-center text-green-600 font-medium">+{item.buy}</td>
                                   <td className="p-4 text-center text-slate-500">{item.end}</td>
                                   <td className="p-4 text-center font-bold text-slate-700 dark:text-slate-200">{item.soldQty}</td>
-                                  <td className="p-4 text-right font-bold text-[#003366] dark:text-blue-300">{item.revenue.toLocaleString('pt-AO')} Kz</td>
+                                  <td className="p-4 text-right font-bold text-[#003366] dark:text-blue-300">{(item.revenue || 0).toLocaleString('pt-AO')} Kz</td>
                                </tr>
                             ))}
                          </tbody>
@@ -846,13 +957,12 @@ const Sales: React.FC = () => {
           <h1 className="text-3xl font-bold text-[#003366] dark:text-white">Controle de Vendas</h1>
           <div className="flex items-center gap-3 mt-1 group">
              <Calendar size={18} className="text-[#003366] dark:text-blue-400" />
-             <input 
-               type="date" 
-               value={reportDate} 
-               max={todayISO}
-               onChange={(e) => setReportDate(e.target.value)} 
-               className="bg-transparent text-[#003366] dark:text-blue-400 font-bold outline-none cursor-pointer" 
-             />
+             <span className="text-[#003366] dark:text-blue-400 font-bold">
+               {getSystemDate().toLocaleDateString('pt-AO', { day: '2-digit', month: 'long', year: 'numeric' })}
+             </span>
+             <div className="ml-2 px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-[10px] font-black uppercase tracking-tighter rounded border border-blue-200 dark:border-blue-800">
+               Data Operacional
+             </div>
           </div>
         </div>
         <div className="flex-1 flex items-center justify-center md:justify-end w-full md:w-auto gap-4">
@@ -915,7 +1025,7 @@ const Sales: React.FC = () => {
                   <td className="p-2 bg-slate-100/50 dark:bg-slate-700/30">
                     <div className="text-center font-bold py-2 text-slate-700 dark:text-slate-200">{item.soldQty}</div>
                   </td>
-                  <td className="p-3 md:p-4 text-right font-bold text-[#003366] dark:text-blue-300">{item.revenue.toLocaleString('pt-AO')}</td>
+                  <td className="p-3 md:p-4 text-right font-bold text-[#003366] dark:text-blue-300">{(item.revenue || 0).toLocaleString('pt-AO')}</td>
                 </tr>
                 {expandedRows[item.id] && item.isPromo && item.soldQty > 0 && (
                     <tr className="bg-slate-50 dark:bg-slate-800/50 animate-fade-in">
@@ -943,7 +1053,7 @@ const Sales: React.FC = () => {
                                                 onChange={(e) => handleBreakdownChange(item.id, 'packs', e.target.value, item.breakdown)}
                                                 className="w-16 p-1 text-center font-bold rounded border-none outline-none focus:ring-1 focus:ring-blue-500 dark:bg-slate-700 dark:text-white"
                                             />
-                                            <span className="text-xs font-medium text-slate-500">= {((item.breakdown?.packs || 0) * item.promoPrice).toLocaleString()} Kz</span>
+                                            <span className="text-xs font-medium text-slate-500">= {(((item.breakdown?.packs || 0) * item.promoPrice) || 0).toLocaleString()} Kz</span>
                                         </div>
                                     </div>
                                     <div className="bg-slate-100 dark:bg-slate-700 p-3 rounded-lg border border-slate-200 dark:border-slate-600">
@@ -957,7 +1067,7 @@ const Sales: React.FC = () => {
                                                 onChange={(e) => handleBreakdownChange(item.id, 'singles', e.target.value, item.breakdown)}
                                                 className="w-16 p-1 text-center font-bold rounded border-none outline-none focus:ring-1 focus:ring-slate-500 dark:bg-slate-600 dark:text-white"
                                             />
-                                            <span className="text-xs font-medium text-slate-500">= {((item.breakdown?.singles || 0) * item.sellPrice).toLocaleString()} Kz</span>
+                                            <span className="text-xs font-medium text-slate-500">= {(((item.breakdown?.singles || 0) * item.sellPrice) || 0).toLocaleString()} Kz</span>
                                         </div>
                                     </div>
                                     <div className="bg-red-50 dark:bg-red-900/10 p-3 rounded-lg border border-red-100 dark:border-red-800">
@@ -993,7 +1103,7 @@ const Sales: React.FC = () => {
               </tr>
             </tbody>
             <tfoot className="bg-[#003366] text-white">
-              <tr><td colSpan={5} className="p-4 text-right font-bold uppercase tracking-wider">Total Calculado (Stock):</td><td className="p-4 text-right font-black text-lg">{calculatedData.totalTheoreticalRevenue.toLocaleString('pt-AO')} Kz</td></tr>
+              <tr><td colSpan={5} className="p-4 text-right font-bold uppercase tracking-wider">Total Calculado (Stock):</td><td className="p-4 text-right font-black text-lg">{(calculatedData.totalTheoreticalRevenue || 0).toLocaleString('pt-AO')} Kz</td></tr>
             </tfoot>
           </table>
         </div>
@@ -1005,25 +1115,36 @@ const Sales: React.FC = () => {
           <div className="space-y-4">
              <div className="p-4 bg-red-50 dark:bg-red-900/10 rounded-2xl border border-red-100 dark:border-red-900/30">
                <label className="text-xs font-bold text-red-500 dark:text-red-400 uppercase block mb-2">Despesa de Almoço (Retirado)</label>
-               <input type="number" value={financials.lunch} disabled={isFinancialsConfirmed || isReadOnly} onChange={(e) => handleFinancialChange('lunch', e.target.value)} className="w-full p-3 bg-white dark:bg-slate-800 rounded-xl border border-red-200 dark:border-red-800 font-bold text-red-600 dark:text-red-400" placeholder="0" />
+               <input type="number" value={financials.lunch} disabled={isFinancialsConfirmed || isReadOnly || isDayLocked(reportDate)} onChange={(e) => handleFinancialChange('lunch', e.target.value)} className="w-full p-3 bg-white dark:bg-slate-800 rounded-xl border border-red-200 dark:border-red-800 font-bold text-red-600 dark:text-red-400" placeholder="0" />
             </div>
             <div className="pt-4 border-t border-slate-100 dark:border-slate-700 space-y-4">
                 <p className="text-sm font-bold text-[#003366] dark:text-blue-400 mb-4 uppercase tracking-widest">Valores Levantados (Gaveta)</p>
                 <div>
                    <label className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1 mb-1"><Wallet size={14} /> Total em Cash</label>
-                   <input type="number" value={financials.cash} disabled={isFinancialsConfirmed || isReadOnly} onChange={(e) => handleFinancialChange('cash', e.target.value)} className="w-full p-4 rounded-2xl soft-ui-inset font-bold text-green-700 bg-white dark:bg-slate-800 outline-none" placeholder="0" />
+                   <input 
+                     type="number" 
+                     value={financials.cash} 
+                     disabled={isFinancialsConfirmed || isReadOnly || isDayLocked(reportDate)} 
+                     onChange={(e) => handleFinancialChange('cash', e.target.value)} 
+                     className="w-full p-4 rounded-2xl soft-ui-inset font-bold text-green-700 bg-white dark:bg-slate-800 outline-none" 
+                     placeholder="0" 
+                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                    <div>
                       <label className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1 mb-1"><ArrowRightLeft size={14} /> Transferência</label>
-                      <input type="number" value={financials.transfer} disabled={isFinancialsConfirmed || isReadOnly} onChange={(e) => handleFinancialChange('transfer', e.target.value)} className="w-full p-4 rounded-2xl soft-ui-inset font-bold text-blue-700 bg-white dark:bg-slate-800 outline-none" placeholder="0" />
+                      <input type="number" value={financials.transfer} disabled={isFinancialsConfirmed || isReadOnly || isDayLocked(reportDate)} onChange={(e) => handleFinancialChange('transfer', e.target.value)} className="w-full p-4 rounded-2xl soft-ui-inset font-bold text-blue-700 bg-white dark:bg-slate-800 outline-none" placeholder="0" />
                    </div>
                    <div>
                       <label className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1 mb-1"><CreditCard size={14} /> TPA / Ticket</label>
-                      <input type="number" value={financials.ticket} disabled={isFinancialsConfirmed || isReadOnly} onChange={(e) => handleFinancialChange('ticket', e.target.value)} className="w-full p-4 rounded-2xl soft-ui-inset font-bold text-purple-700 bg-white dark:bg-slate-800 outline-none" placeholder="0" />
+                      <input type="number" value={financials.ticket} disabled={isFinancialsConfirmed || isReadOnly || isDayLocked(reportDate)} onChange={(e) => handleFinancialChange('ticket', e.target.value)} className="w-full p-4 rounded-2xl soft-ui-inset font-bold text-purple-700 bg-white dark:bg-slate-800 outline-none" placeholder="0" />
                    </div>
                 </div>
-                {!isFinancialsConfirmed ? (
+                {isDayLocked(reportDate) ? (
+                    <div className="w-full py-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 text-amber-700 font-bold rounded-2xl flex items-center justify-center gap-2 text-center px-4 mt-4">
+                      <AlertCircle size={20} /> Este dia encontra-se bloqueado pela gestão. Nenhuma alteração é permitida.
+                    </div>
+                ) : !isFinancialsConfirmed ? (
                     <button onClick={handleConfirmFinancials} disabled={isReadOnly} className="w-full py-4 bg-[#003366] text-white font-bold rounded-2xl shadow-lg mt-4">Confirmar Levantar Valores</button>
                 ) : (
                     <div className="w-full py-4 bg-green-50 dark:bg-green-900/20 border border-green-100 text-green-700 font-bold rounded-2xl flex items-center justify-center gap-2 cursor-pointer" onClick={handleUnlockFinancials}><Lock size={20} /> Valores Confirmados (Editar)</div>
@@ -1036,8 +1157,11 @@ const Sales: React.FC = () => {
           <SoftCard className="bg-[#003366] text-white">
             <h3 className="font-bold text-white/90 mb-6">Apuramento do Gestor</h3>
             <div className="space-y-4">
-              <div className="pb-4 border-b border-white/10 flex justify-between items-center"><span className="text-sm opacity-70">Total Venda (Stock)</span><span className="font-bold">{calculatedData.totalTheoreticalRevenue.toLocaleString('pt-AO')} Kz</span></div>
-              <div className="pt-2 flex justify-between items-center"><span className="text-lg opacity-90 font-bold uppercase">Total Levantado</span><span className="font-black text-3xl text-white">{totalLifted.toLocaleString('pt-AO')} Kz</span></div>
+              <div className="pb-4 border-b border-white/10 flex justify-between items-center"><span className="text-sm opacity-70">Total Venda (Stock)</span><span className="font-bold">{(calculatedData.totalTheoreticalRevenue || 0).toLocaleString('pt-AO')} Kz</span></div>
+              {canViewMargins && (
+                <div className="pb-4 border-b border-white/10 flex justify-between items-center text-emerald-400"><span className="text-sm opacity-70">Margem de Lucro Est.</span><span className="font-bold">{(calculatedData.totalTheoreticalProfit || 0).toLocaleString('pt-AO')} Kz</span></div>
+              )}
+              <div className="pt-2 flex justify-between items-center"><span className="text-lg opacity-90 font-bold uppercase">Total Levantado</span><span className="font-black text-3xl text-white">{(totalLifted || 0).toLocaleString('pt-AO')} Kz</span></div>
             </div>
           </SoftCard>
           {hasDiscrepancy && (
@@ -1045,6 +1169,27 @@ const Sales: React.FC = () => {
                 <h4 className="font-black uppercase mb-1">{discrepancy < 0 ? 'Quebra de Caixa' : 'Sobra de Caixa'}</h4>
                 <p className="text-3xl font-black mb-4">{(discrepancy || 0).toLocaleString('pt-AO')} Kz</p>
                 <textarea value={financials.discrepancyJustification} disabled={isReadOnly} onChange={(e) => setFinancials({...financials, discrepancyJustification: e.target.value})} className="w-full p-3 bg-white text-slate-800 rounded-xl font-medium outline-none" placeholder="Justifique a divergência..." rows={3} />
+                {currentReportId && (
+                   <button 
+                      onClick={() => {
+                         const justificationData = {
+                            tipo: "JUSTIFICATIVA_CAIXA",
+                            valor_quebra_ou_sobra: discrepancy,
+                            justificativa: financials.discrepancyJustification,
+                            usuario: user?.name || 'Desconhecido',
+                            data: reportDate,
+                            hora: Date.now()
+                         };
+                         updateSalesReportJustification(currentReportId, justificationData);
+                         showToast("Justificativa registada com sucesso");
+                         triggerHaptic('success');
+                      }}
+                      className="mt-4 w-full py-3 bg-white/20 hover:bg-white/30 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-2"
+                   >
+                      <MessageSquare size={18} />
+                      Submeter Justificativa
+                   </button>
+                )}
             </div>
           )}
         </div>
@@ -1066,7 +1211,7 @@ const Sales: React.FC = () => {
                  <div className="flex justify-between text-sm"><span className="text-slate-500 dark:text-slate-400">Total Levantado:</span><span className="font-bold dark:text-white">{(totalLifted || 0).toLocaleString('pt-AO')} Kz</span></div>
                  <div className={`flex justify-between text-sm font-bold ${discrepancy < 0 ? 'text-red-500' : 'text-green-500'}`}>
                     <span>Divergência:</span>
-                    <span>{discrepancy.toLocaleString('pt-AO')} Kz</span>
+                    <span>{(discrepancy || 0).toLocaleString('pt-AO')} Kz</span>
                  </div>
               </div>
 

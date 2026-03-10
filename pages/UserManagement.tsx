@@ -61,7 +61,10 @@ const UserManagement: React.FC = () => {
   // Permission Matrix Actions
   const openPermissionMatrix = (user: User) => {
     setEditingUser(user);
-    setTempPermissions({ ...(user.permissions || DEFAULT_PERMISSIONS[user.role]) });
+    // Ensure all keys from DEFAULT_PERMISSIONS are present as a base
+    const basePermissions = DEFAULT_PERMISSIONS[user.role];
+    const userPermissions = user.permissions || {};
+    setTempPermissions({ ...basePermissions, ...userPermissions });
   };
 
   const closePermissionMatrix = () => {
@@ -75,7 +78,9 @@ const UserManagement: React.FC = () => {
     setTempPermissions(prev => {
       if (!prev) return null;
       const val = prev[key];
-      if (typeof val === 'boolean') {
+      
+      // Only toggle if it's a boolean or undefined (default to false then toggle to true)
+      if (typeof val === 'boolean' || val === undefined) {
         return { ...prev, [key]: !val };
       }
       return prev;
@@ -94,6 +99,7 @@ const UserManagement: React.FC = () => {
     const updated = users.map(u => u.id === editingUser.id ? { ...u, permissions: tempPermissions } : u);
     setUsers(updated);
     saveMockUsers(updated);
+    window.dispatchEvent(new CustomEvent('mg_users_updated'));
     
     showToast(`Permissões de ${editingUser.name} atualizadas!`);
     closePermissionMatrix();
@@ -363,10 +369,8 @@ const UserManagement: React.FC = () => {
                     { key: 'sales_view', label: 'Ver Controle de Vendas' },
                     { key: 'sales_execute', label: 'Efectuar Vendas' },
                     { key: 'sales_edit', label: 'Efectuar Alterações em Controle de Vendas' },
-                    { key: 'sales_void', label: 'Anular Venda' },
                     { key: 'sales_view_margins', label: 'Ver Margem de Lucro Global' },
                     { key: 'sales_closure', label: 'Efectuar Fecho de Dia' },
-                    { key: 'sales_reopen', label: 'Reabrir Dia Operacional' },
                   ],
                   "4. INVENTÁRIO": [
                     { key: 'inventory_view', label: 'Ver Inventário' },
@@ -376,7 +380,6 @@ const UserManagement: React.FC = () => {
                     { key: 'inventory_edit', label: 'Efectuar Alterações em Inventário' },
                     { key: 'inventory_stock_adjust', label: 'Ajuste Manual de Estoque' },
                     { key: 'inventory_category_manage', label: 'Alterar Categoria' },
-                    { key: 'inventory_view_costs', label: 'Ver Custo Real do Produto' },
                   ],
                   "5. PREÇOS & PROMOÇÕES": [
                     { key: 'prices_view', label: 'Ver Preços & Compras' },
@@ -389,32 +392,20 @@ const UserManagement: React.FC = () => {
                     { key: 'purchases_view', label: 'Ver Compras' },
                     { key: 'purchases_execute', label: 'Efectuar Compras' },
                     { key: 'purchases_simulate', label: 'Efectuar Simulações de Compras' },
-                    { key: 'purchases_void', label: 'Anular Compra' },
-                    { key: 'purchases_edit_finalized', label: 'Editar Compra Após Finalização' },
-                    { key: 'purchases_reopen', label: 'Reabrir Compra' },
-                    { key: 'purchases_approve', label: 'Aprovar Compra' },
                   ],
                   "7. DESPESAS": [
                     { key: 'expenses_view', label: 'Ver Despesas' },
                     { key: 'expenses_execute', label: 'Efectuar Despesas' },
-                    { key: 'expenses_approve', label: 'Aprovar Despesas' },
-                    { key: 'expenses_void', label: 'Anular Despesa' },
+                    { key: 'expenses_category_manage', label: 'Gerir Categorias de Despesas' },
                   ],
                   "8. ESTADO DE CONTA & FINANCEIRO": [
                     { key: 'finance_view', label: 'Ver Estado de Conta' },
                     { key: 'finance_edit', label: 'Fazer Alterações em Estado de Conta' },
                     { key: 'finance_card_create', label: 'Criar Cartão Corporativo' },
                     { key: 'finance_card_delete', label: 'Eliminar Cartão' },
-                    { key: 'finance_transfer', label: 'Transferir Saldo entre Cartões' },
-                    { key: 'finance_approve_movement', label: 'Aprovar Movimentação' },
-                    { key: 'finance_reports_view', label: 'Ver Relatórios Financeiros' },
-                    { key: 'finance_export', label: 'Exportar Relatórios (PDF/Excel)' },
                   ],
                   "9. CALENDÁRIO MARGUEL": [
                     { key: 'calendar_view', label: 'Ver Calendário Marguel' },
-                    { key: 'calendar_event_create', label: 'Criar Evento' },
-                    { key: 'calendar_event_edit', label: 'Editar Evento' },
-                    { key: 'calendar_event_delete', label: 'Eliminar Evento' },
                   ],
                   "10. SISTEMA & CONFIGURAÇÕES": [
                     { key: 'settings_edit', label: 'Alterar Configurações Gerais' },

@@ -8,9 +8,11 @@ import {
 import { useProducts } from '../contexts/ProductContext';
 import { useLayout } from '../contexts/LayoutContext';
 import { useAuth } from '../contexts/AuthContext';
-import { UserRole } from '../types';
+import { UserRole, ClosureStatus } from '../types';
 import SoftCard from '../components/SoftCard';
 import { formatKz, roundKz } from '../src/utils';
+import { hasPermission } from '../src/utils/permissions';
+import AccessDenied from './AccessDenied';
 
 const GlobalCalendar: React.FC = () => {
   const { 
@@ -22,7 +24,12 @@ const GlobalCalendar: React.FC = () => {
     transactions,
     isDayLocked,
     toggleDayLock,
+    lockDayManually,
+    reopenDay,
     priceHistory,
+    addAuditLog,
+    systemDate,
+    getSystemDate,
     // Novos estados do context para sincronização
     isSyncing,
     hasPendingChanges,
@@ -32,7 +39,27 @@ const GlobalCalendar: React.FC = () => {
   const { triggerHaptic } = useLayout();
   const { user } = useAuth();
   
-  const [viewDate, setViewDate] = useState(new Date());
+  // Log page access
+  useEffect(() => {
+    addAuditLog({
+      action: 'ACESSO_PAGINA',
+      entity: 'Page',
+      entityId: 'GlobalCalendar',
+      details: `Usuário ${user?.name} acessou o Calendário Marguel.`,
+      performedBy: user?.name || 'Sistema'
+    });
+  }, [user, addAuditLog]);
+
+  if (!hasPermission(user, 'calendar_view')) {
+    return <AccessDenied />;
+  }
+
+  const [viewDate, setViewDate] = useState(systemDate);
+
+  useEffect(() => {
+    setViewDate(systemDate);
+  }, [systemDate]);
+
   const [selectedDayDetail, setSelectedDayDetail] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'sales' | 'inventory' | 'finance' | 'purchases'>('overview');
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -56,12 +83,18 @@ const GlobalCalendar: React.FC = () => {
   const firstDayOfMonth = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1).getDay();
   const monthName = viewDate.toLocaleDateString('pt-AO', { month: 'long', year: 'numeric' });
 
-  const isAdminOrOwner = user?.role === UserRole.ADMIN_GERAL || user?.role === UserRole.PROPRIETARIO;
+  const canManageLocks = hasPermission(user, 'calendar_unlock');
 
   const handleNav = (direction: number) => {
     triggerHaptic('selection');
     const newDate = new Date(viewDate);
     newDate.setMonth(newDate.getMonth() + direction);
+    
+    // Ano inicial do sistema deve ser 2025
+    if (newDate.getFullYear() < 2025) {
+      return;
+    }
+    
     setViewDate(newDate);
     setSelectedDayDetail(null);
   };
@@ -75,7 +108,7 @@ const GlobalCalendar: React.FC = () => {
     for (let i = 1; i <= daysInMonth; i++) {
       const dateStr = new Date(viewDate.getFullYear(), viewDate.getMonth(), i).toLocaleDateString('pt-AO');
       const r = salesMap.get(dateStr);
-      if (r) {
+      if (r && (r.status === ClosureStatus.FECHO_CONFIRMADO || r.status === ClosureStatus.BLOQUEADO)) {
         total = roundKz(total + r.totalLifted);
         count++;
       }
@@ -97,12 +130,14 @@ const GlobalCalendar: React.FC = () => {
         return logDate === selectedDayDetail;
     }) || [];
 
+    const isConfirmed = report?.status === ClosureStatus.FECHO_CONFIRMADO || report?.status === ClosureStatus.BLOQUEADO;
     const totalPurchased = roundKz(dayPurchases.reduce((acc, p) => acc + p.total, 0));
     const totalExpenses = roundKz(dayExpenses.reduce((acc, e) => acc + e.amount, 0));
-    const netBalance = roundKz((report?.totalLifted || 0) - totalPurchased - totalExpenses);
+    const netBalance = roundKz((isConfirmed ? (report?.totalLifted || 0) : 0) - totalPurchased - totalExpenses);
 
     return {
       report,
+      isConfirmed,
       purchases: dayPurchases,
       expenses: dayExpenses,
       inventory: dayInventoryLog,
@@ -177,7 +212,7 @@ const GlobalCalendar: React.FC = () => {
                    const dateStr = new Date(viewDate.getFullYear(), viewDate.getMonth(), day).toLocaleDateString('pt-AO');
                    const report = salesMap.get(dateStr);
                    const isLocked = isDayLocked(dateStr);
-                   const isToday = new Date().toLocaleDateString('pt-AO') === dateStr;
+                   const isToday = getSystemDate().toLocaleDateString('pt-AO') === dateStr;
 
                    return (
                       <button 
@@ -209,9 +244,15 @@ const GlobalCalendar: React.FC = () => {
                          
                          {report && (
                             <div className="overflow-hidden">
-                               <p className="text-[9px] font-black text-[#003366] dark:text-blue-400 truncate">
-                                  {roundKz(report.totalLifted / 1000)}k
-                               </p>
+                               {report.status === ClosureStatus.FECHO_CONFIRMADO || report.status === ClosureStatus.BLOQUEADO ? (
+                                  <p className="text-[9px] font-black text-[#003366] dark:text-blue-400 truncate">
+                                     {roundKz(report.totalLifted / 1000)}k
+                                  </p>
+                               ) : (
+                                  <p className="text-[7px] font-bold text-amber-600 dark:text-amber-400 leading-tight">
+                                     Fecho Parcial Registado
+                                  </p>
+                               )}
                             </div>
                          )}
                       </button>
@@ -265,22 +306,39 @@ const GlobalCalendar: React.FC = () => {
                         <h2 className="text-2xl font-black text-[#003366] dark:text-white">{selectedDayDetail}</h2>
                         <div className="flex gap-2 mt-1">
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${dayData.isLocked ? 'bg-red-600 text-white shadow-[0_0_10px_rgba(220,38,38,0.3)]' : 'bg-green-500 text-white'}`}>
-                                {dayData.isLocked ? 'DIA BLOQUEADO (IMUTÁVEL)' : 'Edição Aberta'}
+                                {dayData.isLocked ? 'DIA BLOQUEADO' : 'DIA ABERTO PARA EDIÇÃO'}
                             </span>
-                            {dayData.report && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 uppercase">Caixa Fechado</span>}
+                            {dayData.isLocked && canManageLocks && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase bg-amber-100 text-amber-700 border border-amber-200">
+                                    Desbloqueio Disponível
+                                </span>
+                            )}
+                            {dayData.report && (
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${dayData.report.status === ClosureStatus.BLOQUEADO ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
+                                {dayData.report.status === ClosureStatus.BLOQUEADO ? 'Gestão Bloqueada' : 'Caixa Fechado'}
+                              </span>
+                            )}
                         </div>
                      </div>
                   </div>
                   <div className="flex items-center gap-3">
-                     {isAdminOrOwner && (
+                     {canManageLocks && (
                         <button 
                            onClick={() => {
+                              if (dayData.isLocked) {
+                                 const reason = prompt("Deseja realmente desbloquear este dia? Isso permitirá novas alterações.\n\nInforme o motivo:", "Correção de dados");
+                                 if (reason !== null) {
+                                    reopenDay(selectedDayDetail, reason);
+                                    triggerHaptic('success');
+                                 }
+                                 return;
+                              }
                               triggerHaptic('warning');
-                              toggleDayLock(selectedDayDetail);
+                              lockDayManually(selectedDayDetail, user?.name || 'Admin');
                            }}
-                           className={`h-12 px-6 rounded-2xl font-black text-sm transition-all flex items-center gap-2 ${dayData.isLocked ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed' : 'bg-red-600 text-white shadow-lg shadow-red-900/20 hover:bg-red-700'}`}
+                           className={`h-12 px-6 rounded-2xl font-black text-sm transition-all flex items-center gap-2 ${dayData.isLocked ? 'bg-amber-500 text-white shadow-lg shadow-amber-900/20 hover:bg-amber-600' : 'bg-red-600 text-white shadow-lg shadow-red-900/20 hover:bg-red-700'}`}
                         >
-                           {dayData.isLocked ? <><Lock size={18} /> BLOQUEADO</> : <><Lock size={18} /> Bloquear Gestão</>}
+                           {dayData.isLocked ? <><Unlock size={18} /> Desbloquear dia</> : <><Lock size={18} /> Bloquear dia</>}
                         </button>
                      )}
                      <button onClick={() => setSelectedDayDetail(null)} className="p-3 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors">
@@ -320,7 +378,9 @@ const GlobalCalendar: React.FC = () => {
                             <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-[32px] border border-slate-100 dark:border-slate-700 space-y-4">
                                 <div className="flex justify-between items-center text-sm">
                                     <span className="text-slate-500 font-medium">Vendas (Entrada Bruta)</span>
-                                    <span className="font-bold text-[#003366] dark:text-white">{formatKz(dayData.report?.totalLifted || 0)}</span>
+                                    <span className={`font-bold ${dayData.isConfirmed ? 'text-[#003366] dark:text-white' : 'text-amber-600 italic'}`}>
+                                        {dayData.isConfirmed ? formatKz(dayData.report?.totalLifted || 0) : 'Aguardando Confirmação'}
+                                    </span>
                                 </div>
                                 <div className="flex justify-between items-center text-sm">
                                     <span className="text-slate-500 font-medium">Compras (Saída Stock)</span>
@@ -334,6 +394,12 @@ const GlobalCalendar: React.FC = () => {
                                     <span className="text-slate-900 dark:text-white font-black">SALDO ESTIMADO</span>
                                     <span className={`text-xl font-black ${dayData.netBalance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                                         {formatKz(dayData.netBalance)}
+                                    </span>
+                                </div>
+                                <div className="flex justify-between items-center text-sm pt-2 border-t border-dashed border-slate-200 dark:border-slate-700">
+                                    <span className="text-slate-500 font-bold">Margem de Lucro</span>
+                                    <span className={`font-black ${dayData.isConfirmed ? (dayData.report?.profit || 0) >= 0 ? 'text-green-600' : 'text-red-600' : 'text-slate-400 italic'}`}>
+                                        {dayData.isConfirmed ? formatKz(dayData.report?.profit || 0) : 'N/A'}
                                     </span>
                                 </div>
                             </div>

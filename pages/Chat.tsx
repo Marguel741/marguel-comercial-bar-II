@@ -21,6 +21,7 @@ import {
 import SoftCard from '../components/SoftCard';
 import { useLayout } from '../contexts/LayoutContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useProducts } from '../contexts/ProductContext';
 import { ChatMessage, User, MessageType } from '../types';
 
 // MOCK USERS DATA (Simulando uma API/Contexto)
@@ -35,6 +36,7 @@ const MOCK_USERS: User[] = [
 const Chat: React.FC = () => {
   const { sidebarMode, triggerHaptic } = useLayout();
   const { user: currentUser } = useAuth();
+  const { getSystemDate } = useProducts();
 
   // --- STATE ---
   const [activeChatId, setActiveChatId] = useState<string>('general');
@@ -94,7 +96,7 @@ const Chat: React.FC = () => {
       receiverId: activeChatId,
       content: content,
       type: type,
-      timestamp: new Date(),
+      timestamp: getSystemDate(),
       status: 'sent',
       ...extra
     };

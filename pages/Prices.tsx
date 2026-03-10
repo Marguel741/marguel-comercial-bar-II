@@ -13,21 +13,21 @@ import { useProducts } from '../contexts/ProductContext';
 import { useLayout } from '../contexts/LayoutContext';
 import SyncStatus from '../components/SyncStatus';
 import { useAuth } from '../contexts/AuthContext';
-import { PriceHistoryLog, SavedProposal, PurchaseRecord, UserPermissions } from '../types';
+import { PriceHistoryLog, SavedProposal, PurchaseRecord, UserPermissions, UserRole } from '../types';
 import { MGLogo } from '../constants';
 import { hasPermission } from '../src/utils/permissions';
 
 const Prices: React.FC = () => {
-  const { products, categories, updateProduct, purchases, addPurchase, isDayLocked, systemDate } = useProducts();
+  const { products, categories, updateProduct, purchases, addPurchase, isDayLocked, systemDate, getSystemDate } = useProducts();
   const { sidebarMode, triggerHaptic } = useLayout(); 
   const { user } = useAuth();
   const location = useLocation();
   
+  const isAdminOrOwner = user?.role === UserRole.ADMIN_GERAL || user?.role === UserRole.PROPRIETARIO;
   const canManagePrices = hasPermission(user, 'prices_edit');
   const canEditPurchases = hasPermission(user, 'purchases_execute');
   const canViewPurchases = hasPermission(user, 'purchases_view');
-  const canVoidPurchases = hasPermission(user, 'purchases_void');
-  const isLocked = isDayLocked(systemDate);
+  const isLocked = isDayLocked(systemDate) && !isAdminOrOwner;
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Todos');
@@ -422,8 +422,8 @@ const Prices: React.FC = () => {
 
       const newProposal: SavedProposal = {
         id: Date.now().toString(),
-        name: proposalNameInput || `Proposta ${new Date().toLocaleDateString('pt-AO')}`,
-        date: new Date().toLocaleString('pt-AO'),
+        name: proposalNameInput || `Proposta ${getSystemDate().toLocaleDateString('pt-AO')}`,
+        date: getSystemDate().toLocaleString('pt-AO'),
         items: { ...simulationCart },
         total: calculateSimulationTotal(),
         createdBy: user?.name || 'Desconhecido',
@@ -648,7 +648,7 @@ const Prices: React.FC = () => {
                                     <span className="text-xs font-black text-slate-400">KZ</span>
                                   </div>
                                   <div className="text-[10px] text-slate-500 dark:text-slate-400 px-1 font-medium">
-                                    = <span className="font-bold text-[#003366] dark:text-white">{displayBuy.toLocaleString('pt-AO', {maximumFractionDigits: 2})} Kz</span> /unidade
+                                    = <span className="font-bold text-[#003366] dark:text-white">{(displayBuy || 0).toLocaleString('pt-AO', {maximumFractionDigits: 2})} Kz</span> /unidade
                                   </div>
                                 </div>
                               ) : (
@@ -878,7 +878,7 @@ const Prices: React.FC = () => {
               <div className="text-right">
                 <p className="text-xs font-bold uppercase tracking-widest">Total Compras Hoje</p>
                 <p className="text-2xl font-black text-[#0054A6] dark:text-blue-400">
-                  {purchases.filter(p => p.date === systemDate.toLocaleDateString('pt-AO')).reduce((acc, curr) => acc + curr.total, 0).toLocaleString('pt-AO')} Kz
+                  {(purchases.filter(p => p.date === systemDate.toLocaleDateString('pt-AO')).reduce((acc, curr) => acc + curr.total, 0) || 0).toLocaleString('pt-AO')} Kz
                 </p>
               </div>
             </div>
@@ -964,7 +964,7 @@ const Prices: React.FC = () => {
                           
                           <div className="mt-4">
                             <div className="flex justify-between items-center mb-3">
-                              <span className="text-xs font-black text-[#003366] dark:text-blue-400">{packCost.toLocaleString()} Kz</span>
+                              <span className="text-xs font-black text-[#003366] dark:text-blue-400">{(packCost || 0).toLocaleString()} Kz</span>
                               {qty > 0 && <span className="text-[10px] font-black text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">{(packCost * qty).toLocaleString()} Kz</span>}
                             </div>
                             
@@ -997,7 +997,7 @@ const Prices: React.FC = () => {
                     <div className="flex justify-between items-start mb-8">
                       <div>
                         <h3 className="text-xl font-black text-[#003366] dark:text-white">Resumo da Proposta</h3>
-                        <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">{new Date().toLocaleDateString('pt-AO')}</p>
+                        <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">{getSystemDate().toLocaleDateString('pt-AO')}</p>
                       </div>
                       <MGLogo className="h-8 w-auto opacity-20" />
                     </div>
@@ -1020,8 +1020,8 @@ const Prices: React.FC = () => {
                               </div>
                             </div>
                             <div className="text-right">
-                              <p className="font-black text-[#003366] dark:text-white text-sm">{(packCost * Number(qty)).toLocaleString()} Kz</p>
-                              <p className="text-[10px] text-slate-400 font-medium">{packCost.toLocaleString()} Kz / {p.packType || 'un'}</p>
+                              <p className="font-black text-[#003366] dark:text-white text-sm">{((packCost || 0) * Number(qty)).toLocaleString()} Kz</p>
+                              <p className="text-[10px] text-slate-400 font-medium">{(packCost || 0).toLocaleString()} Kz / {p.packType || 'un'}</p>
                             </div>
                           </div>
                         );
@@ -1031,7 +1031,7 @@ const Prices: React.FC = () => {
                     <div className="mt-8 pt-6 border-t-2 border-dashed border-slate-100 dark:border-slate-700 flex justify-between items-end">
                       <div>
                         <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Total Estimado</p>
-                        <p className="text-4xl font-black text-[#003366] dark:text-blue-400">{calculateSimulationTotal().toLocaleString()} <span className="text-lg">Kz</span></p>
+                        <p className="text-4xl font-black text-[#003366] dark:text-blue-400">{(calculateSimulationTotal() || 0).toLocaleString()} <span className="text-lg">Kz</span></p>
                       </div>
                       <div className="text-right text-[10px] text-slate-400 font-medium">
                         *Valores baseados no último preço de compra registrado.
@@ -1123,7 +1123,7 @@ const Prices: React.FC = () => {
                             </button>
                           </div>
                           <div className="flex justify-between items-center">
-                            <span className="text-lg font-black text-[#003366] dark:text-blue-400">{prop.total.toLocaleString()} Kz</span>
+                            <span className="text-lg font-black text-[#003366] dark:text-blue-400">{(prop.total || 0).toLocaleString()} Kz</span>
                             <button 
                               onClick={() => handleOpenReport(prop)}
                               className="px-4 py-2 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl text-xs font-bold hover:bg-[#003366] hover:text-white transition-all"
@@ -1143,7 +1143,7 @@ const Prices: React.FC = () => {
             <div className="bg-white dark:bg-slate-800 p-6 border-t border-slate-200 dark:border-slate-700 flex justify-between items-center shrink-0">
               <div className="flex flex-col">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total da Proposta</span>
-                <span className="text-2xl font-black text-[#003366] dark:text-blue-400">{calculateSimulationTotal().toLocaleString()} Kz</span>
+                <span className="text-2xl font-black text-[#003366] dark:text-blue-400">{(calculateSimulationTotal() || 0).toLocaleString()} Kz</span>
               </div>
               <div className="flex gap-3">
                 {simulationStep === 'summary' && (
@@ -1245,7 +1245,7 @@ const Prices: React.FC = () => {
                           
                           <div className="mt-4">
                             <div className="flex justify-between items-center mb-3">
-                              <span className="text-xs font-black text-[#0054A6] dark:text-blue-400">{packCost.toLocaleString()} Kz</span>
+                              <span className="text-xs font-black text-[#0054A6] dark:text-blue-400">{(packCost || 0).toLocaleString()} Kz</span>
                               {qty > 0 && <span className="text-[10px] font-black text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">{(packCost * qty).toLocaleString()} Kz</span>}
                             </div>
                             
@@ -1295,8 +1295,8 @@ const Prices: React.FC = () => {
                                 </div>
                               </div>
                               <div className="text-right">
-                                <p className="font-black text-slate-800 dark:text-white text-sm">{(packCost * Number(qty)).toLocaleString()} Kz</p>
-                                <p className="text-[10px] text-slate-400 font-medium">{packCost.toLocaleString()} Kz / {p.packType || 'un'}</p>
+                                <p className="font-black text-slate-800 dark:text-white text-sm">{((packCost || 0) * Number(qty)).toLocaleString()} Kz</p>
+                                <p className="text-[10px] text-slate-400 font-medium">{(packCost || 0).toLocaleString()} Kz / {p.packType || 'un'}</p>
                               </div>
                             </div>
                           );
@@ -1356,7 +1356,7 @@ const Prices: React.FC = () => {
                     <div className="bg-[#0054A6] text-white rounded-[32px] p-6 shadow-xl relative overflow-hidden">
                       <div className="absolute -right-10 -bottom-10 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
                       <p className="text-xs font-bold text-blue-100 uppercase tracking-widest mb-1">Total a Pagar</p>
-                      <p className="text-3xl font-black mb-6">{calculatePurchaseTotal().toLocaleString()} <span className="text-sm">Kz</span></p>
+                      <p className="text-3xl font-black mb-6">{(calculatePurchaseTotal() || 0).toLocaleString()} <span className="text-sm">Kz</span></p>
                       
                       <div className="grid grid-cols-2 gap-3 relative z-10">
                         <button 
@@ -1367,8 +1367,8 @@ const Prices: React.FC = () => {
                         </button>
                         <button 
                           onClick={() => setShowConfirmPurchase(true)}
-                          disabled={isProcessingPurchase || Object.keys(purchaseCart).length === 0}
-                          className={`py-4 bg-white text-[#0054A6] rounded-2xl font-black shadow-lg hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2 text-[10px] uppercase tracking-wider ${isProcessingPurchase ? 'opacity-70 cursor-wait' : ''}`}
+                          disabled={isProcessingPurchase || Object.keys(purchaseCart).length === 0 || isLocked}
+                          className={`py-4 bg-white text-[#0054A6] rounded-2xl font-black shadow-lg hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2 text-[10px] uppercase tracking-wider ${isProcessingPurchase || isLocked ? 'opacity-70 cursor-wait' : ''}`}
                         >
                           {isProcessingPurchase ? (
                             <div className="w-4 h-4 border-2 border-[#0054A6] border-t-transparent rounded-full animate-spin"></div>
@@ -1426,7 +1426,7 @@ const Prices: React.FC = () => {
                                 )}
                               </div>
                               <div className="flex justify-between items-center">
-                                <span className="text-lg font-black text-[#0054A6] dark:text-blue-400">{purchase.total.toLocaleString()} Kz</span>
+                                <span className="text-lg font-black text-[#0054A6] dark:text-blue-400">{(purchase.total || 0).toLocaleString()} Kz</span>
                                 <button 
                                   onClick={() => handleOpenReport(purchase)}
                                   className="px-4 py-2 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl text-xs font-bold hover:bg-[#0054A6] hover:text-white transition-all"
@@ -1448,7 +1448,7 @@ const Prices: React.FC = () => {
             <div className="bg-white dark:bg-slate-800 p-6 border-t border-slate-200 dark:border-slate-700 flex justify-between items-center shrink-0">
               <div className="flex flex-col">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total do Carrinho</span>
-                <span className="text-2xl font-black text-[#0054A6] dark:text-blue-400">{calculatePurchaseTotal().toLocaleString()} Kz</span>
+                <span className="text-2xl font-black text-[#0054A6] dark:text-blue-400">{(calculatePurchaseTotal() || 0).toLocaleString()} Kz</span>
               </div>
               <div className="flex gap-3">
                 {purchaseStep === 'summary' && (
@@ -1553,8 +1553,8 @@ const Prices: React.FC = () => {
                               <p className="text-[10px] text-slate-400 uppercase font-medium">{p.packType || 'Pack'} de {packSize}un</p>
                             </td>
                             <td className="p-4 text-center font-black text-[#003366] dark:text-blue-400">{qty}</td>
-                            <td className="p-4 text-right font-medium text-slate-500">{packCost.toLocaleString()} Kz</td>
-                            <td className="p-4 text-right font-bold text-slate-800 dark:text-white">{ subtotal.toLocaleString() } Kz</td>
+                            <td className="p-4 text-right font-medium text-slate-500">{(packCost || 0).toLocaleString()} Kz</td>
+                            <td className="p-4 text-right font-bold text-slate-800 dark:text-white">{(subtotal || 0).toLocaleString()} Kz</td>
                           </tr>
                         );
                       })}
@@ -1562,7 +1562,7 @@ const Prices: React.FC = () => {
                     <tfoot>
                       <tr className="bg-[#003366] text-white font-black">
                         <td colSpan={3} className="p-4 text-lg">Total Geral</td>
-                        <td className="p-4 text-right text-lg">{reportProposal.total.toLocaleString()} Kz</td>
+                        <td className="p-4 text-right text-lg">{(reportProposal.total || 0).toLocaleString()} Kz</td>
                       </tr>
                     </tfoot>
                   </table>
@@ -1623,10 +1623,10 @@ const Prices: React.FC = () => {
                       <div key={idx} className="p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 flex justify-between items-center">
                         <div>
                           <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{new Date(h.date).toLocaleDateString('pt-AO')}</p>
-                          <p className="text-sm font-black text-[#003366] dark:text-blue-400">{h.newSellPrice.toLocaleString()} Kz</p>
+                          <p className="text-sm font-black text-[#003366] dark:text-blue-400">{(h.newSellPrice || 0).toLocaleString()} Kz</p>
                         </div>
                         <div className="text-right">
-                          <p className="text-[10px] text-slate-400 font-medium">Anterior: {h.oldSellPrice.toLocaleString()} Kz</p>
+                          <p className="text-[10px] text-slate-400 font-medium">Anterior: {(h.oldSellPrice || 0).toLocaleString()} Kz</p>
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${h.newSellPrice > h.oldSellPrice ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
                             {h.newSellPrice > h.oldSellPrice ? '+' : ''}{(((h.newSellPrice / h.oldSellPrice) - 1) * 100).toFixed(1)}%
                           </span>
@@ -1722,7 +1722,7 @@ const Prices: React.FC = () => {
               <div className="space-y-2">
                 <h3 className="text-xl font-black text-[#003366] dark:text-white uppercase tracking-tight">Finalizar Aquisição</h3>
                 <p className="text-slate-400 text-sm font-medium leading-relaxed">
-                  Esta ação irá debitar <span className="font-bold text-slate-600 dark:text-slate-200">{calculatePurchaseTotal().toLocaleString()} Kz</span> da Conta Corrente e atualizar o estoque. Deseja continuar?
+                  Esta ação irá debitar <span className="font-bold text-slate-600 dark:text-slate-200">{(calculatePurchaseTotal() || 0).toLocaleString()} Kz</span> da Conta Corrente e atualizar o estoque. Deseja continuar?
                 </p>
               </div>
               <div className="grid grid-cols-2 gap-3 pt-4">
