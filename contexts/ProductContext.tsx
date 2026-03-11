@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from 'react';
 import { Product, PurchaseRecord, Transaction, SalesReport, Expense, InventoryLog, PriceHistoryLog, Equipment, Card, StockOperationLog, AuditLog, ClosureStatus, ExpenseCategory, UserPermissions, UserRole } from '../types';
 import { useAuth } from './AuthContext';
 import { hasPermission } from '../src/utils/permissions';
@@ -141,6 +141,9 @@ interface ProductContextType {
 }
 
 const ProductContext = createContext<ProductContextType | undefined>(undefined);
+
+// Função auxiliar para limpar caracteres invisíveis (lixo) de strings de data
+const cleanDate = (str: string) => str.replace(/[^\x20-\x7E]/g, '').trim();
 
 export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { user } = useAuth();
@@ -445,10 +448,24 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   useEffect(() => { localStorage.setItem('mg_sales_reports', JSON.stringify(salesReports)); }, [salesReports]);
   
   const isDayLocked = useCallback((date: Date | string) => {
+    if (!date) return false;
     let checkDateStr = '';
-    if (date instanceof Date) checkDateStr = date.toLocaleDateString('pt-AO');
-    else checkDateStr = date.includes('T') ? new Date(date).toLocaleDateString('pt-AO') : date;
-    return lockedDays.includes(checkDateStr);
+    
+    if (date instanceof Date) {
+      checkDateStr = date.toLocaleDateString('pt-AO');
+    } else {
+      checkDateStr = date.includes('T') 
+        ? new Date(date).toLocaleDateString('pt-AO') 
+        : date;
+    }
+
+    // O pulo do gato: logar para ver o que está acontecendo no console
+    const cleanedTarget = cleanDate(checkDateStr);
+    const exists = lockedDays.some(d => cleanDate(d) === cleanedTarget);
+    
+    console.log(`Checking lock for: "${cleanedTarget}". Status: ${exists}`, lockedDays);
+    
+    return exists;
   }, [lockedDays]);
 
   const toggleDayLock = (dateStr: string) => {
@@ -481,33 +498,30 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     });
   };
 
-  const reopenDay = useCallback((dateStr: string, reason: string = 'Correção de dados') => {
-    // 1. Verificação de permissão
+  const reopenDay = useCallback((dateStr: string, reason: string = 'Correção') => {
+    // Use a permissão correta definida no seu permissions.ts
     if (!hasPermission(user, 'calendar_unlock')) {
-      alert("Você não possui permissão para desbloquear este dia.");
+      alert("Acesso negado: Requer permissão de desbloqueio.");
       return;
     }
 
-    const targetDate = dateStr.trim();
+    const targetDate = cleanDate(dateStr);
 
-    // 2. Atualiza o estado e PERSISTE imediatamente
     setLockedDays(prev => {
-      const newState = prev.filter(d => d.trim() !== targetDate);
-      // Garantia de salvamento imediato para evitar que o useEffect se atrase
+      const newState = prev.filter(d => cleanDate(d) !== targetDate);
       localStorage.setItem('mg_locked_days', JSON.stringify(newState));
       return newState;
     });
     
-    // 3. Atualiza o status nos Sales Reports
     setSalesReports(reports => reports.map(r => {
-      const reportDate = r.dateISO ? new Date(r.dateISO).toLocaleDateString('pt-AO') : r.date;
-      if (reportDate.trim() === targetDate || r.date.trim() === targetDate) {
+      // Normaliza ambos os lados na comparação
+      if (cleanDate(r.date) === targetDate) {
         return { ...r, status: ClosureStatus.FECHO_CONFIRMADO };
       }
       return r;
     }));
-
-    // 4. Log de auditoria
+    
+    // Log de auditoria
     addAuditLog({
       action: 'DESBLOQUEIO_DIA',
       entity: 'Day',
@@ -1110,21 +1124,34 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   const lockDayManually = (dateStr: string, performedBy: string) => {
     if (!checkPermission('sales_closure')) return;
-    
-    if (!lockedDays.includes(dateStr)) {
-      setLockedDays(prev => [...prev, dateStr]);
-      
-      // Update report status to DIA_BLOQUEADO if it exists
-      setSalesReports(prev => prev.map(r => r.date === dateStr ? { ...r, status: ClosureStatus.DIA_BLOQUEADO } : r));
-      
-      addAuditLog({
-        action: 'BLOQUEIO_MANUAL_DIA',
-        entity: 'System',
-        entityId: dateStr,
-        details: `Dia ${dateStr} bloqueado manualmente por ${performedBy}`,
-        performedBy
-      });
-    }
+
+    // NORMALIZAÇÃO ANTES DE SALVAR:
+    // Se vier ISO, converte. Se não, limpa. Isso garante que no LocalStorage
+    // a data esteja EXATAMENTE no formato que o isDayLocked procura.
+    const targetDate = cleanDate(
+      dateStr.includes('-') && dateStr.includes(':') 
+      ? new Date(dateStr).toLocaleDateString('pt-AO') 
+      : dateStr
+    );
+
+    setLockedDays(prev => {
+      if (prev.some(d => cleanDate(d) === targetDate)) return prev; 
+      const newState = [...prev, targetDate];
+      localStorage.setItem('mg_locked_days', JSON.stringify(newState));
+      return newState;
+    });
+
+    setSalesReports(prev => prev.map(r => 
+      (cleanDate(r.date) === targetDate) ? { ...r, status: ClosureStatus.BLOQUEADO } : r
+    ));
+
+    addAuditLog({
+      action: 'BLOQUEIO_MANUAL_DIA',
+      entity: 'System',
+      entityId: targetDate,
+      details: `Dia ${targetDate} bloqueado manualmente por ${performedBy}`,
+      performedBy
+    });
   };
 
   const [equipments, setEquipments] = useState<Equipment[]>(() => {
@@ -1225,28 +1252,50 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     setCards(prev => prev.filter(c => c.id !== id));
   };
 
+  const value = useMemo(() => ({ 
+    products, categories, purchases, currentBalance, savingsBalance, cashBalance, tpaBalance, cards, transactions, salesReports, 
+    expenses, expenseCategories, inventoryHistory, priceHistory, lockedDays, systemDate,
+    getSystemDate, setSystemDate, resetTestData, toggleDayLock, reopenDay, isDayLocked, checkDayLock,
+    addExpense, deleteExpense, updateExpense,
+    addExpenseCategory, updateExpenseCategory, deleteExpenseCategory,
+    addInventoryLog, addProduct, updateProduct, deleteProduct, addCategory, editCategory, removeCategory,
+    addPurchase, getPurchasesByDate, getTodayPurchases, processTransaction, processCashTPADebit,
+    addSalesReport, 
+    registrarDespesaGlobal,
+    updateSalesReport, 
+    updateSalesReportJustification, 
+    confirmSalesReport, 
+    lockDayManually,
+    addAuditLog, 
+    stockOperationHistory, 
+    auditLogs,
+    equipments, addEquipment, updateEquipment, updateEquipmentQty, removeEquipment,
+    addCard, updateCard, deleteCard,
+    isSyncing, hasPendingChanges, syncData
+  }), [
+    products, categories, purchases, currentBalance, savingsBalance, cashBalance, tpaBalance, cards, transactions, salesReports, 
+    expenses, expenseCategories, inventoryHistory, priceHistory, lockedDays, systemDate,
+    getSystemDate, setSystemDate, resetTestData, toggleDayLock, reopenDay, isDayLocked, checkDayLock,
+    addExpense, deleteExpense, updateExpense,
+    addExpenseCategory, updateExpenseCategory, deleteExpenseCategory,
+    addInventoryLog, addProduct, updateProduct, deleteProduct, addCategory, editCategory, removeCategory,
+    addPurchase, getPurchasesByDate, getTodayPurchases, processTransaction, processCashTPADebit,
+    addSalesReport, 
+    registrarDespesaGlobal,
+    updateSalesReport, 
+    updateSalesReportJustification, 
+    confirmSalesReport, 
+    lockDayManually,
+    addAuditLog, 
+    stockOperationHistory, 
+    auditLogs,
+    equipments, addEquipment, updateEquipment, updateEquipmentQty, removeEquipment,
+    addCard, updateCard, deleteCard,
+    isSyncing, hasPendingChanges, syncData
+  ]);
+
   return (
-    <ProductContext.Provider value={{ 
-      products, categories, purchases, currentBalance, savingsBalance, cashBalance, tpaBalance, cards, transactions, salesReports, 
-      expenses, expenseCategories, inventoryHistory, priceHistory, lockedDays, systemDate,
-      getSystemDate, setSystemDate, resetTestData, toggleDayLock, reopenDay, isDayLocked, checkDayLock,
-      addExpense, deleteExpense, updateExpense,
-      addExpenseCategory, updateExpenseCategory, deleteExpenseCategory,
-      addInventoryLog, addProduct, updateProduct, deleteProduct, addCategory, editCategory, removeCategory,
-      addPurchase, getPurchasesByDate, getTodayPurchases, processTransaction, processCashTPADebit,
-      addSalesReport, 
-      registrarDespesaGlobal,
-      updateSalesReport, 
-      updateSalesReportJustification, 
-      confirmSalesReport, 
-      lockDayManually,
-      addAuditLog, 
-      stockOperationHistory, 
-      auditLogs,
-      equipments, addEquipment, updateEquipment, updateEquipmentQty, removeEquipment,
-      addCard, updateCard, deleteCard,
-      isSyncing, hasPendingChanges, syncData
-    }}>
+    <ProductContext.Provider value={value}>
       {children}
     </ProductContext.Provider>
   );

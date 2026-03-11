@@ -147,11 +147,9 @@ const GlobalCalendar: React.FC = () => {
       totalPurchased,
       totalExpenses,
       netBalance,
-      // AQUI: use diretamente a função do context
       isLocked: isDayLocked(selectedDayDetail)
     };
-    // ADICIONE 'lockedDays' AQUI EMBAIXO:
-  }, [selectedDayDetail, salesMap, inventoryMap, purchases, expenses, transactions, priceHistory, isDayLocked, lockedDays]);
+  }, [selectedDayDetail, salesMap, inventoryMap, purchases, expenses, transactions, priceHistory, isDayLocked, lockedDays, salesReports]);
 
   return (
     <div className="p-4 md:p-8 space-y-8 animate-fade-in pb-24 relative">
