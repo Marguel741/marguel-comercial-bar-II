@@ -317,19 +317,23 @@ const GlobalCalendar: React.FC = () => {
                      </div>
                      <div>
                         <h2 className="text-2xl font-black text-[#003366] dark:text-white">{selectedDayDetail}</h2>
-                        <div className="flex gap-2 mt-1">
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${dayData.isLocked ? 'bg-red-600 text-white shadow-[0_0_10px_rgba(220,38,38,0.3)]' : 'bg-green-500 text-white'}`}>
-                                {dayData.isLocked ? 'DIA BLOQUEADO' : 'DIA ABERTO PARA EDIÇÃO'}
-                            </span>
-                            {dayData.isLocked && canManageLocks && (
-                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase bg-amber-100 text-amber-700 border border-amber-200">
-                                    Desbloqueio Disponível
-                                </span>
+                        <div className="mt-1">
+                            {dayData.isLocked && (
+                              <div className="flex flex-col gap-1">
+                                <span className="text-red-500 font-bold">Dia Bloqueado</span>
+                              </div>
                             )}
-                            {dayData.report && (
-                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${dayData.report.status === ClosureStatus.BLOQUEADO ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
-                                {dayData.report.status === ClosureStatus.BLOQUEADO ? 'Gestão Bloqueada' : 'Caixa Fechado'}
-                              </span>
+                            {!dayData.isLocked && (
+                              <div className="flex gap-2">
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase bg-green-500 text-white">
+                                    DIA ABERTO PARA EDIÇÃO
+                                </span>
+                                {dayData.report && (
+                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${dayData.report.status === ClosureStatus.BLOQUEADO ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
+                                    {dayData.report.status === ClosureStatus.BLOQUEADO ? 'Gestão Bloqueada' : 'Caixa Fechado'}
+                                  </span>
+                                )}
+                              </div>
                             )}
                         </div>
                      </div>
