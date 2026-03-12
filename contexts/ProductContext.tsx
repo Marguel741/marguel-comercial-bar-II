@@ -142,8 +142,21 @@ interface ProductContextType {
 
 const ProductContext = createContext<ProductContextType | undefined>(undefined);
 
-// Função auxiliar para limpar caracteres invisíveis (lixo) de strings de data
-const cleanDate = (str: string) => str.replace(/[^\x20-\x7E]/g, '').trim();
+// Função auxiliar para limpar caracteres invisíveis (lixo) de strings de data e normalizar formatos
+const cleanDate = (str: string) => {
+  if (!str) return '';
+  // Remove caracteres não-ASCII e espaços
+  let cleaned = str.replace(/[^\x20-\x7E]/g, '').trim();
+  
+  // Normalização de formato YYYY-MM-DD para DD/MM/YYYY
+  if (cleaned.includes('-')) {
+    const parts = cleaned.split('-');
+    if (parts[0].length === 4) { // YYYY-MM-DD
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+  }
+  return cleaned;
+};
 
 export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { user } = useAuth();
@@ -447,25 +460,11 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   useEffect(() => { localStorage.setItem('mg_transactions', JSON.stringify(transactions)); }, [transactions]);
   useEffect(() => { localStorage.setItem('mg_sales_reports', JSON.stringify(salesReports)); }, [salesReports]);
   
-  const isDayLocked = useCallback((date: Date | string) => {
+  const isDayLocked = useCallback((date: string | Date) => {
     if (!date) return false;
-    let checkDateStr = '';
-    
-    if (date instanceof Date) {
-      checkDateStr = date.toLocaleDateString('pt-AO');
-    } else {
-      checkDateStr = date.includes('T') 
-        ? new Date(date).toLocaleDateString('pt-AO') 
-        : date;
-    }
-
-    // O pulo do gato: logar para ver o que está acontecendo no console
-    const cleanedTarget = cleanDate(checkDateStr);
-    const exists = lockedDays.some(d => cleanDate(d) === cleanedTarget);
-    
-    console.log(`Checking lock for: "${cleanedTarget}". Status: ${exists}`, lockedDays);
-    
-    return exists;
+    const dateStr = date instanceof Date ? date.toLocaleDateString('pt-AO') : date;
+    const cleanTarget = cleanDate(dateStr);
+    return lockedDays.some(d => cleanDate(d) === cleanTarget);
   }, [lockedDays]);
 
   const toggleDayLock = (dateStr: string) => {
@@ -1125,31 +1124,34 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   const lockDayManually = (dateStr: string, performedBy: string) => {
     if (!checkPermission('sales_closure')) return;
 
-    // NORMALIZAÇÃO ANTES DE SALVAR:
-    // Se vier ISO, converte. Se não, limpa. Isso garante que no LocalStorage
-    // a data esteja EXATAMENTE no formato que o isDayLocked procura.
-    const targetDate = cleanDate(
-      dateStr.includes('-') && dateStr.includes(':') 
-      ? new Date(dateStr).toLocaleDateString('pt-AO') 
-      : dateStr
-    );
+    // Força o formato DD/MM/AAAA para evitar conflitos de fuso horário no celular
+    const parts = dateStr.includes('-') ? dateStr.split('-') : dateStr.split('/');
+    let targetDate = dateStr;
+    
+    if (dateStr.includes('-') && parts[0].length === 4) {
+      targetDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+
+    const cleanTarget = cleanDate(targetDate);
 
     setLockedDays(prev => {
-      if (prev.some(d => cleanDate(d) === targetDate)) return prev; 
-      const newState = [...prev, targetDate];
+      const isAlreadyLocked = prev.some(d => cleanDate(d) === cleanTarget);
+      if (isAlreadyLocked) return prev;
+      
+      const newState = [...prev, cleanTarget];
       localStorage.setItem('mg_locked_days', JSON.stringify(newState));
       return newState;
     });
 
     setSalesReports(prev => prev.map(r => 
-      (cleanDate(r.date) === targetDate) ? { ...r, status: ClosureStatus.BLOQUEADO } : r
+      (cleanDate(r.date) === cleanTarget) ? { ...r, status: ClosureStatus.BLOQUEADO } : r
     ));
 
     addAuditLog({
       action: 'BLOQUEIO_MANUAL_DIA',
       entity: 'System',
-      entityId: targetDate,
-      details: `Dia ${targetDate} bloqueado manualmente por ${performedBy}`,
+      entityId: cleanTarget,
+      details: `Dia ${cleanTarget} bloqueado manualmente por ${performedBy}`,
       performedBy
     });
   };

@@ -117,6 +117,24 @@ const GlobalCalendar: React.FC = () => {
     return { total, count };
   }, [viewDate, salesMap, daysInMonth]);
 
+  const calendarDays = useMemo(() => {
+    return Array.from({ length: daysInMonth }).map((_, i) => {
+      const day = i + 1;
+      const dateStr = new Date(viewDate.getFullYear(), viewDate.getMonth(), day).toLocaleDateString('pt-AO');
+      const report = salesMap.get(dateStr);
+      const isLocked = isDayLocked(dateStr);
+      const isToday = getSystemDate().toLocaleDateString('pt-AO') === dateStr;
+      
+      return {
+        day,
+        dateStr,
+        report,
+        isLocked,
+        isToday
+      };
+    });
+  }, [viewDate, daysInMonth, salesMap, isDayLocked, lockedDays, getSystemDate]);
+
   const dayData = useMemo(() => {
     if (!selectedDayDetail) return null;
 
@@ -208,13 +226,7 @@ const GlobalCalendar: React.FC = () => {
                    <div key={`empty-${i}`} className="aspect-square"></div>
                 ))}
 
-                {Array.from({ length: daysInMonth }).map((_, i) => {
-                   const day = i + 1;
-                   const dateStr = new Date(viewDate.getFullYear(), viewDate.getMonth(), day).toLocaleDateString('pt-AO');
-                   const report = salesMap.get(dateStr);
-                   const isLocked = isDayLocked(dateStr);
-                   const isToday = getSystemDate().toLocaleDateString('pt-AO') === dateStr;
-
+                {calendarDays.map(({ day, dateStr, report, isLocked, isToday }) => {
                    return (
                       <button 
                         key={day} 
@@ -325,35 +337,29 @@ const GlobalCalendar: React.FC = () => {
                   <div className="flex items-center gap-3">
                      {canManageLocks && (
                         <button 
-                           onClick={() => {
+                           onClick={(e) => {
+                              e.preventDefault();
                               if (!selectedDayDetail) return;
-                              // No celular, o prompt() costuma ser bloqueado.
-                              // Vamos usar o confirm() que é muito mais estável em navegadores móveis.
-                              if (dayData.isLocked) {
-                                 const confirmou = window.confirm(`Deseja realmente DESBLOQUEAR o dia ${selectedDayDetail}?`);
-                                 
-                                 if (confirmou) {
-                                    // Se o confirm funcionou, chamamos a função. 
-                                    // Vou passar um motivo padrão já que o prompt falha no celular.
-                                    reopenDay(selectedDayDetail, "Desbloqueio via Celular");
-                                    triggerHaptic('success');
-                                    
-                                    // NÃO feche o modal imediatamente para você ver a mudança de cor!
-                                    // setSelectedDayDetail(null); 
-                                    
-                                    alert("Dia desbloqueado com sucesso!");
-                                 }
-                                 return;
-                              }
+                              
+                              const dateToOperate = selectedDayDetail;
 
-                              // Lógica de Bloqueio
-                              const confirmarBloqueio = window.confirm("Deseja BLOQUEAR este dia?");
-                              if (confirmarBloqueio) {
-                                 lockDayManually(selectedDayDetail, user?.name || 'Admin');
-                                 triggerHaptic('warning');
+                              if (dayData.isLocked) {
+                                 if (window.confirm(`Deseja DESBLOQUEAR o dia ${dateToOperate}?`)) {
+                                    reopenDay(dateToOperate, "Desbloqueio via Celular");
+                                    triggerHaptic('success');
+                                 }
+                              } else {
+                                 if (window.confirm(`Deseja BLOQUEAR o dia ${dateToOperate}?`)) {
+                                    lockDayManually(dateToOperate, user?.name || 'Admin');
+                                    triggerHaptic('warning');
+                                 }
                               }
                            }}
-                           className={`h-12 px-6 rounded-2xl font-black text-sm transition-all flex items-center gap-2 ${dayData.isLocked ? 'bg-amber-500 text-white shadow-lg shadow-amber-900/20 hover:bg-amber-600' : 'bg-red-600 text-white shadow-lg shadow-red-900/20 hover:bg-red-700'}`}
+                           className={`h-12 px-6 rounded-2xl font-black text-sm transition-all flex items-center gap-2 ${
+                              dayData.isLocked 
+                              ? 'bg-amber-500 text-white shadow-lg shadow-amber-900/20' 
+                              : 'bg-red-600 text-white shadow-lg shadow-red-900/20'
+                           }`}
                         >
                            {dayData.isLocked ? <><Unlock size={18} /> Desbloquear dia</> : <><Lock size={18} /> Bloquear dia</>}
                         </button>
