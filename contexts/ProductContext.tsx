@@ -453,20 +453,18 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   }, [lockedDays]);
 
   const toggleDayLock = (dateStr: string) => {
-    const cleanTarget = cleanDate(dateStr);
+    // 1. Normaliza a data alvo para YYYY-MM-DD
+    const targetDateClean = cleanDate(dateStr); 
+
     setLockedDays(prev => {
-      const isAlreadyLocked = prev.some(d => cleanDate(d) === cleanTarget);
-      if (isAlreadyLocked) {
-        return prev;
-      }
-      
-      // Update status in sales reports if exists
+      if (prev.includes(targetDateClean)) return prev;
+
+      // 2. Atualiza os relatórios de venda para o status bloqueado
       setSalesReports(reports => reports.map(r => {
-        const reportDateISO = r.dateISO ? r.dateISO.split('T')[0] : r.date;
-        const cleanReportDate = cleanDate(reportDateISO);
-        const cleanRDate = cleanDate(r.date);
+        // Normaliza a data do relatório para comparar
+        const rDateClean = cleanDate(r.dateISO || r.date);
         
-        if (cleanReportDate === cleanTarget || cleanRDate === cleanTarget) {
+        if (rDateClean === targetDateClean) {
           return { ...r, status: ClosureStatus.DIA_BLOQUEADO };
         }
         return r;
@@ -475,19 +473,19 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       addAuditLog({
         action: 'BLOQUEIO_TOTAL_DIA',
         entity: 'Day',
-        entityId: dateStr,
-        details: `Dia ${dateStr} bloqueado permanentemente via toggle.`,
-        performedBy: user?.name || 'Sistema/Admin'
+        entityId: targetDateClean,
+        details: `Dia ${targetDateClean} bloqueado permanentemente.`,
+        performedBy: user?.name || 'Sistema'
       });
 
-      return [...prev, cleanTarget];
+      return [...prev, targetDateClean];
     });
   };
 
   const reopenDay = useCallback((dateStr: string, reason: string = 'Correção') => {
-    // Use a permissão correta definida no seu permissions.ts
+    // Verifique se 'calendar_unlock' existe mesmo no seu UserPermissions
     if (!hasPermission(user, 'calendar_unlock')) {
-      alert("Acesso negado: Requer permissão de desbloqueio.");
+      alert("Acesso negado: Você não tem permissão para desbloquear dias.");
       return;
     }
 
@@ -500,23 +498,22 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     });
     
     setSalesReports(reports => reports.map(r => {
-      // Normaliza ambos os lados na comparação
-      if (cleanDate(r.date) === targetDate) {
+      if (cleanDate(r.dateISO || r.date) === targetDate) {
+        // Retorna para Fecho Confirmado ao invés de apagado
         return { ...r, status: ClosureStatus.FECHO_CONFIRMADO };
       }
       return r;
     }));
     
-    // Log de auditoria
     addAuditLog({
       action: 'DESBLOQUEIO_DIA',
       entity: 'Day',
       entityId: targetDate,
-      details: `Dia ${targetDate} desbloqueado por ${user?.name || 'Admin'}. Motivo: ${reason}`,
+      details: `Dia ${targetDate} desbloqueado. Motivo: ${reason}`,
       performedBy: user?.name || 'Admin'
     });
 
-    alert(`O dia ${targetDate} foi desbloqueado com sucesso!`);
+    alert(`O dia ${targetDate} foi desbloqueado!`);
   }, [user, addAuditLog, setLockedDays, setSalesReports]);
 
   const checkDayLock = useCallback((date: Date | string) => {
@@ -1123,7 +1120,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     });
 
     setSalesReports(prev => prev.map(r => 
-      (cleanDate(r.date) === cleanTarget) ? { ...r, status: ClosureStatus.BLOQUEADO } : r
+      (cleanDate(r.dateISO || r.date) === cleanTarget) ? { ...r, status: ClosureStatus.DIA_BLOQUEADO } : r
     ));
 
     addAuditLog({
