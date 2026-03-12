@@ -10,7 +10,7 @@ import { useLayout } from '../contexts/LayoutContext';
 import { useAuth } from '../contexts/AuthContext';
 import { UserRole, ClosureStatus } from '../types';
 import SoftCard from '../components/SoftCard';
-import { formatKz, roundKz } from '../src/utils';
+import { formatKz, roundKz, cleanDate, formatDateISO } from '../src/utils';
 import { hasPermission } from '../src/utils/permissions';
 import AccessDenied from './AccessDenied';
 
@@ -100,15 +100,15 @@ const GlobalCalendar: React.FC = () => {
     setSelectedDayDetail(null);
   };
 
-  const salesMap = useMemo(() => new Map(salesReports.map(r => [r.date, r])), [salesReports]);
-  const inventoryMap = useMemo(() => new Map(inventoryHistory.map(h => [h.date, h])), [inventoryHistory]);
+  const salesMap = useMemo(() => new Map(salesReports.map(r => [cleanDate(r.date), r])), [salesReports]);
+  const inventoryMap = useMemo(() => new Map(inventoryHistory.map(h => [cleanDate(h.date), h])), [inventoryHistory]);
 
   const monthStats = useMemo(() => {
     let total = 0;
     let count = 0;
     for (let i = 1; i <= daysInMonth; i++) {
-      const dateStr = new Date(viewDate.getFullYear(), viewDate.getMonth(), i).toLocaleDateString('pt-AO');
-      const r = salesMap.get(dateStr);
+      const dateStr = formatDateISO(new Date(viewDate.getFullYear(), viewDate.getMonth(), i));
+      const r = salesMap.get(cleanDate(dateStr));
       if (r && (r.status === ClosureStatus.FECHO_CONFIRMADO || r.status === ClosureStatus.BLOQUEADO)) {
         total = roundKz(total + r.totalLifted);
         count++;
@@ -120,10 +120,10 @@ const GlobalCalendar: React.FC = () => {
   const calendarDays = useMemo(() => {
     return Array.from({ length: daysInMonth }).map((_, i) => {
       const day = i + 1;
-      const dateStr = new Date(viewDate.getFullYear(), viewDate.getMonth(), day).toLocaleDateString('pt-AO');
-      const report = salesMap.get(dateStr);
+      const dateStr = formatDateISO(new Date(viewDate.getFullYear(), viewDate.getMonth(), day));
+      const report = salesMap.get(cleanDate(dateStr));
       const isLocked = isDayLocked(dateStr);
-      const isToday = getSystemDate().toLocaleDateString('pt-AO') === dateStr;
+      const isToday = formatDateISO(getSystemDate()) === dateStr;
       
       return {
         day,
@@ -138,15 +138,16 @@ const GlobalCalendar: React.FC = () => {
   const dayData = useMemo(() => {
     if (!selectedDayDetail) return null;
 
-    const report = salesMap.get(selectedDayDetail);
-    const dayPurchases = purchases.filter(p => p.date === selectedDayDetail);
-    const dayExpenses = expenses.filter(e => e.date === selectedDayDetail);
-    const dayInventoryLog = inventoryMap.get(selectedDayDetail);
-    const dayTrans = transactions.filter(t => t.date.includes(selectedDayDetail.substring(0, 5)));
+    const cleanSelected = cleanDate(selectedDayDetail);
+    const report = salesMap.get(cleanSelected);
+    const dayPurchases = purchases.filter(p => cleanDate(p.date) === cleanSelected);
+    const dayExpenses = expenses.filter(e => cleanDate(e.date) === cleanSelected);
+    const dayInventoryLog = inventoryMap.get(cleanSelected);
+    const dayTrans = transactions.filter(t => cleanDate(t.date).includes(cleanSelected.substring(0, 5)));
     
     const dayPriceChanges = priceHistory?.filter(l => {
-        const logDate = new Date(parseInt(l.id)).toLocaleDateString('pt-AO');
-        return logDate === selectedDayDetail;
+        const logDate = formatDateISO(new Date(parseInt(l.id)));
+        return cleanDate(logDate) === cleanSelected;
     }) || [];
 
     const isConfirmed = report?.status === ClosureStatus.FECHO_CONFIRMADO || report?.status === ClosureStatus.BLOQUEADO;

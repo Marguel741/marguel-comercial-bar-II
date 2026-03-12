@@ -3,6 +3,7 @@ import React, { createContext, useContext, useState, ReactNode, useEffect, useCa
 import { Product, PurchaseRecord, Transaction, SalesReport, Expense, InventoryLog, PriceHistoryLog, Equipment, Card, StockOperationLog, AuditLog, ClosureStatus, ExpenseCategory, UserPermissions, UserRole } from '../types';
 import { useAuth } from './AuthContext';
 import { hasPermission } from '../src/utils/permissions';
+import { cleanDate, formatDateISO } from '../src/utils';
 
 const INITIAL_PRODUCTS: Product[] = [
   { id: 'pepsi', name: 'Pepsi', sellPrice: 500, buyPrice: 250, stock: 0, minStock: 24, category: 'Refrigerantes', packSize: 24, packType: 'Grade' },
@@ -142,22 +143,6 @@ interface ProductContextType {
 
 const ProductContext = createContext<ProductContextType | undefined>(undefined);
 
-// Função auxiliar para limpar caracteres invisíveis (lixo) de strings de data e normalizar formatos
-const cleanDate = (str: string) => {
-  if (!str) return '';
-  // Remove caracteres não-ASCII e espaços
-  let cleaned = str.replace(/[^\x20-\x7E]/g, '').trim();
-  
-  // Normalização de formato YYYY-MM-DD para DD/MM/YYYY
-  if (cleaned.includes('-')) {
-    const parts = cleaned.split('-');
-    if (parts[0].length === 4) { // YYYY-MM-DD
-      return `${parts[2]}/${parts[1]}/${parts[0]}`;
-    }
-  }
-  return cleaned;
-};
-
 export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { user } = useAuth();
 
@@ -193,7 +178,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     return date;
   }, [systemDate]);
 
-  const getSystemDateStr = () => getSystemDate().toLocaleDateString('pt-AO');
+  const getSystemDateStr = () => formatDateISO(getSystemDate());
 
   const [lockedDays, setLockedDays] = useState<string[]>(() => {
     try {
@@ -462,24 +447,26 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   
   const isDayLocked = useCallback((date: string | Date) => {
     if (!date) return false;
-    const dateStr = date instanceof Date ? date.toLocaleDateString('pt-AO') : date;
+    const dateStr = date instanceof Date ? formatDateISO(date) : date;
     const cleanTarget = cleanDate(dateStr);
     return lockedDays.some(d => cleanDate(d) === cleanTarget);
   }, [lockedDays]);
 
   const toggleDayLock = (dateStr: string) => {
+    const cleanTarget = cleanDate(dateStr);
     setLockedDays(prev => {
-      if (prev.includes(dateStr)) {
-        // Now it can be unlocked by reopenDay, but toggleDayLock itself won't unlock it if it's already there
-        // Actually, let's just make it toggleable if the user wants, but the prompt says "Desbloquear Gestão"
-        // So I'll keep it as is and let reopenDay handle unlocking.
+      const isAlreadyLocked = prev.some(d => cleanDate(d) === cleanTarget);
+      if (isAlreadyLocked) {
         return prev;
       }
       
       // Update status in sales reports if exists
       setSalesReports(reports => reports.map(r => {
         const reportDateISO = r.dateISO ? r.dateISO.split('T')[0] : r.date;
-        if (reportDateISO === dateStr || r.date === dateStr) {
+        const cleanReportDate = cleanDate(reportDateISO);
+        const cleanRDate = cleanDate(r.date);
+        
+        if (cleanReportDate === cleanTarget || cleanRDate === cleanTarget) {
           return { ...r, status: ClosureStatus.DIA_BLOQUEADO };
         }
         return r;
@@ -489,11 +476,11 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
         action: 'BLOQUEIO_TOTAL_DIA',
         entity: 'Day',
         entityId: dateStr,
-        details: `Dia ${dateStr} bloqueado permanentemente.`,
+        details: `Dia ${dateStr} bloqueado permanentemente via toggle.`,
         performedBy: user?.name || 'Sistema/Admin'
       });
 
-      return [...prev, dateStr];
+      return [...prev, cleanTarget];
     });
   };
 
@@ -1124,15 +1111,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   const lockDayManually = (dateStr: string, performedBy: string) => {
     if (!checkPermission('sales_closure')) return;
 
-    // Força o formato DD/MM/AAAA para evitar conflitos de fuso horário no celular
-    const parts = dateStr.includes('-') ? dateStr.split('-') : dateStr.split('/');
-    let targetDate = dateStr;
-    
-    if (dateStr.includes('-') && parts[0].length === 4) {
-      targetDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
-    }
-
-    const cleanTarget = cleanDate(targetDate);
+    const cleanTarget = cleanDate(dateStr);
 
     setLockedDays(prev => {
       const isAlreadyLocked = prev.some(d => cleanDate(d) === cleanTarget);
