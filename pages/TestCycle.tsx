@@ -20,7 +20,7 @@ import {
 import SoftCard from '../components/SoftCard';
 import { useProducts } from '../contexts/ProductContext';
 import { useLayout } from '../contexts/LayoutContext';
-import { SalesReport } from '../types';
+import { formatDateISO, formatDisplayDate } from '../src/utils';
 
 const TestCycle: React.FC = () => {
   const { 
@@ -43,7 +43,7 @@ const TestCycle: React.FC = () => {
   const [resetStep, setResetStep] = useState(0);
   
   // Format Date for Display
-  const dateStr = systemDate.toLocaleDateString('pt-AO');
+  const dateStr = formatDateISO(systemDate);
 
   // --- ACTIONS ---
 
@@ -57,7 +57,7 @@ const TestCycle: React.FC = () => {
       if (!isNaN(newDate.getTime())) {
           setSystemDate(newDate);
           triggerHaptic('selection');
-          logAction(`📅 Data do Sistema alterada para: ${newDate.toLocaleDateString('pt-AO')}`);
+          logAction(`📅 Data do Sistema alterada para: ${formatDisplayDate(formatDateISO(newDate))}`);
       }
   };
 

@@ -26,6 +26,7 @@ import { UserRole } from '../types';
 import { useLayout } from '../contexts/LayoutContext';
 import { useProducts } from '../contexts/ProductContext';
 import { hasPermission } from '../src/utils/permissions';
+import { formatDateISO, formatDisplayDate } from '../src/utils';
 
 const Sidebar: React.FC = () => {
   const { user, logout } = useAuth();
@@ -170,7 +171,7 @@ const Sidebar: React.FC = () => {
                   <FlaskConical size={20} />
                   <div className="flex-1">
                       <span className="block">Simulador / Data</span>
-                      <span className="text-[10px] font-mono">{systemDate.toLocaleDateString('pt-AO')}</span>
+                      <span className="text-[10px] font-mono">{formatDisplayDate(formatDateISO(systemDate))}</span>
                   </div>
                 </NavLink>
              )}

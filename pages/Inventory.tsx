@@ -8,6 +8,7 @@ import { UserRole, InventoryLog, Equipment, UserPermissions } from '../types'; /
 import { useLayout } from '../contexts/LayoutContext';
 import SyncStatus from '../components/SyncStatus';
 import { hasPermission } from '../src/utils/permissions';
+import { formatKz, roundKz, formatDateISO, formatDisplayDate } from '../src/utils';
 
 const Inventory: React.FC = () => {
   const { 
@@ -148,7 +149,7 @@ const Inventory: React.FC = () => {
         minStock: item.minStock,
         status: status,
         daysInAlert: daysLow,
-        outOfStockSince: item.stock === 0 ? outOfStockDate.toLocaleDateString('pt-AO') : null,
+        outOfStockSince: item.stock === 0 ? formatDateISO(outOfStockDate) : null,
         category: item.category // Incluído categoria para filtro
       };
     }).filter(Boolean);
@@ -288,14 +289,14 @@ const Inventory: React.FC = () => {
         updateEquipmentQty(id, qty);
     });
 
-    setLastInventoryDate(systemDate.toLocaleDateString('pt-AO'));
+    setLastInventoryDate(formatDateISO(systemDate));
     setIsInventoryDone(true);
     
     // Add to History (Global Context)
     const hasDiscrepancy = discrepancies.length > 0;
     const newLog: InventoryLog = {
         id: Date.now().toString(),
-        date: systemDate.toLocaleDateString('pt-AO'),
+        date: formatDateISO(systemDate),
         performedBy: user?.name || 'Desconhecido',
         totalItems: (Object.values(countValues) as number[]).reduce((a, b) => a + b, 0),
         discrepancies: hasDiscrepancy ? discrepancies : [],
@@ -512,7 +513,7 @@ const Inventory: React.FC = () => {
              {isLocked ? (
                 <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded font-bold flex items-center gap-1"><Lock size={10} /> Dia Bloqueado</span>
              ) : (
-                <span className="text-xs bg-slate-200 px-2 py-0.5 rounded text-slate-600 font-bold">Hoje (Sis): {systemDate.toLocaleDateString('pt-AO')}</span>
+                <span className="text-xs bg-slate-200 px-2 py-0.5 rounded text-slate-600 font-bold">Hoje (Sis): {formatDisplayDate(formatDateISO(systemDate))}</span>
              )}
           </div>
         </div>
@@ -873,7 +874,7 @@ const Inventory: React.FC = () => {
                
                {lastInventoryDate && (
                   <p className="text-[10px] opacity-50 text-center mt-2">
-                     Última confirmação: {lastInventoryDate}
+                     Última confirmação: {formatDisplayDate(lastInventoryDate)}
                   </p>
                )}
 
@@ -1201,7 +1202,7 @@ const Inventory: React.FC = () => {
                         <div key={log.id} className="border border-slate-100 dark:border-slate-800 rounded-2xl p-4 bg-slate-50 dark:bg-slate-800/50">
                             <div className="flex justify-between items-start mb-2">
                                 <div>
-                                    <p className="font-bold text-[#003366] dark:text-white">{log.date}</p>
+                                    <p className="font-bold text-[#003366] dark:text-white">{formatDisplayDate(log.date)}</p>
                                     <p className="text-xs text-slate-500 dark:text-slate-400">Por: {log.performedBy}</p>
                                 </div>
                                 <span className={`text-[10px] px-2 py-1 rounded-full font-bold ${log.status === 'OK' ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'}`}>

@@ -80,8 +80,10 @@ const GlobalCalendar: React.FC = () => {
       };
   }, [hasPendingChanges, syncData]);
 
-  const daysInMonth = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0).getDate();
-  const firstDayOfMonth = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1).getDay();
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDayOfMonth = new Date(year, month, 1).getDay();
   const monthName = viewDate.toLocaleDateString('pt-AO', { month: 'long', year: 'numeric' });
 
   const canManageLocks = hasPermission(user, 'calendar_unlock');
@@ -120,7 +122,7 @@ const GlobalCalendar: React.FC = () => {
   const calendarDays = useMemo(() => {
     return Array.from({ length: daysInMonth }).map((_, i) => {
       const day = i + 1;
-      const dateStr = formatDateISO(new Date(viewDate.getFullYear(), viewDate.getMonth(), day));
+      const dateStr = formatDateISO(new Date(year, month, day));
       const report = salesMap.get(cleanDate(dateStr));
       const isLocked = isDayLocked(dateStr);
       const isToday = formatDateISO(getSystemDate()) === dateStr;
@@ -133,7 +135,14 @@ const GlobalCalendar: React.FC = () => {
         isToday
       };
     });
-  }, [viewDate, daysInMonth, salesMap, isDayLocked, lockedDays, getSystemDate]);
+  }, [
+    year,
+    month,
+    daysInMonth,
+    lockedDays,
+    salesReports,
+    systemDate
+  ]);
 
   const dayData = useMemo(() => {
     if (!selectedDayDetail) return null;
@@ -313,18 +322,18 @@ const GlobalCalendar: React.FC = () => {
                {/* HEADER: Auditoria de Status */}
                <div className="p-6 md:p-8 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-700">
                   <div className="flex items-center gap-4">
-                     <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-inner ${dayData.isLocked ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
-                        {dayData.isLocked ? <Lock size={28} /> : <Unlock size={28} />}
+                     <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-inner ${isDayLocked(selectedDayDetail) ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
+                        {isDayLocked(selectedDayDetail) ? <Lock size={28} /> : <Unlock size={28} />}
                      </div>
                      <div>
                         <h2 className="text-2xl font-black text-[#003366] dark:text-white">{selectedDayDetail}</h2>
                         <div className="mt-1">
-                            {dayData.isLocked && (
+                            {isDayLocked(selectedDayDetail) && (
                               <div className="flex flex-col gap-1">
                                 <span className="text-red-500 font-bold">Dia Bloqueado</span>
                               </div>
                             )}
-                            {!dayData.isLocked && (
+                            {!isDayLocked(selectedDayDetail) && (
                               <div className="flex gap-2">
                                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase bg-green-500 text-white">
                                     DIA ABERTO PARA EDIÇÃO
@@ -348,10 +357,14 @@ const GlobalCalendar: React.FC = () => {
                               
                               const dateToOperate = selectedDayDetail;
 
-                              if (dayData.isLocked) {
+                              if (isDayLocked(selectedDayDetail)) {
                                  if (window.confirm(`Deseja DESBLOQUEAR o dia ${dateToOperate}?`)) {
+                                    console.log("LOCKED BEFORE:", isDayLocked(selectedDayDetail));
                                     reopenDay(dateToOperate, "Desbloqueio via Celular");
                                     triggerHaptic('success');
+                                    setTimeout(() => {
+                                       console.log("LOCKED AFTER:", isDayLocked(selectedDayDetail));
+                                    }, 500);
                                  }
                               } else {
                                  if (window.confirm(`Deseja BLOQUEAR o dia ${dateToOperate}?`)) {
@@ -361,12 +374,12 @@ const GlobalCalendar: React.FC = () => {
                               }
                            }}
                            className={`h-12 px-6 rounded-2xl font-black text-sm transition-all flex items-center gap-2 ${
-                              dayData.isLocked 
+                              isDayLocked(selectedDayDetail) 
                               ? 'bg-amber-500 text-white shadow-lg shadow-amber-900/20' 
                               : 'bg-red-600 text-white shadow-lg shadow-red-900/20'
                            }`}
                         >
-                           {dayData.isLocked ? <><Unlock size={18} /> Desbloquear dia</> : <><Lock size={18} /> Bloquear dia</>}
+                           {isDayLocked(selectedDayDetail) ? <><Unlock size={18} /> Desbloquear dia</> : <><Lock size={18} /> Bloquear dia</>}
                         </button>
                      )}
                      <button onClick={() => setSelectedDayDetail(null)} className="p-3 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors">

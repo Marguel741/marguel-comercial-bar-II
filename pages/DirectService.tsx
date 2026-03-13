@@ -6,7 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import SoftCard from '../components/SoftCard';
 import { dbAddSale, dbGetAllSales, dbUpdateSale, DirectSale } from '../src/services/db';
 import { processSync, serverTimeOffset } from '../src/services/syncService';
-import { roundKz, formatKz } from '../src/utils';
+import { roundKz, formatKz, formatDateISO, formatDisplayDate } from '../src/utils';
 import { hasPermission } from '../src/utils/permissions';
 import AccessDenied from './AccessDenied';
 
@@ -306,7 +306,7 @@ const DirectService: React.FC = () => {
     const newSale: DirectSale = {
         id: `${now.getTime()}-${deviceId}`,
         uuid: crypto.randomUUID(), // Immutable
-        date: now.toLocaleDateString('pt-AO'),
+        date: formatDateISO(now),
         time: now.toLocaleTimeString('pt-AO'),
         timestamp: now.getTime(),
         serverTimestamp: undefined, // Will be set on sync
@@ -520,7 +520,7 @@ const DirectService: React.FC = () => {
                                                   </div>
                                               </div>
                                               <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400 mt-1">
-                                                  <span className="flex items-center gap-1"><Clock size={12} /> {sale.date} às {sale.time}</span>
+                                                  <span className="flex items-center gap-1"><Clock size={12} /> {formatDisplayDate(sale.date)} às {sale.time}</span>
                                                   <span>•</span>
                                                   <span>{sale.attendant}</span>
                                               </div>
@@ -739,7 +739,7 @@ const DirectService: React.FC = () => {
                                       <div>
                                           <p className="font-bold text-slate-800 dark:text-white text-sm">Venda Directa</p>
                                           <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                                              <span>{sale.date} • {sale.time}</span>
+                                              <span>{formatDisplayDate(sale.date)} • {sale.time}</span>
                                               {sale.statusSync === 'pending' && (
                                                   <span className="text-amber-500 flex items-center gap-0.5 font-bold" title="Pendente de sincronização">
                                                       <WifiOff size={10} />

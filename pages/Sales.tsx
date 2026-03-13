@@ -18,6 +18,7 @@ import { useLayout } from '../contexts/LayoutContext';
 import { useAuth } from '../contexts/AuthContext';
 import { UserRole, ClosureStatus } from '../types';
 import { hasPermission } from '../src/utils/permissions';
+import { formatDisplayDate, formatDateISO } from '../src/utils';
 import { useFinance } from '../contexts/FinanceContext';
 import SyncStatus from '../components/SyncStatus';
 
@@ -196,7 +197,7 @@ const Sales: React.FC = () => {
   const purchasedStock = useMemo(() => {
     // Convert reportDate (YYYY-MM-DD) to pt-AO format for matching purchases
     const d = new Date(reportDate + 'T12:00:00');
-    return getPurchasesByDate(d.toLocaleDateString('pt-AO'));
+    return getPurchasesByDate(formatDateISO(d));
   }, [getPurchasesByDate, products, reportDate]);
 
   const [quickPurchaseModal, setQuickPurchaseModal] = useState<{isOpen: boolean, productId: string | null}>({isOpen: false, productId: null});
@@ -513,7 +514,7 @@ const Sales: React.FC = () => {
       timestamp: reportTimestamp.getTime(),
       
       // Compatibility fields for Dashboard
-      date: reportTimestamp.toLocaleDateString('pt-AO'),
+      date: formatDateISO(reportTimestamp),
       itemsSummary: calculatedData.items.filter(i => i.soldQty > 0).map(i => ({
           name: i.name,
           qty: i.soldQty,
@@ -958,7 +959,7 @@ const Sales: React.FC = () => {
           <div className="flex items-center gap-3 mt-1 group">
              <Calendar size={18} className="text-[#003366] dark:text-blue-400" />
              <span className="text-[#003366] dark:text-blue-400 font-bold">
-               {getSystemDate().toLocaleDateString('pt-AO', { day: '2-digit', month: 'long', year: 'numeric' })}
+               {formatDisplayDate(formatDateISO(getSystemDate()))}
              </span>
              <div className="ml-2 px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-[10px] font-black uppercase tracking-tighter rounded border border-blue-200 dark:border-blue-800">
                Data Operacional

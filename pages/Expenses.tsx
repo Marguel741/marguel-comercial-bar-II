@@ -10,6 +10,7 @@ import SyncStatus from '../components/SyncStatus';
 import { useAuth } from '../contexts/AuthContext';
 import { useProducts } from '../contexts/ProductContext';
 import { hasPermission } from '../src/utils/permissions';
+import { formatDisplayDate, formatDateISO } from '../src/utils';
 import { Expense } from '../types';
 
 const Expenses: React.FC = () => {
@@ -137,7 +138,7 @@ const Expenses: React.FC = () => {
       title: formData.title,
       amount: amountVal,
       category: formData.category,
-      date: now.toLocaleDateString('pt-AO'),
+      date: formatDateISO(now),
       timestamp: now.getTime(),
       user: user?.name?.split(' ')[0] || 'Desconhecido',
       attachments: attachments,
@@ -405,7 +406,7 @@ const Expenses: React.FC = () => {
                   <div>
                     <p className="font-bold text-[#003366] group-hover:underline">{ex.title}</p>
                     <div className="flex items-center gap-2 text-xs text-slate-400 font-bold uppercase">
-                      <span>{ex.date}</span>
+                      <span>{formatDisplayDate(ex.date)}</span>
                       <span>•</span>
                       <span>{ex.category}</span>
                       {ex.attachments && ex.attachments.length > 0 && (
@@ -722,7 +723,7 @@ const Expenses: React.FC = () => {
                     {filteredExpenses.length > 0 ? (
                       filteredExpenses.map((ex) => (
                         <tr key={ex.id} className="hover:bg-slate-50 transition-colors">
-                          <td className="p-4 text-slate-500 font-medium whitespace-nowrap">{ex.date}</td>
+                          <td className="p-4 text-slate-500 font-medium whitespace-nowrap">{formatDisplayDate(ex.date)}</td>
                           <td className="p-4 font-bold text-[#003366]">{ex.title}</td>
                           <td className="p-4">
                             <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-bold border border-slate-200">

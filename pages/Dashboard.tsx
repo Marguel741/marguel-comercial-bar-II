@@ -8,6 +8,7 @@ import { useProducts } from '../contexts/ProductContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useLayout } from '../contexts/LayoutContext';
 import { UserRole } from '../types';
+import { formatDateISO, formatDisplayDate } from '../src/utils';
 import SyncStatus from '../components/SyncStatus';
 
 const Dashboard: React.FC = () => {
@@ -42,7 +43,7 @@ const Dashboard: React.FC = () => {
   const yesterdayReport = React.useMemo(() => {
     const yesterday = new Date(systemDate);
     yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toLocaleDateString('pt-AO');
+    const yesterdayStr = formatDateISO(yesterday);
     return salesReports.find(r => r.date === yesterdayStr);
   }, [salesReports, systemDate]);
 
@@ -83,7 +84,7 @@ const Dashboard: React.FC = () => {
         for (let i = 0; i < 7; i++) {
             const d = new Date(monday);
             d.setDate(monday.getDate() + i);
-            const dateStr = d.toLocaleDateString('pt-AO');
+            const dateStr = formatDateISO(d);
             
             const report = salesReports.find(r => r.date === dateStr);
             const dayExpenses = expenses
@@ -106,7 +107,7 @@ const Dashboard: React.FC = () => {
         for (let i = 29; i >= 0; i--) {
             const d = new Date(now);
             d.setDate(d.getDate() - i);
-            const dateStr = d.toLocaleDateString('pt-AO');
+            const dateStr = formatDateISO(d);
             
             const report = salesReports.find(r => r.date === dateStr);
             const dayExpenses = expenses
@@ -201,7 +202,7 @@ const Dashboard: React.FC = () => {
     }
 
     // Closing Alert
-    const todayStr = systemDate.toLocaleDateString('pt-AO');
+    const todayStr = formatDateISO(systemDate);
     const hasReportToday = salesReports.some(r => (r.date || r.displayDate) === todayStr);
     if (!hasReportToday) {
          list.push({

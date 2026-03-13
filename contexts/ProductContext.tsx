@@ -449,7 +449,9 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     if (!date) return false;
     const dateStr = date instanceof Date ? formatDateISO(date) : date;
     const cleanTarget = cleanDate(dateStr);
-    return lockedDays.some(d => cleanDate(d) === cleanTarget);
+    return lockedDays
+      .map(d => cleanDate(d))
+      .includes(cleanTarget);
   }, [lockedDays]);
 
   const toggleDayLock = (dateStr: string) => {
@@ -483,7 +485,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   };
 
   const reopenDay = useCallback((dateStr: string, reason: string = 'Correção') => {
-    // Verifique se 'calendar_unlock' existe mesmo no seu UserPermissions
     if (!hasPermission(user, 'calendar_unlock')) {
       alert("Acesso negado: Você não tem permissão para desbloquear dias.");
       return;
@@ -491,20 +492,34 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     const targetDate = cleanDate(dateStr);
 
+    // 1️⃣ Remover do estado lockedDays
     setLockedDays(prev => {
       const newState = prev.filter(d => cleanDate(d) !== targetDate);
       localStorage.setItem('mg_locked_days', JSON.stringify(newState));
       return newState;
     });
-    
-    setSalesReports(reports => reports.map(r => {
-      if (cleanDate(r.dateISO || r.date) === targetDate) {
-        // Retorna para Fecho Confirmado ao invés de apagado
-        return { ...r, status: ClosureStatus.FECHO_CONFIRMADO };
-      }
-      return r;
-    }));
-    
+
+    // 2️⃣ Atualizar relatórios corretamente
+    setSalesReports(prevReports => 
+      prevReports.map(report => {
+
+        const reportDate =
+          report.dateISO
+            ? cleanDate(report.dateISO)
+            : cleanDate(report.date);
+
+        if (reportDate === targetDate) {
+          return {
+            ...report,
+            status: ClosureStatus.FECHO_CONFIRMADO
+          };
+        }
+
+        return report;
+      })
+    );
+
+    // 3️⃣ Log de auditoria
     addAuditLog({
       action: 'DESBLOQUEIO_DIA',
       entity: 'Day',
@@ -513,12 +528,14 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       performedBy: user?.name || 'Admin'
     });
 
-    alert(`O dia ${targetDate} foi desbloqueado!`);
-  }, [user, addAuditLog, setLockedDays, setSalesReports]);
+    console.log("Dia desbloqueado:", targetDate);
+
+    alert(`Dia ${targetDate} desbloqueado com sucesso.`);
+  }, [user, addAuditLog]);
 
   const checkDayLock = useCallback((date: Date | string) => {
     if (isDayLocked(date)) {
-      const dateStr = typeof date === 'string' ? date : date.toLocaleDateString('pt-AO');
+      const dateStr = typeof date === 'string' ? date : formatDateISO(date);
       
       // Log the attempt
       addAuditLog({
@@ -673,7 +690,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     performedBy?: string,
     date?: string // Optional date for retroactive transactions
   ) => {
-    const targetDate = date || getSystemDate().toLocaleDateString('pt-AO');
+    const targetDate = date || formatDateISO(getSystemDate());
     checkDayLock(targetDate);
 
     let accountName = '';
@@ -704,7 +721,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       type: type === 'deposit' ? 'entrada' : 'saida',
       category: category || accountName || 'Cartão',
       amount: amount,
-      date: date ? (date + ', ' + getSystemDate().toLocaleTimeString('pt-AO', {hour:'2-digit', minute:'2-digit'})) : (getSystemDate().toLocaleDateString('pt-AO', {day:'2-digit', month:'short'}) + ', ' + getSystemDate().toLocaleTimeString('pt-AO', {hour:'2-digit', minute:'2-digit'})),
+      date: date ? (date + ', ' + getSystemDate().toLocaleTimeString('pt-AO', {hour:'2-digit', minute:'2-digit'})) : (formatDateISO(getSystemDate()) + ', ' + getSystemDate().toLocaleTimeString('pt-AO', {hour:'2-digit', minute:'2-digit'})),
       description: description,
       referenceId,
       referenceType,
@@ -718,7 +735,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   };
 
   const processCashTPADebit = (origin: 'Cash' | 'TPA', amount: number, note: string, referenceId?: string, referenceType?: Transaction['referenceType'], performedBy?: string, date?: string) => {
-    const targetDate = date || getSystemDate().toLocaleDateString('pt-AO');
+    const targetDate = date || formatDateISO(getSystemDate());
     checkDayLock(targetDate);
 
     if (origin === 'Cash') {
@@ -732,7 +749,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       type: 'saida',
       category: `Débito ${origin}`,
       amount: amount,
-      date: date ? (date + ', ' + getSystemDate().toLocaleTimeString('pt-AO', {hour:'2-digit', minute:'2-digit'})) : (getSystemDate().toLocaleDateString('pt-AO', {day:'2-digit', month:'short'}) + ', ' + getSystemDate().toLocaleTimeString('pt-AO', {hour:'2-digit', minute:'2-digit'})),
+      date: date ? (date + ', ' + getSystemDate().toLocaleTimeString('pt-AO', {hour:'2-digit', minute:'2-digit'})) : (formatDateISO(getSystemDate()) + ', ' + getSystemDate().toLocaleTimeString('pt-AO', {hour:'2-digit', minute:'2-digit'})),
       description: note,
       referenceId,
       referenceType,
@@ -944,7 +961,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   const updateSalesReport = (reportId: string, updates: Partial<SalesReport>) => {
     const report = salesReports.find(r => r.id === reportId);
     if (report) {
-      const reportDateStr = report.dateISO ? new Date(report.dateISO).toLocaleDateString('pt-AO') : report.date;
+      const reportDateStr = report.dateISO ? report.dateISO : report.date;
       checkDayLock(reportDateStr);
 
       // If report is already confirmed and processed, we need to handle financial adjustments
@@ -993,7 +1010,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   const updateSalesReportJustification = (reportId: string, justificationData: any) => {
     const report = salesReports.find(r => r.id === reportId);
     if (report) {
-      const reportDateStr = report.dateISO ? new Date(report.dateISO).toLocaleDateString('pt-AO') : report.date;
+      const reportDateStr = report.dateISO ? report.dateISO : report.date;
       checkDayLock(reportDateStr);
     }
     setSalesReports(prev => prev.map(r => r.id === reportId ? { 
@@ -1008,7 +1025,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     const report = salesReports.find(r => r.id === reportId);
     if (!report) return;
 
-    const reportDateStr = report.dateISO ? new Date(report.dateISO).toLocaleDateString('pt-AO') : report.date;
+    const reportDateStr = report.dateISO ? report.dateISO : report.date;
     checkDayLock(reportDateStr);
 
     // 1. Update report status
@@ -1108,7 +1125,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   const lockDayManually = (dateStr: string, performedBy: string) => {
     if (!checkPermission('sales_closure')) return;
 
-    const cleanTarget = cleanDate(dateStr);
+    const cleanTarget = cleanDate(formatDateISO(new Date(dateStr)));
 
     setLockedDays(prev => {
       const isAlreadyLocked = prev.some(d => cleanDate(d) === cleanTarget);

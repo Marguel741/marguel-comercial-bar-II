@@ -16,6 +16,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { PriceHistoryLog, SavedProposal, PurchaseRecord, UserPermissions, UserRole } from '../types';
 import { MGLogo } from '../constants';
 import { hasPermission } from '../src/utils/permissions';
+import { formatDisplayDate, formatDateISO, cleanDate } from '../src/utils';
 
 const Prices: React.FC = () => {
   const { products, categories, updateProduct, purchases, addPurchase, isDayLocked, systemDate, getSystemDate } = useProducts();
@@ -422,7 +423,7 @@ const Prices: React.FC = () => {
 
       const newProposal: SavedProposal = {
         id: Date.now().toString(),
-        name: proposalNameInput || `Proposta ${getSystemDate().toLocaleDateString('pt-AO')}`,
+        name: proposalNameInput || `Proposta ${formatDisplayDate(formatDateISO(getSystemDate()))}`,
         date: getSystemDate().toLocaleString('pt-AO'),
         items: { ...simulationCart },
         total: calculateSimulationTotal(),
@@ -878,7 +879,7 @@ const Prices: React.FC = () => {
               <div className="text-right">
                 <p className="text-xs font-bold uppercase tracking-widest">Total Compras Hoje</p>
                 <p className="text-2xl font-black text-[#0054A6] dark:text-blue-400">
-                  {(purchases.filter(p => p.date === systemDate.toLocaleDateString('pt-AO')).reduce((acc, curr) => acc + curr.total, 0) || 0).toLocaleString('pt-AO')} Kz
+                  {(purchases.filter(p => cleanDate(p.date) === formatDateISO(systemDate)).reduce((acc, curr) => acc + curr.total, 0) || 0).toLocaleString('pt-AO')} Kz
                 </p>
               </div>
             </div>
@@ -997,7 +998,7 @@ const Prices: React.FC = () => {
                     <div className="flex justify-between items-start mb-8">
                       <div>
                         <h3 className="text-xl font-black text-[#003366] dark:text-white">Resumo da Proposta</h3>
-                        <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">{getSystemDate().toLocaleDateString('pt-AO')}</p>
+                        <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">{formatDisplayDate(formatDateISO(getSystemDate()))}</p>
                       </div>
                       <MGLogo className="h-8 w-auto opacity-20" />
                     </div>
@@ -1622,7 +1623,7 @@ const Prices: React.FC = () => {
                     .map((h, idx) => (
                       <div key={idx} className="p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 flex justify-between items-center">
                         <div>
-                          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{new Date(h.date).toLocaleDateString('pt-AO')}</p>
+                          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{formatDisplayDate(h.date)}</p>
                           <p className="text-sm font-black text-[#003366] dark:text-blue-400">{(h.newSellPrice || 0).toLocaleString()} Kz</p>
                         </div>
                         <div className="text-right">
