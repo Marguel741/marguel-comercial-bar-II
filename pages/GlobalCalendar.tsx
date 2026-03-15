@@ -139,9 +139,9 @@ const GlobalCalendar: React.FC = () => {
     year,
     month,
     daysInMonth,
+    salesMap,
     lockedDays,
-    salesReports,
-    systemDate
+    isDayLocked
   ]);
 
   const dayData = useMemo(() => {
@@ -152,7 +152,7 @@ const GlobalCalendar: React.FC = () => {
     const dayPurchases = purchases.filter(p => cleanDate(p.date) === cleanSelected);
     const dayExpenses = expenses.filter(e => cleanDate(e.date) === cleanSelected);
     const dayInventoryLog = inventoryMap.get(cleanSelected);
-    const dayTrans = transactions.filter(t => cleanDate(t.date).includes(cleanSelected.substring(0, 5)));
+    const dayTrans = transactions.filter(t => cleanDate(t.date) === cleanSelected);
     
     const dayPriceChanges = priceHistory?.filter(l => {
         const logDate = formatDateISO(new Date(parseInt(l.id)));
@@ -353,20 +353,25 @@ const GlobalCalendar: React.FC = () => {
                         <button 
                            onClick={(e) => {
                               e.preventDefault();
+                              console.log("CLICK BUTTON");
                               if (!selectedDayDetail) return;
                               
                               const dateToOperate = selectedDayDetail;
+                              const locked = isDayLocked(dateToOperate);
 
-                              if (isDayLocked(selectedDayDetail)) {
+                              console.log("DATE:", dateToOperate);
+                              console.log("LOCKED:", locked);
+
+                              if (locked) {
+                                 console.log("CALLING REOPENDAY");
                                  if (window.confirm(`Deseja DESBLOQUEAR o dia ${dateToOperate}?`)) {
-                                    console.log("LOCKED BEFORE:", isDayLocked(selectedDayDetail));
-                                    reopenDay(dateToOperate, "Desbloqueio via Celular");
+                                    reopenDay(dateToOperate, "teste");
                                     triggerHaptic('success');
-                                    setTimeout(() => {
-                                       console.log("LOCKED AFTER:", isDayLocked(selectedDayDetail));
-                                    }, 500);
+                                    setSelectedDayDetail(null);
+                                    setTimeout(() => setSelectedDayDetail(dateToOperate), 50);
                                  }
                               } else {
+                                 console.log("CALLING LOCKDAY");
                                  if (window.confirm(`Deseja BLOQUEAR o dia ${dateToOperate}?`)) {
                                     lockDayManually(dateToOperate, user?.name || 'Admin');
                                     triggerHaptic('warning');
