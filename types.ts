@@ -70,6 +70,7 @@ export interface UserPermissions {
 
   // 9. CALENDÁRIO MARGUEL
   calendar_view: boolean;
+  calendar_lock: boolean;
   calendar_unlock: boolean;
 
   // 10. SISTEMA & CONFIGURAÇÕES
@@ -330,4 +331,5 @@ export interface SalesReport {
     hora: number;
   };
   processedFinancials?: boolean;
+  stockUpdated?: boolean;
 }

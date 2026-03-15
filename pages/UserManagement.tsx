@@ -406,6 +406,8 @@ const UserManagement: React.FC = () => {
                   ],
                   "9. CALENDÁRIO MARGUEL": [
                     { key: 'calendar_view', label: 'Ver Calendário Marguel' },
+                    { key: 'calendar_lock', label: 'Bloquear Dia' },
+                    { key: 'calendar_unlock', label: 'Desbloquear Dia' },
                   ],
                   "10. SISTEMA & CONFIGURAÇÕES": [
                     { key: 'settings_edit', label: 'Alterar Configurações Gerais' },

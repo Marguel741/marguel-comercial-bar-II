@@ -91,8 +91,8 @@ interface ProductContextType {
   equipments: Equipment[];
   
   setSystemDate: (date: Date) => void;
-  toggleDayLock: (dateStr: string) => void;
-  reopenDay: (dateStr: string) => void;
+  unlockDay: (dateStr: string, reason: string) => void;
+  lockDay: (dateStr: string, performedBy: string) => void;
   isDayLocked: (date: Date | string) => boolean;
   checkDayLock: (date: Date | string) => void;
 
@@ -127,7 +127,6 @@ interface ProductContextType {
   updateSalesReport: (reportId: string, updates: Partial<SalesReport>) => void;
   updateSalesReportJustification: (reportId: string, justificationData: any) => void;
   confirmSalesReport: (reportId: string, confirmedBy: string, isUnilateral?: boolean) => void;
-  lockDayManually: (dateStr: string, performedBy: string) => void;
   addAuditLog: (log: Omit<AuditLog, 'id' | 'timestamp'>) => void;
   addEquipment: (equipment: Omit<Equipment, 'id' | 'prevQty'>) => void;
   updateEquipment: (id: string, updates: Partial<Equipment>) => void;
@@ -454,84 +453,38 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       .includes(cleanTarget);
   }, [lockedDays]);
 
-  const toggleDayLock = (dateStr: string) => {
-    // 1. Normaliza a data alvo para YYYY-MM-DD
-    const targetDateClean = cleanDate(dateStr); 
-
-    setLockedDays(prev => {
-      if (prev.includes(targetDateClean)) return prev;
-
-      // 2. Atualiza os relatórios de venda para o status bloqueado
-      setSalesReports(reports => reports.map(r => {
-        // Normaliza a data do relatório para comparar
-        const rDateClean = cleanDate(r.dateISO || r.date);
-        
-        if (rDateClean === targetDateClean) {
-          return { ...r, status: ClosureStatus.DIA_BLOQUEADO };
-        }
-        return r;
-      }));
-
-      addAuditLog({
-        action: 'BLOQUEIO_TOTAL_DIA',
-        entity: 'Day',
-        entityId: targetDateClean,
-        details: `Dia ${targetDateClean} bloqueado permanentemente.`,
-        performedBy: user?.name || 'Sistema'
-      });
-
-      return [...prev, targetDateClean];
-    });
-  };
-
-  const reopenDay = useCallback((dateStr: string, reason: string = 'Correção') => {
+  const unlockDay = (dateStr: string, reason: string) => {
     if (!hasPermission(user, 'calendar_unlock')) {
-      alert("Acesso negado: Você não tem permissão para desbloquear dias.");
+      alert("Sem permissão para desbloquear dias.");
       return;
     }
 
-    const targetDate = cleanDate(dateStr);
+    const cleanTarget = cleanDate(dateStr);
 
-    // 1️⃣ Remover do estado lockedDays
     setLockedDays(prev => {
-      const newState = prev.filter(d => cleanDate(d) !== targetDate);
-      localStorage.setItem('mg_locked_days', JSON.stringify(newState));
-      return newState;
-    });
+      const updated = prev.filter(d => cleanDate(d) !== cleanTarget);
+      localStorage.setItem('mg_locked_days', JSON.stringify(updated));
 
-    // 2️⃣ Atualizar relatórios corretamente
-    setSalesReports(prevReports => 
-      prevReports.map(report => {
+      addAuditLog({
+        action: 'UNLOCK_DAY',
+        entity: 'Calendar',
+        entityId: cleanTarget,
+        details: `Dia desbloqueado. Motivo: ${reason}`,
+        performedBy: user?.name || 'Sistema'
+      });
 
-        const reportDate =
-          report.dateISO
-            ? cleanDate(report.dateISO)
-            : cleanDate(report.date);
-
-        if (reportDate === targetDate) {
-          return {
-            ...report,
-            status: ClosureStatus.FECHO_CONFIRMADO
-          };
+      // Revert sales report status to FECHO_CONFIRMADO
+      setSalesReports(prevReports => prevReports.map(report => {
+        const reportDate = report.dateISO ? report.dateISO.split('T')[0] : report.date;
+        if (cleanDate(reportDate) === cleanTarget) {
+          return { ...report, status: ClosureStatus.FECHO_CONFIRMADO };
         }
-
         return report;
-      })
-    );
+      }));
 
-    // 3️⃣ Log de auditoria
-    addAuditLog({
-      action: 'DESBLOQUEIO_DIA',
-      entity: 'Day',
-      entityId: targetDate,
-      details: `Dia ${targetDate} desbloqueado. Motivo: ${reason}`,
-      performedBy: user?.name || 'Admin'
+      return updated;
     });
-
-    console.log("Dia desbloqueado:", targetDate);
-
-    alert(`Dia ${targetDate} desbloqueado com sucesso.`);
-  }, [user, addAuditLog]);
+  };
 
   const checkDayLock = useCallback((date: Date | string) => {
     if (isDayLocked(date)) {
@@ -912,14 +865,56 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   };
 
+  const deductStockFromReport = (report: SalesReport) => {
+    if (!report.itemsSummary || report.stockUpdated) return false;
+    
+    const itemsToDeduct = report.itemsSummary.filter(i => i.qty > 0);
+    if (itemsToDeduct.length === 0) return true; // Nothing to deduct, but mark as updated
+
+    setProducts(prevProducts => prevProducts.map(p => {
+      const soldItem = itemsToDeduct.find(item => item.name === p.name);
+      if (soldItem) {
+        return { ...p, stock: Math.max(0, p.stock - soldItem.qty) };
+      }
+      return p;
+    }));
+
+    const newLogs: StockOperationLog[] = itemsToDeduct.map(item => {
+        const product = products.find(p => p.name === item.name);
+        const qtyBefore = product?.stock || 0;
+        const qtyAdded = -item.qty;
+        const qtyAfter = Math.max(0, qtyBefore + qtyAdded);
+        
+        return {
+            id: Math.random().toString(36).substr(2, 9),
+            productId: product?.id || 'unknown',
+            productName: item.name,
+            type: 'SALE',
+            qtyBefore,
+            qtyAdded,
+            qtyAfter,
+            timestamp: Date.now(),
+            performedBy: report.closedBy,
+            referenceId: report.id
+        };
+    });
+    setStockOperationHistory(prev => [...newLogs, ...prev]);
+    return true;
+  };
+
   const addSalesReport = (report: SalesReport) => {
     if (!checkPermission('sales_closure')) return;
     if (!checkPermission('sales_execute')) return;
     checkDayLock(report.date);
+
+    // Deduct stock automatically
+    const stockUpdated = deductStockFromReport(report);
+
     const finalReport = { 
       ...report, 
       id: report.id || crypto.randomUUID(),
-      synced: false 
+      synced: false,
+      stockUpdated
     };
 
     setSalesReports(prev => {
@@ -1087,8 +1082,8 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       });
     }
 
-    // 3. Update Stock (Now it's global)
-    if (updatedReport.itemsSummary) {
+    // 3. Update Stock (Only if not already updated)
+    if (updatedReport.itemsSummary && !updatedReport.stockUpdated) {
       setProducts(prevProducts => prevProducts.map(p => {
         const soldItem = updatedReport.itemsSummary.find(item => item.name === p.name);
         if (soldItem && soldItem.qty > 0) {
@@ -1096,6 +1091,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
         }
         return p;
       }));
+      updatedReport.stockUpdated = true;
     }
 
     // 4. Add Transaction (Removed legacy totalLifted deposit, handled by integration logic)
@@ -1122,30 +1118,33 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     });
   };
 
-  const lockDayManually = (dateStr: string, performedBy: string) => {
-    if (!checkPermission('sales_closure')) return;
-
-    const cleanTarget = cleanDate(formatDateISO(new Date(dateStr)));
+  const lockDay = (dateStr: string, performedBy: string) => {
+    const cleanTarget = cleanDate(dateStr);
 
     setLockedDays(prev => {
-      const isAlreadyLocked = prev.some(d => cleanDate(d) === cleanTarget);
-      if (isAlreadyLocked) return prev;
-      
-      const newState = [...prev, cleanTarget];
-      localStorage.setItem('mg_locked_days', JSON.stringify(newState));
-      return newState;
-    });
+      if (prev.includes(cleanTarget)) return prev;
 
-    setSalesReports(prev => prev.map(r => 
-      (cleanDate(r.dateISO || r.date) === cleanTarget) ? { ...r, status: ClosureStatus.DIA_BLOQUEADO } : r
-    ));
+      const updated = [...prev, cleanTarget];
+      localStorage.setItem('mg_locked_days', JSON.stringify(updated));
 
-    addAuditLog({
-      action: 'BLOQUEIO_MANUAL_DIA',
-      entity: 'System',
-      entityId: cleanTarget,
-      details: `Dia ${cleanTarget} bloqueado manualmente por ${performedBy}`,
-      performedBy
+      addAuditLog({
+        action: 'LOCK_DAY',
+        entity: 'Calendar',
+        entityId: cleanTarget,
+        details: `Dia bloqueado`,
+        performedBy
+      });
+
+      // Also update sales report status if it exists
+      setSalesReports(prevReports => prevReports.map(report => {
+        const reportDate = report.dateISO ? report.dateISO.split('T')[0] : report.date;
+        if (cleanDate(reportDate) === cleanTarget) {
+          return { ...report, status: ClosureStatus.BLOQUEADO };
+        }
+        return report;
+      }));
+
+      return updated;
     });
   };
 
@@ -1250,7 +1249,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   const value = useMemo(() => ({ 
     products, categories, purchases, currentBalance, savingsBalance, cashBalance, tpaBalance, cards, transactions, salesReports, 
     expenses, expenseCategories, inventoryHistory, priceHistory, lockedDays, systemDate,
-    getSystemDate, setSystemDate, resetTestData, toggleDayLock, reopenDay, isDayLocked, checkDayLock,
+    getSystemDate, setSystemDate, resetTestData, unlockDay, lockDay, isDayLocked, checkDayLock,
     addExpense, deleteExpense, updateExpense,
     addExpenseCategory, updateExpenseCategory, deleteExpenseCategory,
     addInventoryLog, addProduct, updateProduct, deleteProduct, addCategory, editCategory, removeCategory,
@@ -1260,7 +1259,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     updateSalesReport, 
     updateSalesReportJustification, 
     confirmSalesReport, 
-    lockDayManually,
     addAuditLog, 
     stockOperationHistory, 
     auditLogs,
@@ -1270,7 +1268,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   }), [
     products, categories, purchases, currentBalance, savingsBalance, cashBalance, tpaBalance, cards, transactions, salesReports, 
     expenses, expenseCategories, inventoryHistory, priceHistory, lockedDays, systemDate,
-    getSystemDate, setSystemDate, resetTestData, toggleDayLock, reopenDay, isDayLocked, checkDayLock,
+    getSystemDate, setSystemDate, resetTestData, unlockDay, lockDay, isDayLocked, checkDayLock,
     addExpense, deleteExpense, updateExpense,
     addExpenseCategory, updateExpenseCategory, deleteExpenseCategory,
     addInventoryLog, addProduct, updateProduct, deleteProduct, addCategory, editCategory, removeCategory,
@@ -1280,7 +1278,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     updateSalesReport, 
     updateSalesReportJustification, 
     confirmSalesReport, 
-    lockDayManually,
     addAuditLog, 
     stockOperationHistory, 
     auditLogs,

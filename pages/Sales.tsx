@@ -82,7 +82,7 @@ const Sales: React.FC = () => {
     updateSalesReportJustification,
     confirmSalesReport, 
     isDayLocked, 
-    reopenDay,
+    unlockDay,
     getSystemDate
   } = useProducts();
   const { sidebarMode, triggerHaptic } = useLayout();
@@ -117,6 +117,12 @@ const Sales: React.FC = () => {
   const [initialStock, setInitialStock] = useState<Record<string, string>>({});
   const [endingStock, setEndingStock] = useState<Record<string, string>>({});
   
+  const purchasedStock = useMemo(() => {
+    // Convert reportDate (YYYY-MM-DD) to pt-AO format for matching purchases
+    const d = new Date(reportDate + 'T12:00:00');
+    return getPurchasesByDate(formatDateISO(d));
+  }, [getPurchasesByDate, products, reportDate]);
+
   // Effect to handle Initial Stock Snapshot and Report Loading
   useEffect(() => {
     if (hasManuallyOpened) return;
@@ -177,14 +183,27 @@ const Sales: React.FC = () => {
     setBreakdowns({});
     setFinancials({ cash: '', transfer: '', ticket: '', lunch: '', discrepancyJustification: '' });
 
+    const isToday = reportDate === todayISO;
     const snapshotKey = `mg_initial_stock_v2_${reportDate}`;
     const savedSnapshot = localStorage.getItem(snapshotKey);
     
-    if (savedSnapshot) {
+    if (isToday) {
+      // For today, if not closed, we derive initial stock from current inventory
+      // This ensures that any adjustments in Inventory page are reflected here
+      const dynamicInitial: Record<string, string> = {};
+      products.forEach(p => {
+        const buy = purchasedStock[p.id] || 0;
+        // Initial = Current - Purchases Today
+        // This works because confirmed sales haven't deducted from products.stock yet
+        dynamicInitial[p.id] = Math.max(0, p.stock - buy).toString();
+      });
+      setInitialStock(dynamicInitial);
+      // We also update localStorage to keep it consistent, but we don't rely on it for "today"
+      localStorage.setItem(snapshotKey, JSON.stringify(dynamicInitial));
+    } else if (savedSnapshot) {
       setInitialStock(JSON.parse(savedSnapshot));
     } else {
-      // Create new snapshot from current inventory
-      // This happens the first time the page is opened for a specific date
+      // Fallback for past days without snapshot
       const newSnapshot: Record<string, string> = {};
       products.forEach(p => {
         newSnapshot[p.id] = p.stock.toString();
@@ -192,13 +211,7 @@ const Sales: React.FC = () => {
       setInitialStock(newSnapshot);
       localStorage.setItem(snapshotKey, JSON.stringify(newSnapshot));
     }
-  }, [reportDate, salesReports, products]);
-
-  const purchasedStock = useMemo(() => {
-    // Convert reportDate (YYYY-MM-DD) to pt-AO format for matching purchases
-    const d = new Date(reportDate + 'T12:00:00');
-    return getPurchasesByDate(formatDateISO(d));
-  }, [getPurchasesByDate, products, reportDate]);
+  }, [reportDate, salesReports, products, todayISO, purchasedStock]);
 
   const [quickPurchaseModal, setQuickPurchaseModal] = useState<{isOpen: boolean, productId: string | null}>({isOpen: false, productId: null});
   const [quickPurchaseQty, setQuickPurchaseQty] = useState('');
@@ -560,7 +573,7 @@ const Sales: React.FC = () => {
         return;
     }
     if (confirm("Deseja realmente reabrir este dia operacional? Isso permitirá novas alterações.")) {
-        reopenDay(reportDate);
+        unlockDay(reportDate, "Reabertura via Vendas");
         showToast("Dia reaberto com sucesso!");
         triggerHaptic('success');
     }
@@ -991,6 +1004,7 @@ const Sales: React.FC = () => {
                 <th className="p-3 md:p-4 font-bold min-w-[150px]">Designação</th>
                 <th className="p-3 md:p-4 font-bold text-center w-24 bg-blue-50/50 dark:bg-blue-900/20">Inicial</th>
                 <th className="p-3 md:p-4 font-bold text-center w-28 bg-green-50/50 dark:bg-green-900/20">Comprou</th>
+                <th className="p-3 md:p-4 font-bold text-center w-24 bg-purple-50/50 dark:bg-purple-900/20">Stock Sist.</th>
                 <th className="p-3 md:p-4 font-bold text-center w-24 bg-red-50/50 dark:bg-red-900/20">Final (Físico)</th>
                 <th className="p-3 md:p-4 font-bold text-center w-24 bg-slate-200 dark:bg-slate-600">Vendido</th>
                 <th className="p-3 md:p-4 font-bold text-right min-w-[100px]">Total (Kz)</th>
@@ -1019,6 +1033,9 @@ const Sales: React.FC = () => {
                   </td>
                   <td className="p-2 bg-green-50/30 dark:bg-green-900/10">
                        <input type="number" value={purchasedStock[item.id] || 0} readOnly className="w-full text-center bg-white/50 dark:bg-slate-700/50 border border-green-200 dark:border-green-800 rounded-lg py-2 text-green-700 dark:text-green-400 font-bold cursor-default" />
+                  </td>
+                  <td className="p-2 bg-purple-50/30 dark:bg-purple-900/10">
+                       <div className="w-full text-center py-2 text-purple-700 dark:text-purple-400 font-bold">{item.stock}</div>
                   </td>
                   <td className="p-2 bg-red-50/30 dark:bg-red-900/10">
                     <input type="number" disabled={isReadOnly} placeholder="0" value={endingStock[item.id] || ''} onChange={(e) => handleStockChange(setEndingStock, item.id, e.target.value)} className="w-full text-center border rounded-lg py-2 outline-none font-medium dark:text-white bg-white dark:bg-slate-700 focus:ring-2 focus:ring-red-500" />

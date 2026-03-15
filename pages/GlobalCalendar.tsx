@@ -23,9 +23,8 @@ const GlobalCalendar: React.FC = () => {
     inventoryHistory, 
     transactions,
     isDayLocked,
-    toggleDayLock,
-    lockDayManually,
-    reopenDay,
+    lockDay,
+    unlockDay,
     priceHistory,
     addAuditLog,
     systemDate,
@@ -86,7 +85,9 @@ const GlobalCalendar: React.FC = () => {
   const firstDayOfMonth = new Date(year, month, 1).getDay();
   const monthName = viewDate.toLocaleDateString('pt-AO', { month: 'long', year: 'numeric' });
 
-  const canManageLocks = hasPermission(user, 'calendar_unlock');
+  const canLock = hasPermission(user, 'calendar_lock');
+  const canUnlock = hasPermission(user, 'calendar_unlock');
+  const canManageLocks = canLock || canUnlock;
 
   const handleNav = (direction: number) => {
     triggerHaptic('selection');
@@ -117,7 +118,7 @@ const GlobalCalendar: React.FC = () => {
       }
     }
     return { total, count };
-  }, [viewDate, salesMap, daysInMonth]);
+  }, [viewDate, salesMap, daysInMonth, lockedDays]);
 
   const calendarDays = useMemo(() => {
     return Array.from({ length: daysInMonth }).map((_, i) => {
@@ -353,29 +354,23 @@ const GlobalCalendar: React.FC = () => {
                         <button 
                            onClick={(e) => {
                               e.preventDefault();
-                              console.log("CLICK BUTTON");
                               if (!selectedDayDetail) return;
                               
                               const dateToOperate = selectedDayDetail;
                               const locked = isDayLocked(dateToOperate);
 
-                              console.log("DATE:", dateToOperate);
-                              console.log("LOCKED:", locked);
-
                               if (locked) {
-                                 console.log("CALLING REOPENDAY");
-                                 if (window.confirm(`Deseja DESBLOQUEAR o dia ${dateToOperate}?`)) {
-                                    reopenDay(dateToOperate, "teste");
-                                    triggerHaptic('success');
-                                    setSelectedDayDetail(null);
-                                    setTimeout(() => setSelectedDayDetail(dateToOperate), 50);
+                                 if (!canUnlock) {
+                                    alert("Sem permissão para desbloquear dias.");
+                                    return;
                                  }
+                                 unlockDay(dateToOperate, "Desbloqueio manual");
                               } else {
-                                 console.log("CALLING LOCKDAY");
-                                 if (window.confirm(`Deseja BLOQUEAR o dia ${dateToOperate}?`)) {
-                                    lockDayManually(dateToOperate, user?.name || 'Admin');
-                                    triggerHaptic('warning');
+                                 if (!canLock) {
+                                    alert("Sem permissão para bloquear dias.");
+                                    return;
                                  }
+                                 lockDay(dateToOperate, user?.name || "Admin");
                               }
                            }}
                            className={`h-12 px-6 rounded-2xl font-black text-sm transition-all flex items-center gap-2 ${

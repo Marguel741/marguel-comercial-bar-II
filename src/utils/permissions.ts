@@ -13,6 +13,7 @@ export const DEFAULT_PERMISSIONS: Record<UserRole, UserPermissions> = {
     expenses_view: true, expenses_execute: true, expenses_category_manage: true, expenses_limit: 10000000,
     finance_view: true, finance_edit: true, finance_card_create: true, finance_card_delete: true,
     calendar_view: true,
+    calendar_lock: true,
     calendar_unlock: true,
     settings_edit: true, sync_manage: true, backup_manage: true, restore_system: true
   },
@@ -27,6 +28,7 @@ export const DEFAULT_PERMISSIONS: Record<UserRole, UserPermissions> = {
     expenses_view: true, expenses_execute: true, expenses_category_manage: true, expenses_limit: 5000000,
     finance_view: true, finance_edit: true, finance_card_create: true, finance_card_delete: true,
     calendar_view: true,
+    calendar_lock: true,
     calendar_unlock: true,
     settings_edit: true, sync_manage: true, backup_manage: true, restore_system: true
   },
@@ -41,6 +43,7 @@ export const DEFAULT_PERMISSIONS: Record<UserRole, UserPermissions> = {
     expenses_view: true, expenses_execute: true, expenses_category_manage: false, expenses_limit: 500000,
     finance_view: true, finance_edit: false, finance_card_create: false, finance_card_delete: false,
     calendar_view: true,
+    calendar_lock: true,
     calendar_unlock: true,
     settings_edit: false, sync_manage: false, backup_manage: false, restore_system: false
   },
@@ -55,6 +58,7 @@ export const DEFAULT_PERMISSIONS: Record<UserRole, UserPermissions> = {
     expenses_view: true, expenses_execute: true, expenses_category_manage: false, expenses_limit: 50000,
     finance_view: false, finance_edit: false, finance_card_create: false, finance_card_delete: false,
     calendar_view: true,
+    calendar_lock: false,
     calendar_unlock: false,
     settings_edit: false, sync_manage: false, backup_manage: false, restore_system: false
   },
@@ -69,6 +73,7 @@ export const DEFAULT_PERMISSIONS: Record<UserRole, UserPermissions> = {
     expenses_view: false, expenses_execute: false, expenses_category_manage: false, expenses_limit: 0,
     finance_view: false, finance_edit: false, finance_card_create: false, finance_card_delete: false,
     calendar_view: true,
+    calendar_lock: false,
     calendar_unlock: false,
     settings_edit: false, sync_manage: false, backup_manage: false, restore_system: false
   },
@@ -83,6 +88,7 @@ export const DEFAULT_PERMISSIONS: Record<UserRole, UserPermissions> = {
     expenses_view: true, expenses_execute: false, expenses_category_manage: false, expenses_limit: 0,
     finance_view: true, finance_edit: false, finance_card_create: false, finance_card_delete: false,
     calendar_view: true,
+    calendar_lock: false,
     calendar_unlock: false,
     settings_edit: false, sync_manage: false, backup_manage: false, restore_system: false
   }
@@ -105,6 +111,7 @@ export const hasPermission = (user: { permissions?: UserPermissions, role: UserR
                      permission.includes('_manage') ||
                      permission.includes('_unlock') || // ADICIONADO
                      permission.includes('_reopen') || // ADICIONADO
+                     permission.includes('_lock') ||   // ADICIONADO
                      permission.includes('_simulate');
 
   // 3. Se o modo "Apenas Leitura" estiver ativo, bloqueia a mutação
