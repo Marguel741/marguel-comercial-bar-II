@@ -4,12 +4,14 @@ import { Search, Filter, Shield, User as UserIcon, CheckCircle, XCircle, AlertTr
 import SoftCard from '../components/SoftCard';
 import { User, UserRole, UserPermissions } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { useAudit } from '../contexts/AuditContext';
 import { useLayout } from '../contexts/LayoutContext';
 import { DEFAULT_PERMISSIONS } from '../src/utils/permissions';
 import { getMockUsers, saveMockUsers } from '../src/services/mockUsers';
 
 const UserManagement: React.FC = () => {
   const { user: currentUser, refreshUser } = useAuth();
+  const { addLog } = useAudit();
   const { sidebarMode, triggerHaptic } = useLayout();
   
   // Mock Users Data
@@ -38,23 +40,51 @@ const UserManagement: React.FC = () => {
 
   // Actions
   const handleApprove = (id: string) => {
+    const targetUser = users.find(u => u.id === id);
     const updated = users.map(u => u.id === id ? { ...u, isApproved: true } : u);
     setUsers(updated);
     saveMockUsers(updated);
+    addLog({
+      action: 'APROVAR_UTILIZADOR',
+      module: 'UTILIZADORES',
+      description: `Utilizador ${targetUser?.name} aprovado`,
+      entityId: id,
+      previousValue: 'PENDING',
+      newValue: 'APPROVED'
+    }, currentUser);
     showToast('Usuário aprovado com sucesso!');
   };
 
   const handleBanToggle = (id: string) => {
+    const targetUser = users.find(u => u.id === id);
     const updated = users.map(u => u.id === id ? { ...u, isBanned: !u.isBanned } : u);
     setUsers(updated);
     saveMockUsers(updated);
-    showToast(updated.find(u => u.id === id)?.isBanned ? 'Usuário banido!' : 'Banimento removido!');
+    const isBanned = updated.find(u => u.id === id)?.isBanned;
+    addLog({
+      action: isBanned ? 'BANIR_UTILIZADOR' : 'DESBANIR_UTILIZADOR',
+      module: 'UTILIZADORES',
+      description: `Utilizador ${targetUser?.name} ${isBanned ? 'banido' : 'desbanido'}`,
+      entityId: id,
+      previousValue: targetUser?.isBanned ? 'BANNED' : 'ACTIVE',
+      newValue: isBanned ? 'BANNED' : 'ACTIVE'
+    }, currentUser);
+    showToast(isBanned ? 'Usuário banido!' : 'Banimento removido!');
   };
 
   const handleRoleChange = (id: string, newRole: UserRole) => {
+    const targetUser = users.find(u => u.id === id);
     const updated = users.map(u => u.id === id ? { ...u, role: newRole, permissions: DEFAULT_PERMISSIONS[newRole] } : u);
     setUsers(updated);
     saveMockUsers(updated);
+    addLog({
+      action: 'ALTERAR_CARGO',
+      module: 'UTILIZADORES',
+      description: `Cargo de ${targetUser?.name} alterado de ${targetUser?.role} para ${newRole}`,
+      entityId: id,
+      previousValue: targetUser?.role,
+      newValue: newRole
+    }, currentUser);
     showToast(`Cargo de ${updated.find(u => u.id === id)?.name} alterado!`);
   };
 
@@ -101,6 +131,15 @@ const UserManagement: React.FC = () => {
     saveMockUsers(updated);
     window.dispatchEvent(new CustomEvent('mg_users_updated'));
     
+    addLog({
+      action: 'ALTERAR_PERMISSÕES',
+      module: 'UTILIZADORES',
+      description: `Permissões de ${editingUser.name} alteradas`,
+      entityId: editingUser.id,
+      previousValue: editingUser.permissions,
+      newValue: tempPermissions
+    }, currentUser);
+
     showToast(`Permissões de ${editingUser.name} atualizadas!`);
     closePermissionMatrix();
   };

@@ -15,7 +15,8 @@ export const DEFAULT_PERMISSIONS: Record<UserRole, UserPermissions> = {
     calendar_view: true,
     calendar_lock: true,
     calendar_unlock: true,
-    settings_edit: true, sync_manage: true, backup_manage: true, restore_system: true
+    settings_edit: true, sync_manage: true, backup_manage: true, restore_system: true,
+    audit_view: true, audit_control: true
   },
   [UserRole.ADMIN_GERAL]: {
     admin_users_view: true, admin_users_create: true, admin_users_edit: true, admin_users_delete: true, admin_users_permissions: true,
@@ -30,7 +31,8 @@ export const DEFAULT_PERMISSIONS: Record<UserRole, UserPermissions> = {
     calendar_view: true,
     calendar_lock: true,
     calendar_unlock: true,
-    settings_edit: true, sync_manage: true, backup_manage: true, restore_system: true
+    settings_edit: true, sync_manage: true, backup_manage: true, restore_system: true,
+    audit_view: true, audit_control: true
   },
   [UserRole.GERENTE]: {
     admin_users_view: true, admin_users_create: false, admin_users_edit: false, admin_users_delete: false, admin_users_permissions: false,
@@ -45,7 +47,8 @@ export const DEFAULT_PERMISSIONS: Record<UserRole, UserPermissions> = {
     calendar_view: true,
     calendar_lock: true,
     calendar_unlock: true,
-    settings_edit: false, sync_manage: false, backup_manage: false, restore_system: false
+    settings_edit: false, sync_manage: false, backup_manage: false, restore_system: false,
+    audit_view: true, audit_control: true
   },
   [UserRole.COLABORADOR_EFETIVO]: {
     admin_users_view: false, admin_users_create: false, admin_users_edit: false, admin_users_delete: false, admin_users_permissions: false,
@@ -60,7 +63,8 @@ export const DEFAULT_PERMISSIONS: Record<UserRole, UserPermissions> = {
     calendar_view: true,
     calendar_lock: false,
     calendar_unlock: false,
-    settings_edit: false, sync_manage: false, backup_manage: false, restore_system: false
+    settings_edit: false, sync_manage: false, backup_manage: false, restore_system: false,
+    audit_view: false, audit_control: false
   },
   [UserRole.FUNCIONARIO]: {
     admin_users_view: false, admin_users_create: false, admin_users_edit: false, admin_users_delete: false, admin_users_permissions: false,
@@ -75,7 +79,8 @@ export const DEFAULT_PERMISSIONS: Record<UserRole, UserPermissions> = {
     calendar_view: true,
     calendar_lock: false,
     calendar_unlock: false,
-    settings_edit: false, sync_manage: false, backup_manage: false, restore_system: false
+    settings_edit: false, sync_manage: false, backup_manage: false, restore_system: false,
+    audit_view: false, audit_control: false
   },
   [UserRole.COLABORADOR_REMOTO]: {
     admin_users_view: true, admin_users_create: false, admin_users_edit: false, admin_users_delete: false, admin_users_permissions: false,
@@ -90,7 +95,8 @@ export const DEFAULT_PERMISSIONS: Record<UserRole, UserPermissions> = {
     calendar_view: true,
     calendar_lock: false,
     calendar_unlock: false,
-    settings_edit: false, sync_manage: false, backup_manage: false, restore_system: false
+    settings_edit: false, sync_manage: false, backup_manage: false, restore_system: false,
+    audit_view: true, audit_control: false
   }
 };
 

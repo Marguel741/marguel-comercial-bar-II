@@ -1,5 +1,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { useAudit } from './AuditContext';
+import { useAuth } from './AuthContext';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 
@@ -12,6 +14,8 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { addLog } = useAudit();
+  const { user } = useAuth();
   const [theme, setThemeState] = useState<ThemeMode>(() => {
     return (localStorage.getItem('mg_theme') as ThemeMode) || 'system';
   });
@@ -48,7 +52,16 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [theme]);
 
   const setTheme = (newTheme: ThemeMode) => {
+    const oldTheme = theme;
     setThemeState(newTheme);
+    addLog({
+      action: 'ALTERAR_TEMA',
+      module: 'SISTEMA',
+      description: `Tema alterado de ${oldTheme} para ${newTheme}`,
+      previousValue: oldTheme,
+      newValue: newTheme,
+      entityId: null
+    }, user);
   };
 
   return (

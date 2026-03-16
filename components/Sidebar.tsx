@@ -19,7 +19,8 @@ import {
   ChevronRight,
   MonitorPlay,
   CalendarRange,
-  FlaskConical
+  FlaskConical,
+  History
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { UserRole } from '../types';
@@ -47,6 +48,7 @@ const Sidebar: React.FC = () => {
     { to: '/prices', icon: DollarSign, label: 'Preços & Compras', permission: 'prices_view' as const },
     { to: '/expenses', icon: Wallet, label: 'Despesas', permission: 'expenses_view' as const },
     { to: '/account', icon: BarChart3, label: 'Estado da Conta', permission: 'finance_view' as const },
+    { to: '/audit', icon: History, label: 'Auditoria Global', permission: 'audit_view' as const },
   ];
 
   const handleAppRefresh = () => {
@@ -175,10 +177,24 @@ const Sidebar: React.FC = () => {
                   </div>
                 </NavLink>
              )}
-          </div>
 
-          <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0 space-y-1">
-             {canViewUsers && (
+             <NavLink
+               to="/settings"
+               onClick={handleLinkClick}
+               className={({ isActive }) => `
+                 flex items-center gap-4 px-4 py-3.5 rounded-xl transition-all font-bold text-sm
+                 ${isActive 
+                   ? 'bg-slate-100 dark:bg-slate-800 text-[#003366] dark:text-white' 
+                   : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}
+               `}
+             >
+               <Settings size={20} />
+               <span className="flex-1">Definições</span>
+             </NavLink>
+           </div>
+
+           <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0 space-y-1">
+              {canViewUsers && (
                 <NavLink
                   to="/users"
                   onClick={handleLinkClick}
@@ -243,15 +259,33 @@ const Sidebar: React.FC = () => {
             </NavLink>
           ))}
           <div className="w-8 h-px bg-slate-200 dark:bg-slate-700 my-2"></div>
-          {canViewUsers && (
-             <NavLink to="/users" onClick={handleLinkClick} className={({ isActive }) => `flex items-center justify-center w-12 h-12 rounded-2xl transition-all relative group ${isActive ? 'bg-slate-100 dark:bg-slate-700 text-[#003366] dark:text-white' : 'text-slate-400 hover:text-[#003366] dark:hover:text-white'}`}>
-               <Users size={20} />
-             </NavLink>
-          )}
+          
           {isDev && (
              <NavLink to="/test-cycle" onClick={handleLinkClick} className={({ isActive }) => `flex items-center justify-center w-12 h-12 rounded-2xl transition-all relative group flex-col gap-0.5 ${isActive ? 'bg-amber-100 text-amber-700' : 'text-amber-500 hover:bg-amber-50'}`}>
                <FlaskConical size={18} />
                <span className="text-[8px] font-mono font-bold leading-none">{systemDate.getDate()}</span>
+             </NavLink>
+          )}
+
+          <NavLink 
+            to="/settings" 
+            onClick={handleLinkClick} 
+            className={({ isActive }) => `
+              flex items-center justify-center w-12 h-12 rounded-2xl transition-all relative group 
+              ${isActive ? 'bg-slate-100 dark:bg-slate-700 text-[#003366] dark:text-white' : 'text-slate-400 hover:text-[#003366] dark:hover:text-white'}
+            `}
+            title="Definições"
+          >
+            <Settings size={20} />
+            <div className="absolute left-14 bg-[#003366] text-white text-xs font-bold px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 invisible group-hover:visible transition-all duration-200 whitespace-nowrap z-[70] shadow-xl pointer-events-none">
+              Definições
+              <div className="absolute top-1/2 -left-1 -mt-1 w-2 h-2 bg-[#003366] rotate-45"></div>
+            </div>
+          </NavLink>
+
+          {canViewUsers && (
+             <NavLink to="/users" onClick={handleLinkClick} className={({ isActive }) => `flex items-center justify-center w-12 h-12 rounded-2xl transition-all relative group ${isActive ? 'bg-slate-100 dark:bg-slate-700 text-[#003366] dark:text-white' : 'text-slate-400 hover:text-[#003366] dark:hover:text-white'}`}>
+               <Users size={20} />
              </NavLink>
           )}
         </nav>

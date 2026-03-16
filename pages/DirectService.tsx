@@ -321,6 +321,7 @@ const DirectService: React.FC = () => {
         items: Object.entries(cart).map(([id, qty]) => {
             const p = productMap.get(id);
             return {
+                productId: id,
                 name: p?.name || 'Item Desconhecido',
                 qty: Number(qty),
                 price: p?.sellPrice || 0 // Original unit price (No discount applied here)

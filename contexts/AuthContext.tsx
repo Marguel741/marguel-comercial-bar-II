@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { User, UserRole } from '../types';
 import { getMockUsers } from '../src/services/mockUsers';
+import { useAudit } from './AuditContext';
 
 interface AuthContextType {
   user: User | null;
@@ -10,6 +11,7 @@ interface AuthContextType {
   isLoading: boolean;
   switchUser: (role: UserRole) => void;
   refreshUser: () => void;
+  updateUser: (updates: Partial<User>) => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -21,6 +23,7 @@ export const useAuth = () => {
 };
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const { addLog } = useAudit();
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -57,6 +60,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     
     if (foundUser && foundUser.isApproved) {
         setUser(foundUser);
+        addLog({
+          action: 'LOGIN',
+          module: 'UTILIZADORES',
+          description: `Utilizador ${foundUser.name} (${foundUser.role}) iniciou sessão`,
+          entityId: foundUser.id,
+          previousValue: null,
+          newValue: 'LOGGED_IN'
+        }, foundUser);
         setIsLoading(false);
         return true;
     }
@@ -66,16 +77,64 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, []);
 
   const logout = useCallback(() => {
+    if (user) {
+      addLog({
+        action: 'LOGOUT',
+        module: 'UTILIZADORES',
+        description: `Utilizador ${user.name} terminou sessão`,
+        entityId: user.id,
+        previousValue: 'LOGGED_IN',
+        newValue: 'LOGGED_OUT'
+      }, user);
+    }
     setUser(null);
-  }, []);
+  }, [user, addLog]);
 
   const switchUser = useCallback((role: UserRole) => {
     const users = getMockUsers();
     const targetUser = users.find(u => u.role === role);
     if (targetUser) {
+        const oldUser = user;
         setUser(targetUser);
+        addLog({
+          action: 'SWITCH_USER',
+          module: 'SISTEMA',
+          description: `Sessão alterada de ${oldUser?.name || 'Ninguém'} para ${targetUser.name}`,
+          entityId: targetUser.id,
+          previousValue: oldUser?.name,
+          newValue: targetUser.name
+        }, targetUser);
     }
-  }, []);
+  }, [user, addLog]);
+
+  const updateUser = useCallback(async (updates: Partial<User>) => {
+    if (!user) return false;
+    
+    const users = getMockUsers();
+    const updatedUsers = users.map(u => {
+      if (u.id === user.id) {
+        return { ...u, ...updates };
+      }
+      return u;
+    });
+    
+    const { saveMockUsers } = await import('../src/services/mockUsers');
+    saveMockUsers(updatedUsers);
+    
+    // Log PIN change specifically if it happened
+    if (updates.pin) {
+      addLog({
+        action: 'USER_PIN_CHANGED',
+        module: 'SEGURANÇA',
+        description: `PIN alterado pelo utilizador ${user.name}`,
+        entityId: user.id,
+        previousValue: '****',
+        newValue: '****'
+      }, user);
+    }
+
+    return true;
+  }, [user, addLog]);
 
   const value = React.useMemo(() => ({ 
     user, 
@@ -83,8 +142,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     logout, 
     isLoading, 
     switchUser, 
-    refreshUser 
-  }), [user, isLoading, login, logout, switchUser, refreshUser]);
+    refreshUser,
+    updateUser
+  }), [user, isLoading, login, logout, switchUser, refreshUser, updateUser]);
 
   return (
     <AuthContext.Provider value={value}>

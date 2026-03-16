@@ -78,11 +78,16 @@ export interface UserPermissions {
   sync_manage: boolean;
   backup_manage: boolean;
   restore_system: boolean;
+
+  // 11. AUDITORIA GLOBAL
+  audit_view: boolean;
+  audit_control: boolean;
 }
 
 export interface User {
   id: string;
   name: string;
+  username?: string;
   email: string;
   role: UserRole;
   isApproved: boolean;
@@ -201,16 +206,6 @@ export interface Card {
   color: string;
   type: 'Corrente' | 'Poupança' | 'Outro';
   validity: string;
-}
-
-export interface AuditLog {
-  id: string;
-  action: string;
-  entity: string;
-  entityId: string;
-  details: string;
-  performedBy: string;
-  timestamp: number;
 }
 
 export interface StockOperationLog {
@@ -332,4 +327,22 @@ export interface SalesReport {
   };
   processedFinancials?: boolean;
   stockUpdated?: boolean;
+}
+
+export interface AuditLog {
+  id: string;
+  action: string;
+  module: string;
+  entityId: string | null;
+  description: string;
+  previousValue: any;
+  newValue: any;
+  performedBy: string;
+  userRole: string;
+  timestamp: number; // Unix timestamp
+  date: string; // YYYY-MM-DD
+  time: string; // HH:MM:SS
+  ipAddress?: string;
+  source: "local" | "backend";
+  synced: boolean;
 }

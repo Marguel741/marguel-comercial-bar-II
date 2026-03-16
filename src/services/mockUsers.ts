@@ -4,27 +4,27 @@ import { DEFAULT_PERMISSIONS } from '../utils/permissions';
 
 export const MOCK_USERS_DB: User[] = [
   { 
-    id: '1', name: 'Admin Geral', email: 'admin@marguel.com', role: UserRole.ADMIN_GERAL, isApproved: true, 
+    id: '1', name: 'Admin Geral', username: 'admin', email: 'admin@marguel.com', role: UserRole.ADMIN_GERAL, isApproved: true, 
     permissions: DEFAULT_PERMISSIONS[UserRole.ADMIN_GERAL]
   },
   { 
-    id: '2', name: 'Proprietário', email: 'dono@marguel.com', role: UserRole.PROPRIETARIO, isApproved: true, 
+    id: '2', name: 'Proprietário', username: 'proprietario', email: 'dono@marguel.com', role: UserRole.PROPRIETARIO, isApproved: true, 
     permissions: DEFAULT_PERMISSIONS[UserRole.PROPRIETARIO]
   },
   { 
-    id: '3', name: 'Gerente Loja', email: 'gerente@marguel.com', role: UserRole.GERENTE, isApproved: true, 
+    id: '3', name: 'Gerente Loja', username: 'gerente', email: 'gerente@marguel.com', role: UserRole.GERENTE, isApproved: true, 
     permissions: DEFAULT_PERMISSIONS[UserRole.GERENTE]
   },
   { 
-    id: '4', name: 'Colab. Efetivo', email: 'efetivo@marguel.com', role: UserRole.COLABORADOR_EFETIVO, isApproved: true, 
+    id: '4', name: 'Colab. Efetivo', username: 'efetivo', email: 'efetivo@marguel.com', role: UserRole.COLABORADOR_EFETIVO, isApproved: true, 
     permissions: DEFAULT_PERMISSIONS[UserRole.COLABORADOR_EFETIVO]
   },
   { 
-    id: '5', name: 'Funcionário', email: 'func@marguel.com', role: UserRole.FUNCIONARIO, isApproved: true, 
+    id: '5', name: 'Funcionário', username: 'funcionario', email: 'func@marguel.com', role: UserRole.FUNCIONARIO, isApproved: true, 
     permissions: DEFAULT_PERMISSIONS[UserRole.FUNCIONARIO]
   },
   { 
-    id: '6', name: 'Analista Remoto', email: 'remoto@marguel.com', role: UserRole.COLABORADOR_REMOTO, isApproved: true, 
+    id: '6', name: 'Analista Remoto', username: 'remoto', email: 'remoto@marguel.com', role: UserRole.COLABORADOR_REMOTO, isApproved: true, 
     permissions: DEFAULT_PERMISSIONS[UserRole.COLABORADOR_REMOTO]
   },
 ];

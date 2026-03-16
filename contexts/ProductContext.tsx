@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from 'react';
 import { Product, PurchaseRecord, Transaction, SalesReport, Expense, InventoryLog, PriceHistoryLog, Equipment, Card, StockOperationLog, AuditLog, ClosureStatus, ExpenseCategory, UserPermissions, UserRole } from '../types';
 import { useAuth } from './AuthContext';
+import { useAudit } from './AuditContext';
 import { hasPermission } from '../src/utils/permissions';
 import { cleanDate, formatDateISO } from '../src/utils';
 
@@ -81,7 +82,6 @@ interface ProductContextType {
   expenses: Expense[];
   expenseCategories: ExpenseCategory[];
   inventoryHistory: InventoryLog[];
-  auditLogs: AuditLog[];
   stockOperationHistory: StockOperationLog[];
   priceHistory: PriceHistoryLog[];
   systemDate: Date;
@@ -138,12 +138,14 @@ interface ProductContextType {
   isSyncing: boolean;
   hasPendingChanges: boolean;
   syncData: () => Promise<void>;
+  rebuildStockFromSales: () => Promise<void>;
 }
 
 const ProductContext = createContext<ProductContextType | undefined>(undefined);
 
 export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { user } = useAuth();
+  const { addLog } = useAudit();
 
   const checkPermission = useCallback((permission: keyof UserPermissions) => {
     if (!hasPermission(user, permission)) {
@@ -164,10 +166,19 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   });
 
   const setSystemDate = (date: Date) => {
+    const oldDate = systemDate;
     const dateOnly = new Date(date);
     dateOnly.setHours(0, 0, 0, 0);
     setSystemDateState(dateOnly);
     localStorage.setItem('mg_system_date', dateOnly.toISOString());
+    
+    addAuditLog({
+      action: 'ALTERAR_DATA_SISTEMA',
+      module: 'SISTEMA',
+      description: `Data do sistema alterada de ${formatDateISO(oldDate)} para ${formatDateISO(dateOnly)}`,
+      previousValue: formatDateISO(oldDate),
+      newValue: formatDateISO(dateOnly)
+    });
   };
 
   const getSystemDate = useCallback(() => {
@@ -197,7 +208,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     setSalesReports([]);
     setExpenses([]);
     setInventoryHistory([]);
-    setAuditLogs([]);
     setStockOperationHistory([]);
     setLockedDays([]);
     setPriceHistory([]);
@@ -257,15 +267,16 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     keysToRemove.forEach(key => localStorage.removeItem(key));
   };
 
-  const addAuditLog = useCallback((log: Omit<AuditLog, 'id' | 'timestamp'>) => {
-    const now = getSystemDate();
-    const newLog: AuditLog = {
-      ...log,
-      id: crypto.randomUUID(),
-      timestamp: now.getTime()
-    };
-    setAuditLogs(prev => [newLog, ...prev]);
-  }, [getSystemDate]);
+  const addAuditLog = useCallback((log: any) => {
+    addLog({
+      action: log.action || 'AÇÃO_DESCONHECIDA',
+      module: log.module || 'SISTEMA',
+      entityId: log.entityId || null,
+      description: log.details || log.description || 'Sem descrição',
+      previousValue: log.previousValue || null,
+      newValue: log.newValue || null,
+    }, user);
+  }, [addLog, user]);
 
   const [syncQueue, setSyncQueue] = useState<PendingAction[]>([]);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -341,13 +352,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [inventoryHistory, setInventoryHistory] = useState<InventoryLog[]>(() => {
     try {
       const saved = localStorage.getItem('mg_inventory_history');
-      return saved ? JSON.parse(saved) : [];
-    } catch { return []; }
-  });
-
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => {
-    try {
-      const saved = localStorage.getItem('mg_audit_logs');
       return saved ? JSON.parse(saved) : [];
     } catch { return []; }
   });
@@ -429,7 +433,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     } catch { return []; }
   });
 
-  useEffect(() => { localStorage.setItem('mg_audit_logs', JSON.stringify(auditLogs)); }, [auditLogs]);
   useEffect(() => { localStorage.setItem('mg_products', JSON.stringify(products)); }, [products]);
   useEffect(() => { localStorage.setItem('mg_purchases', JSON.stringify(purchases)); }, [purchases]);
   useEffect(() => { localStorage.setItem('mg_expenses', JSON.stringify(expenses)); }, [expenses]);
@@ -1194,6 +1197,65 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   }, [isOnline, isSyncing, products]);
 
+  const rebuildStockFromSales = useCallback(async () => {
+    // 1. Reset all stocks to 0
+    const resetProducts = products.map(p => ({ ...p, stock: 0 }));
+    
+    // 2. Process Purchases
+    const afterPurchases = resetProducts.map(p => {
+      let newStock = 0;
+      purchases.forEach(purchase => {
+        if (purchase.items[p.id]) {
+          const qtyPacks = purchase.items[p.id];
+          const packSize = p.packSize || 1;
+          newStock += qtyPacks * packSize;
+        }
+      });
+      return { ...p, stock: newStock };
+    });
+
+    // 3. Process Sales Reports
+    const afterSalesReports = afterPurchases.map(p => {
+      let currentStock = p.stock;
+      salesReports.forEach(report => {
+        if (report.itemsSummary) {
+          const item = report.itemsSummary.find(i => i.name === p.name);
+          if (item) {
+            currentStock -= item.qty;
+          }
+        }
+      });
+      return { ...p, stock: currentStock };
+    });
+
+    // 4. Process Direct Sales (IndexedDB)
+    const { dbGetAllSales } = await import('../src/services/db');
+    const directSales = await dbGetAllSales(365); // Last year
+    
+    const finalProducts = afterSalesReports.map(p => {
+      let currentStock = p.stock;
+      directSales.forEach(sale => {
+        if (sale.statusSync !== 'cancelled') {
+          sale.items.forEach(item => {
+            if (item.productId === p.id || item.name === p.name) {
+              currentStock -= item.qty;
+            }
+          });
+        }
+      });
+      return { ...p, stock: currentStock };
+    });
+
+    setProducts(finalProducts);
+    
+    addAuditLog({
+      action: 'SYSTEM_STOCK_REBUILD',
+      module: 'SISTEMA',
+      description: 'Reconstrução automática de stock executada com sucesso.',
+      performedBy: user?.name || 'Sistema'
+    });
+  }, [products, purchases, salesReports, addAuditLog, user]);
+
   const addEquipment = (equipment: Omit<Equipment, 'id' | 'prevQty'>) => {
     const newEquip: Equipment = {
         ...equipment,
@@ -1261,10 +1323,9 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     confirmSalesReport, 
     addAuditLog, 
     stockOperationHistory, 
-    auditLogs,
     equipments, addEquipment, updateEquipment, updateEquipmentQty, removeEquipment,
     addCard, updateCard, deleteCard,
-    isSyncing, hasPendingChanges, syncData
+    isSyncing, hasPendingChanges, syncData, rebuildStockFromSales
   }), [
     products, categories, purchases, currentBalance, savingsBalance, cashBalance, tpaBalance, cards, transactions, salesReports, 
     expenses, expenseCategories, inventoryHistory, priceHistory, lockedDays, systemDate,
@@ -1280,10 +1341,9 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     confirmSalesReport, 
     addAuditLog, 
     stockOperationHistory, 
-    auditLogs,
     equipments, addEquipment, updateEquipment, updateEquipmentQty, removeEquipment,
     addCard, updateCard, deleteCard,
-    isSyncing, hasPendingChanges, syncData
+    isSyncing, hasPendingChanges, syncData, rebuildStockFromSales
   ]);
 
   return (
