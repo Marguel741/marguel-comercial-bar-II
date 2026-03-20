@@ -49,6 +49,7 @@ const Sidebar: React.FC = () => {
     { to: '/expenses', icon: Wallet, label: 'Despesas', permission: 'expenses_view' as const },
     { to: '/account', icon: BarChart3, label: 'Estado da Conta', permission: 'finance_view' as const },
     { to: '/audit', icon: History, label: 'Auditoria Global', permission: 'audit_view' as const },
+    { to: '/test-cycle', icon: FlaskConical, label: 'Ciclo de Teste', permission: 'admin_global_admin' as const },
   ];
 
   const handleAppRefresh = () => {
@@ -159,25 +160,6 @@ const Sidebar: React.FC = () => {
                </NavLink>
              ))}
              
-             {isDev && (
-                <NavLink
-                  to="/test-cycle"
-                  onClick={handleLinkClick}
-                  className={({ isActive }) => `
-                    flex items-center gap-4 px-4 py-3.5 rounded-xl transition-all font-bold text-sm mt-4 border-t border-slate-100 dark:border-slate-800
-                    ${isActive 
-                      ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' 
-                      : 'text-amber-600 dark:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/10'}
-                  `}
-                >
-                  <FlaskConical size={20} />
-                  <div className="flex-1">
-                      <span className="block">Simulador / Data</span>
-                      <span className="text-[10px] font-mono">{formatDisplayDate(formatDateISO(systemDate))}</span>
-                  </div>
-                </NavLink>
-             )}
-
              <NavLink
                to="/settings"
                onClick={handleLinkClick}
@@ -219,7 +201,7 @@ const Sidebar: React.FC = () => {
       <div className={`
         hidden md:flex 
         ${mode === 'mini' ? 'w-24' : 'w-0'} 
-        bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 h-full flex-col transition-all duration-300 ease-in-out relative z-50 overflow-hidden
+        bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 h-full flex-col transition-all duration-300 ease-in-out relative z-[999] overflow-hidden
       `}>
         <div className="flex flex-col items-center pt-6 pb-2 gap-4">
           <div className="flex flex-col items-center cursor-pointer hover:scale-110 transition-all duration-300 group" onClick={handleAppRefresh}>
@@ -260,13 +242,6 @@ const Sidebar: React.FC = () => {
           ))}
           <div className="w-8 h-px bg-slate-200 dark:bg-slate-700 my-2"></div>
           
-          {isDev && (
-             <NavLink to="/test-cycle" onClick={handleLinkClick} className={({ isActive }) => `flex items-center justify-center w-12 h-12 rounded-2xl transition-all relative group flex-col gap-0.5 ${isActive ? 'bg-amber-100 text-amber-700' : 'text-amber-500 hover:bg-amber-50'}`}>
-               <FlaskConical size={18} />
-               <span className="text-[8px] font-mono font-bold leading-none">{systemDate.getDate()}</span>
-             </NavLink>
-          )}
-
           <NavLink 
             to="/settings" 
             onClick={handleLinkClick} 

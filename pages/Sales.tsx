@@ -2,7 +2,6 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Save, Calculator, DollarSign, Calendar, TrendingDown, AlertCircle, PlusCircle, Wallet, CreditCard, ArrowRightLeft, CheckCircle, X, Send, MessageSquare, Clock, Plus, Printer, Lock, Unlock, BarChart2, ArrowUp, Filter, Eye, ChevronRight, RefreshCw, Database, Server, ShieldCheck, Smartphone, ChevronDown, ChevronUp, AlertTriangle, Check } from 'lucide-react';
 import SoftCard from '../components/SoftCard';
 import { useProducts } from '../contexts/ProductContext';
-import { MGLogo } from '../constants';
 import { 
   BarChart, 
   Bar, 
@@ -112,6 +111,7 @@ const Sales: React.FC = () => {
       setReportDate('2025-01-01');
     }
     setHasManuallyOpened(false);
+    setForceEditMode(false);
   }, [reportDate, todayISO]);
 
   const [initialStock, setInitialStock] = useState<Record<string, string>>({});
@@ -154,7 +154,6 @@ const Sales: React.FC = () => {
       setEndingStock(end);
       setBreakdowns(bds);
       setCurrentReportId(existingReport.id);
-      setIsDayClosed(true);
       setIsFinancialsConfirmed(true);
       
       const fin = existingReport.financials || {
@@ -176,7 +175,6 @@ const Sales: React.FC = () => {
     }
 
     // 2. If no finalized report, handle snapshot logic
-    setIsDayClosed(false);
     setCurrentReportId(null);
     setIsFinancialsConfirmed(false);
     setEndingStock({});
@@ -235,11 +233,11 @@ const Sales: React.FC = () => {
     completedSteps: string[];
   }>({ status: 'idle', currentStep: -1, completedSteps: [] });
 
-  const [isDayClosed, setIsDayClosed] = useState(false);
   const [currentReportId, setCurrentReportId] = useState<string | null>(null);
   const [hasManuallyOpened, setHasManuallyOpened] = useState(false);
+  const [forceEditMode, setForceEditMode] = useState(false);
   const [showCloseModal, setShowCloseModal] = useState(false);
-  
+
   const [historyFilter, setHistoryFilter] = useState<'day' | 'week' | 'month' | 'quarter' | 'semester' | 'year' | 'all'>('week');
   const [viewHistoryReport, setViewHistoryReport] = useState<DailyReport | null>(null);
 
@@ -252,12 +250,12 @@ const Sales: React.FC = () => {
   const isAdminOrOwner = user?.role === UserRole.PROPRIETARIO || user?.role === UserRole.ADMIN_GERAL;
   const canEditInitialStock = hasPermission(user, 'sales_edit') && (!isDayLocked(reportDate) || isAdminOrOwner);
   const canExecuteSales = hasPermission(user, 'sales_execute');
-  const canCloseDay = hasPermission(user, 'sales_closure');
-  const canReopenDay = isAdminOrOwner;
+  const canCloseDay = true; // Any user can perform a partial or final closure as requested
+  const canReopenDay = user?.role === UserRole.PROPRIETARIO; // Owner always has reopen button
   const canViewMargins = hasPermission(user, 'sales_view_margins');
   
-  const isLocked = isDayLocked(reportDate) && !isAdminOrOwner;
-  const isReadOnly = !canExecuteSales || isLocked;
+  const isLocked = isDayLocked(reportDate);
+  const isReadOnly = (!canExecuteSales || isLocked) && !forceEditMode;
 
   const showToast = (message: string) => {
     setToast({ show: true, message });
@@ -446,10 +444,10 @@ const Sales: React.FC = () => {
     setShowCloseModal(true);
   };
 
-  const confirmCloseDay = async () => {
+  const handleDayClosureSubmit = async () => {
     if (isDayLocked(reportDate)) {
       triggerHaptic('error');
-      alert('Este dia está bloqueado pela gestão e não pode ser alterado.');
+      showToast('Este dia está bloqueado.');
       return;
     }
     if (hasDiscrepancy && !financials.discrepancyJustification) {
@@ -548,16 +546,21 @@ const Sales: React.FC = () => {
       final: endingStock
     };
 
-    addSalesReport(newReport as any);
-    
-    setSyncState(prev => ({ ...prev, status: 'success' }));
-    triggerHaptic('success');
+    try {
+        addSalesReport(newReport as any);
+        
+        setSyncState(prev => ({ ...prev, status: 'success' }));
+        triggerHaptic('success');
 
-    setTimeout(() => {
-        setSyncState({ status: 'idle', currentStep: -1, completedSteps: [] });
-        setIsDayClosed(true);
-        pageTopRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, 2500);
+        setTimeout(() => {
+            setSyncState({ status: 'idle', currentStep: -1, completedSteps: [] });
+            pageTopRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }, 2500);
+    } catch (error: any) {
+        setSyncState(prev => ({ ...prev, status: 'error' }));
+        triggerHaptic('error');
+        alert("Não foi possível completar a ação. Verifique os dados.");
+    }
   };
 
   const getCloseButtonColor = () => {
@@ -623,11 +626,15 @@ const Sales: React.FC = () => {
       };
   };
 
-  if (isDayClosed || viewHistoryReport) {
-    const rawReport = viewHistoryReport || salesReports.find(r => {
-      const reportDateISO = (r as any).dateISO ? (r as any).dateISO.split('T')[0] : r.date;
-      return reportDateISO === reportDate;
-    });
+  const existingReport = salesReports.find(r => {
+    const reportDateISO = (r as any).dateISO ? (r as any).dateISO.split('T')[0] : r.date;
+    return reportDateISO === reportDate;
+  });
+
+  // Só mostra a visualização de relatório se for um relatório do histórico 
+  // ou se o relatório do dia atual já tiver sido fechado (status !== ABERTO)
+  if ((viewHistoryReport || (existingReport && existingReport.status !== ClosureStatus.ABERTO)) && !forceEditMode) {
+    const rawReport = viewHistoryReport || existingReport!;
     
     const reportData = getReportData(rawReport);
     
@@ -640,11 +647,17 @@ const Sales: React.FC = () => {
     const hoursSinceClosure = (Date.now() - (reportData.timestamp || Date.now())) / (1000 * 60 * 60);
     const isUnilateralAllowed = !isConfirmed && hoursSinceClosure > INACTIVITY_THRESHOLD_HOURS && (user?.role === UserRole.ADMIN_GERAL || user?.role === UserRole.PROPRIETARIO);
 
-    const handleFinalConfirmation = () => {
+    const handleConfirmClose = () => {
+      if (!reportDate) return;
       if (!canConfirm && !isUnilateralAllowed) return;
+      
+      // Executar fecho definitivo (Validação)
       confirmSalesReport(reportData.id, user?.name || 'Admin', isUnilateralAllowed);
-      showToast("Fecho confirmado com sucesso!");
+      
+      showToast("Validação final concluída com sucesso!");
       triggerHaptic('success');
+      
+      console.log("Fecho Validado:", reportDate);
     };
 
     return (
@@ -658,14 +671,11 @@ const Sales: React.FC = () => {
                 <div className="flex justify-between items-center mb-8">
                     <button 
                       onClick={() => { 
+                        setForceEditMode(false);
                         if (viewHistoryReport) {
                           setViewHistoryReport(null);
-                        } else if (reportData.status !== ClosureStatus.FECHO_CONFIRMADO && reportData.status !== ClosureStatus.CAIXA_FECHADA && reportData.status !== ClosureStatus.BLOQUEADO) {
-                          setIsDayClosed(false);
-                          setIsFinancialsConfirmed(false);
-                          setHasManuallyOpened(true);
                         } else {
-                          setIsDayClosed(false); 
+                          setReportDate(todayISO);
                         }
                       }} 
                       className="text-slate-500 dark:text-slate-400 font-bold hover:text-[#003366] dark:hover:text-blue-400 ml-[2cm]"
@@ -683,15 +693,35 @@ const Sales: React.FC = () => {
                       </div>
                       
                       <div className="flex items-center gap-3">
+                        {canReopenDay && (
+                          <button 
+                            onClick={handleReopenDay}
+                            className="px-4 py-2 bg-amber-500 text-white rounded-full font-bold text-sm flex items-center gap-2 hover:bg-amber-600 transition-colors shadow-md"
+                          >
+                            <Unlock size={18} /> Reabrir Dia
+                          </button>
+                        )}
                         <div className={`px-4 py-2 rounded-full font-bold text-sm flex items-center gap-2 ${
-                          reportData.status === ClosureStatus.BLOQUEADO ? 'bg-red-100 text-red-700' :
+                          reportData.status === ClosureStatus.BLOQUEADO ? 'bg-green-100 text-green-700' :
                           isConfirmed ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
                         }`}>
-                          {reportData.status === ClosureStatus.BLOQUEADO ? <Lock size={18} /> :
+                          {reportData.status === ClosureStatus.BLOQUEADO ? <ShieldCheck size={18} /> :
                            isConfirmed ? <ShieldCheck size={18} /> : <Clock size={18} />}
-                          {reportData.status === ClosureStatus.BLOQUEADO ? 'DIA BLOQUEADO (IMUTÁVEL)' :
-                           isConfirmed ? 'FECHO CONFIRMADO' : 'AGUARDANDO CONFIRMAÇÃO'}
+                          {reportData.status === ClosureStatus.BLOQUEADO ? 'DIA CONFIRMADO' :
+                           isConfirmed ? 'FECHO CONFIRMADO' : 'AGUARDANDO REVISÃO'}
                         </div>
+                        
+                        {!isConfirmed && reportData.status !== ClosureStatus.BLOQUEADO && (
+                          <button 
+                            onClick={() => {
+                              setForceEditMode(true);
+                              triggerHaptic('selection');
+                            }}
+                            className="px-4 py-2 bg-[#003366] text-white rounded-full font-bold text-sm flex items-center gap-2 hover:opacity-90 transition-all shadow-md"
+                          >
+                            <Unlock size={18} /> Editar Dados
+                          </button>
+                        )}
                       </div>
                    </div>
 
@@ -757,7 +787,7 @@ const Sales: React.FC = () => {
                      </div>
                    )}
 
-                   {!isConfirmed && (
+                   {!isConfirmed && reportData.status !== ClosureStatus.BLOQUEADO && (
                      <div className="p-6 bg-blue-50 dark:bg-blue-900/20 rounded-3xl border border-blue-100 dark:border-blue-800/50">
                         <div className="flex items-start gap-4">
                            <div className="p-3 bg-blue-100 dark:bg-blue-800 text-blue-600 dark:text-blue-300 rounded-2xl">
@@ -767,16 +797,16 @@ const Sales: React.FC = () => {
                               <h3 className="font-bold text-[#003366] dark:text-blue-300">Segunda Confirmação Necessária</h3>
                               <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
                                  Este fecho foi registado como <strong>{reportData.status.replace(/_/g, ' ')}</strong>. 
-                                 Para que o stock e o financeiro sejam atualizados globalmente, é necessária uma segunda confirmação por um administrador ou gerente diferente.
+                                 Para que o stock e o financeiro sejam atualizados globalmente, é necessária uma segunda confirmação por um administrador ou gerente diferente (ou confirmação unilateral do proprietário).
                               </p>
                               
                               {(canConfirm || isUnilateralAllowed) && (
                                 <button 
-                                  onClick={handleFinalConfirmation}
+                                  onClick={handleConfirmClose}
                                   className="mt-4 px-6 py-3 bg-[#003366] text-white font-bold rounded-xl shadow-lg hover:opacity-90 transition-all flex items-center gap-2"
                                 >
                                   <CheckCircle size={20} />
-                                  {isUnilateralAllowed ? 'Confirmar Unilateralmente (Admin)' : 'Confirmar Fecho Definitivo'}
+                                  {isUnilateralAllowed ? 'Confirmar Unilateralmente (Proprietário)' : 'Confirmar Fecho Definitivo'}
                                 </button>
                               )}
                               
@@ -840,6 +870,19 @@ const Sales: React.FC = () => {
 
   return (
     <div ref={pageTopRef} className="p-4 md:p-8 space-y-8 animate-fade-in pb-32 relative min-h-screen">
+      {forceEditMode && (
+        <div className="max-w-5xl mx-auto mb-4">
+          <button 
+            onClick={() => {
+              setForceEditMode(false);
+              triggerHaptic('selection');
+            }} 
+            className="text-slate-500 dark:text-slate-400 font-bold hover:text-[#003366] dark:hover:text-blue-400 flex items-center gap-2"
+          >
+            ← Voltar para o Resumo
+          </button>
+        </div>
+      )}
       {syncState.status !== 'idle' && (
         <div className="fixed inset-0 z-[200] bg-[#001A33] flex items-center justify-center p-4 md:p-8 animate-fade-in overflow-hidden">
           {/* Background Elements */}
@@ -986,6 +1029,13 @@ const Sales: React.FC = () => {
               <Unlock size={20} /> Reabrir Dia
             </button>
           )}
+          {existingReport && existingReport.status === ClosureStatus.ABERTO && (
+             <button onClick={() => {
+               // Forçar visualização do relatório mesmo estando aberto
+             }} className="hidden">
+               Ver Relatório Parcial
+             </button>
+          )}
           <button onClick={handleInitialClose} disabled={isReadOnly && !isLocked} className={`pill-button px-6 py-3 font-bold flex items-center justify-center gap-2 shadow-lg transition-all ${isReadOnly && !isLocked ? 'bg-slate-300 cursor-not-allowed text-slate-500' : getCloseButtonColor()}`}>
             <Save size={20} /> {getCloseButtonText()}
           </button>
@@ -1047,7 +1097,7 @@ const Sales: React.FC = () => {
                 </tr>
                 {expandedRows[item.id] && item.isPromo && item.soldQty > 0 && (
                     <tr className="bg-slate-50 dark:bg-slate-800/50 animate-fade-in">
-                        <td colSpan={6} className="p-4">
+                        <td colSpan={7} className="p-4">
                             <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 shadow-inner">
                                 <div className="flex items-center justify-between mb-3">
                                     <h4 className="text-xs font-bold uppercase text-slate-400 flex items-center gap-2">
@@ -1107,7 +1157,7 @@ const Sales: React.FC = () => {
                 </React.Fragment>
               ))}
               <tr>
-                <td colSpan={6} className="p-2">
+                <td colSpan={7} className="p-2">
                   {!showAddProduct ? (
                     <button onClick={() => setShowAddProduct(true)} disabled={isReadOnly} className="w-full py-2 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl text-slate-400 font-bold flex items-center justify-center gap-2 hover:border-[#003366] dark:hover:border-blue-400 hover:text-[#003366] dark:hover:text-blue-400"><PlusCircle size={18} /> Adicionar Novo Produto</button>
                   ) : (
@@ -1121,7 +1171,7 @@ const Sales: React.FC = () => {
               </tr>
             </tbody>
             <tfoot className="bg-[#003366] text-white">
-              <tr><td colSpan={5} className="p-4 text-right font-bold uppercase tracking-wider">Total Calculado (Stock):</td><td className="p-4 text-right font-black text-lg">{(calculatedData.totalTheoreticalRevenue || 0).toLocaleString('pt-AO')} Kz</td></tr>
+              <tr><td colSpan={6} className="p-4 text-right font-bold uppercase tracking-wider">Total Calculado (Stock):</td><td className="p-4 text-right font-black text-lg">{(calculatedData.totalTheoreticalRevenue || 0).toLocaleString('pt-AO')} Kz</td></tr>
             </tfoot>
           </table>
         </div>
@@ -1235,7 +1285,7 @@ const Sales: React.FC = () => {
 
               <div className="flex gap-4">
                  <button onClick={() => setShowCloseModal(false)} className="flex-1 py-4 bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 font-bold rounded-2xl">Cancelar</button>
-                 <button onClick={confirmCloseDay} className="flex-1 py-4 bg-[#003366] text-white font-bold rounded-2xl shadow-lg">Confirmar</button>
+                 <button onClick={handleDayClosureSubmit} className="flex-1 py-4 bg-[#003366] text-white font-bold rounded-2xl shadow-lg">Confirmar</button>
               </div>
            </div>
         </div>

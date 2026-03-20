@@ -14,7 +14,7 @@ import { useLayout } from '../contexts/LayoutContext';
 import SyncStatus from '../components/SyncStatus';
 import { useAuth } from '../contexts/AuthContext';
 import { PriceHistoryLog, SavedProposal, PurchaseRecord, UserPermissions, UserRole } from '../types';
-import { MGLogo } from '../constants';
+import { MarguelPinkLogo } from '../constants';
 import { hasPermission } from '../src/utils/permissions';
 import { formatDisplayDate, formatDateISO, cleanDate } from '../src/utils';
 
@@ -75,6 +75,7 @@ const Prices: React.FC = () => {
   const [proposalNameInput, setProposalNameInput] = useState('');
   const [showSaveProposalDialog, setShowSaveProposalDialog] = useState(false);
   const [isSavingProposal, setIsSavingProposal] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [isCurrentSimulationSaved, setIsCurrentSimulationSaved] = useState(false);
   const [showAlreadySavedModal, setShowAlreadySavedModal] = useState(false);
   const [previewProposal, setPreviewProposal] = useState<SavedProposal | null>(null);
@@ -326,7 +327,7 @@ const Prices: React.FC = () => {
       return;
     }
 
-    if (isProcessingPurchase) return;
+    if (isProcessingPurchase || isUploading) return;
 
     setIsProcessingPurchase(true);
     setShowConfirmPurchase(false);
@@ -342,8 +343,9 @@ const Prices: React.FC = () => {
       addPurchase(
         purchaseCart,
         'Prices', // Origin of the purchase
-        purchaseSupplier || user?.name || 'Desconhecido',
-        purchaseAttachments // Pass attachments
+        user?.name || 'Desconhecido', // Responsável (Logged user)
+        purchaseAttachments, // Pass attachments
+        purchaseSupplier || 'Sem Fornecedor' // Fornecedor (Manual text)
       );
       
       setPurchaseCart({});
@@ -373,9 +375,15 @@ const Prices: React.FC = () => {
         return;
       }
       triggerHaptic('impact');
+      setIsUploading(true);
       const reader = new FileReader();
       reader.onloadend = () => {
         setPurchaseAttachments(prev => [...prev, reader.result as string]);
+        setIsUploading(false);
+      };
+      reader.onerror = () => {
+        setIsUploading(false);
+        showToast('Erro ao processar imagem.');
       };
       reader.readAsDataURL(file);
     }
@@ -969,20 +977,27 @@ const Prices: React.FC = () => {
                               {qty > 0 && <span className="text-[10px] font-black text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">{(packCost * qty).toLocaleString()} Kz</span>}
                             </div>
                             
-                            <div className="flex items-center justify-between bg-slate-100 dark:bg-slate-700 rounded-2xl p-1">
-                              <button 
-                                onClick={() => updateSimulationCart(p.id, -1)} 
-                                className="w-8 h-8 flex items-center justify-center bg-white dark:bg-slate-600 rounded-xl shadow-sm text-slate-400 hover:text-red-500 transition-all"
-                              >
-                                <Minus size={14} />
-                              </button>
-                              <span className="font-black text-sm text-[#003366] dark:text-white">{qty}</span>
-                              <button 
-                                onClick={() => updateSimulationCart(p.id, 1)} 
-                                className="w-8 h-8 flex items-center justify-center bg-[#003366] text-white rounded-xl shadow-md hover:bg-[#004488] transition-all"
-                              >
-                                <Plus size={14} />
-                              </button>
+                            <div className="flex flex-col gap-2">
+                              <div className="flex items-center justify-between bg-slate-100 dark:bg-slate-700 rounded-2xl p-1">
+                                <button 
+                                  onClick={() => updateSimulationCart(p.id, -1)} 
+                                  className="w-8 h-8 flex items-center justify-center bg-white dark:bg-slate-600 rounded-xl shadow-sm text-slate-400 hover:text-red-500 transition-all"
+                                >
+                                  <Minus size={14} />
+                                </button>
+                                <span className="font-black text-sm text-[#003366] dark:text-white">{qty}</span>
+                                <button 
+                                  onClick={() => updateSimulationCart(p.id, 1)} 
+                                  className="w-8 h-8 flex items-center justify-center bg-[#003366] text-white rounded-xl shadow-md hover:bg-[#004488] transition-all"
+                                >
+                                  <Plus size={14} />
+                                </button>
+                              </div>
+                              {/* Botões de Meia Unidade (+0.5 / -0.5) */}
+                              <div className="flex gap-1">
+                                <button onClick={() => updateSimulationCart(p.id, -0.5)} className="flex-1 py-1 bg-slate-50 dark:bg-slate-800 text-[10px] font-bold text-slate-400 rounded-lg border border-slate-100 dark:border-slate-700 hover:bg-red-50 hover:text-red-500 transition-all">- ½</button>
+                                <button onClick={() => updateSimulationCart(p.id, 0.5)} className="flex-1 py-1 bg-slate-50 dark:bg-slate-800 text-[10px] font-bold text-slate-400 rounded-lg border border-slate-100 dark:border-slate-700 hover:bg-blue-50 hover:text-blue-500 transition-all">+ ½</button>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -1000,7 +1015,7 @@ const Prices: React.FC = () => {
                         <h3 className="text-xl font-black text-[#003366] dark:text-white">Resumo da Proposta</h3>
                         <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">{formatDisplayDate(formatDateISO(getSystemDate()))}</p>
                       </div>
-                      <MGLogo className="h-8 w-auto opacity-20" />
+                      <MarguelPinkLogo className="h-8 w-auto opacity-20" />
                     </div>
 
                     <div className="space-y-4">
@@ -1368,15 +1383,15 @@ const Prices: React.FC = () => {
                         </button>
                         <button 
                           onClick={() => setShowConfirmPurchase(true)}
-                          disabled={isProcessingPurchase || Object.keys(purchaseCart).length === 0 || isLocked}
-                          className={`py-4 bg-white text-[#0054A6] rounded-2xl font-black shadow-lg hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2 text-[10px] uppercase tracking-wider ${isProcessingPurchase || isLocked ? 'opacity-70 cursor-wait' : ''}`}
+                          disabled={isProcessingPurchase || isUploading || Object.keys(purchaseCart).length === 0 || isLocked}
+                          className={`py-4 bg-white text-[#0054A6] rounded-2xl font-black shadow-lg hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2 text-[10px] uppercase tracking-wider ${isProcessingPurchase || isUploading || isLocked ? 'opacity-70 cursor-wait' : ''}`}
                         >
-                          {isProcessingPurchase ? (
+                          {isProcessingPurchase || isUploading ? (
                             <div className="w-4 h-4 border-2 border-[#0054A6] border-t-transparent rounded-full animate-spin"></div>
                           ) : (
                             <ClipboardCheck size={14} />
                           )}
-                          {isProcessingPurchase ? '...' : 'Confirmar Compra'}
+                          {isUploading ? 'Processando...' : isProcessingPurchase ? '...' : 'Confirmar Compra'}
                         </button>
                       </div>
                     </div>

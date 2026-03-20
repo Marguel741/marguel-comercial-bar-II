@@ -1,5 +1,6 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
+import { motion } from 'motion/react';
 import { Package, Thermometer, Edit2, Edit3, Bell, Plus, Search, ChevronUp, ChevronDown, AlertTriangle, Save, X, CheckCircle, Check, Trash2, Settings, ClipboardList, Send, ArrowRight, History, Lock, WifiOff } from 'lucide-react';
 import SoftCard from '../components/SoftCard';
 import { useProducts } from '../contexts/ProductContext';
@@ -31,7 +32,8 @@ const Inventory: React.FC = () => {
     removeEquipment,
     hasPendingChanges,
     syncData,
-    getSystemDate
+    getSystemDate,
+    handleStockMovement
   } = useProducts();
   const { user } = useAuth();
   const { sidebarMode, triggerHaptic } = useLayout();
@@ -45,11 +47,14 @@ const Inventory: React.FC = () => {
   const canEditInventory = hasPermission(user, 'inventory_edit');
   
   // Monitor de Rede: Tenta sincronizar assim que a rede volta
+  // Auto-sync Effect - Disabled to focus on manual user actions
+  /*
   useEffect(() => {
     if (navigator.onLine && hasPendingChanges) {
       syncData();
     }
   }, [navigator.onLine, hasPendingChanges]);
+  */
   
   // Check locking
   const isLocked = isDayLocked(systemDate);
@@ -83,8 +88,9 @@ const Inventory: React.FC = () => {
     setNextInventoryDate(d.toISOString().split('T')[0]);
   }, [systemDate]);
 
+  const [showDivergenceAlert, setShowDivergenceAlert] = useState(false);
   const [isInventoryDone, setIsInventoryDone] = useState(false);
-  const [lastInventoryDate, setLastInventoryDate] = useState<string | null>('25/09/2024');
+  const [lastInventoryDate, setLastInventoryDate] = useState<string | null>(null);
   
   // Modals for Equipment
   const [showAddEquipModal, setShowAddEquipModal] = useState(false);
@@ -114,6 +120,8 @@ const Inventory: React.FC = () => {
 
   // --- DELETE CONFIRMATION MODAL STATE ---
   const [deleteConfirmation, setDeleteConfirmation] = useState<{isOpen: boolean, product: any | null}>({ isOpen: false, product: null });
+  const [deleteCategoryConfirmation, setDeleteCategoryConfirmation] = useState<{ isOpen: boolean, categoryName: string | null }>({ isOpen: false, categoryName: null });
+  const [editCategoryModal, setEditCategoryModal] = useState<{ isOpen: boolean, oldName: string, newName: string }>({ isOpen: false, oldName: '', newName: '' });
 
   const filterCategories = useMemo(() => {
     return ['Todos', ...categories];
@@ -121,6 +129,7 @@ const Inventory: React.FC = () => {
 
   const filteredProducts = useMemo(() => {
     return products.filter(p => {
+      if (p.isArchived) return false;
       const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesCategory = selectedCategory === 'Todos' || p.category === selectedCategory;
       return matchesSearch && matchesCategory;
@@ -138,9 +147,9 @@ const Inventory: React.FC = () => {
       const status = getStockStatus(item.stock, item.minStock);
       if (status.type === 'OK') return null;
       
-      const daysLow = Math.floor(Math.random() * 5) + 1; 
+      const daysLow = 0; // No mock random days
       const outOfStockDate = getSystemDate();
-      outOfStockDate.setDate(outOfStockDate.getDate() - daysLow);
+      // outOfStockDate.setDate(outOfStockDate.getDate() - daysLow); // Removed random logic
       
       return {
         id: item.id,
@@ -176,42 +185,57 @@ const Inventory: React.FC = () => {
     if(isLocked || !canEditInventory) return;
     if (!newEquipName || !newEquipQty) return;
     
-    triggerHaptic('success');
-    addEquipment({
-      name: newEquipName,
-      qty: parseInt(newEquipQty),
-      status: newEquipStatus,
-      category: newEquipCategory,
-      observations: newEquipObs
-    });
-    
-    setNewEquipName('');
-    setNewEquipQty('');
-    setNewEquipCategory('Geral');
-    setNewEquipStatus('Operacional');
-    setNewEquipObs('');
-    setShowAddEquipModal(false);
-    showToast('Item registrado no banco local');
+    try {
+      addEquipment({
+        name: newEquipName,
+        qty: parseInt(newEquipQty),
+        status: newEquipStatus,
+        category: newEquipCategory,
+        observations: newEquipObs
+      });
+      
+      setNewEquipName('');
+      setNewEquipQty('');
+      setNewEquipCategory('Geral');
+      setNewEquipStatus('Operacional');
+      setNewEquipObs('');
+      setShowAddEquipModal(false);
+      triggerHaptic('success');
+      showToast('Item registrado no banco local');
+    } catch (error) {
+      triggerHaptic('error');
+      showToast("Não foi possível completar a ação. Verifique os dados.");
+    }
   };
 
   const handleUpdateEquipment = () => {
     if(isLocked || !canEditInventory || !editEquipModal.data) return;
     
-    triggerHaptic('success');
-    const { id, ...updates } = editEquipModal.data;
-    updateEquipment(id, updates);
-    
-    setEditEquipModal({ isOpen: false, data: null });
-    showToast('Equipamento atualizado com sucesso.');
+    try {
+      const { id, ...updates } = editEquipModal.data;
+      updateEquipment(id, updates);
+      
+      setEditEquipModal({ isOpen: false, data: null });
+      triggerHaptic('success');
+      showToast('Equipamento atualizado com sucesso.');
+    } catch (error) {
+      triggerHaptic('error');
+      showToast("Não foi possível completar a ação. Verifique os dados.");
+    }
   };
 
   const confirmRemoveEquipment = () => {
     if(isLocked || !canEditInventory || !deleteEquipConfirmation.equipId) return;
     
-    triggerHaptic('warning');
-    removeEquipment(deleteEquipConfirmation.equipId);
-    setDeleteEquipConfirmation({ isOpen: false, equipId: null, equipName: null });
-    showToast('Equipamento removido permanentemente.');
+    try {
+      removeEquipment(deleteEquipConfirmation.equipId);
+      setDeleteEquipConfirmation({ isOpen: false, equipId: null, equipName: null });
+      triggerHaptic('success');
+      showToast('Equipamento removido permanentemente.');
+    } catch (error) {
+      triggerHaptic('error');
+      showToast("Não foi possível completar a ação. Verifique os dados.");
+    }
   };
 
   const handleRemoveEquipment = (id: string) => {
@@ -228,11 +252,13 @@ const Inventory: React.FC = () => {
 
   const startInventoryCount = () => {
     if(isLocked) {
-        alert("Dia Bloqueado.");
+        showToast("Dia Bloqueado.");
+        triggerHaptic('error');
         return;
     }
     if (!canAdjustStock) {
-        alert("Sem permissão para ajuste de stock.");
+        showToast("Sem permissão para ajuste de stock.");
+        triggerHaptic('error');
         return;
     }
     triggerHaptic('impact');
@@ -279,51 +305,56 @@ const Inventory: React.FC = () => {
   };
 
   const finalizeInventory = () => {
-    triggerHaptic('success');
-    // Implementação de persistência local...
-    showToast(navigator.onLine ? 'Sincronizado com Sucesso' : 'Salvo localmente (Offline)');
-    setShowJustificationModal(false);
+    try {
+      // Implementação de persistência local...
+      
+      // Atualiza quantidades no contexto global
+      Object.entries(countValues).forEach(([id, qty]) => {
+          updateEquipmentQty(id, qty);
+      });
 
-    // Atualiza quantidades no contexto global
-    Object.entries(countValues).forEach(([id, qty]) => {
-        updateEquipmentQty(id, qty);
-    });
+      setLastInventoryDate(formatDateISO(systemDate));
+      setIsInventoryDone(true);
+      
+      // Add to History (Global Context)
+      const hasDiscrepancy = discrepancies.length > 0;
+      const newLog: InventoryLog = {
+          id: Date.now().toString(),
+          date: formatDateISO(systemDate),
+          performedBy: user?.name || 'Desconhecido',
+          totalItems: (Object.values(countValues) as number[]).reduce((a, b) => a + b, 0),
+          discrepancies: hasDiscrepancy ? discrepancies : [],
+          status: hasDiscrepancy ? 'DIVERGENTE' : 'OK',
+          justification: hasDiscrepancy ? justificationText : undefined
+      };
+      addInventoryLog(newLog); // Context Action
 
-    setLastInventoryDate(formatDateISO(systemDate));
-    setIsInventoryDone(true);
-    
-    // Add to History (Global Context)
-    const hasDiscrepancy = discrepancies.length > 0;
-    const newLog: InventoryLog = {
-        id: Date.now().toString(),
-        date: formatDateISO(systemDate),
-        performedBy: user?.name || 'Desconhecido',
-        totalItems: (Object.values(countValues) as number[]).reduce((a, b) => a + b, 0),
-        discrepancies: hasDiscrepancy ? discrepancies : [],
-        status: hasDiscrepancy ? 'DIVERGENTE' : 'OK',
-        justification: hasDiscrepancy ? justificationText : undefined
-    };
-    addInventoryLog(newLog); // Context Action
+      triggerHaptic('success');
+      showToast(navigator.onLine ? 'Sincronizado com Sucesso' : 'Salvo localmente (Offline)');
 
-    // Simulate sending report via Multi-Channel
-    setTimeout(() => {
-        showToast('📄 Relatório salvo no histórico');
-    }, 500);
-    
-    setTimeout(() => {
-        // Only broadcast loudly if there are issues, or just a general confirmation
-        if (hasDiscrepancy) {
-            alert(`⚠️ ALERTA DE DIVERGÊNCIA ENVIADO!\n\nFoi enviado automaticamente um relatório para:\n• Administrador Geral\n• Proprietário\n• Chat Geral\n\nMotivo: ${justificationText}`);
-        } else {
-            showToast('✅ Sincronizado com Admin e Chat Geral');
-        }
-    }, 1500);
+      // Simulate sending report via Multi-Channel
+      setTimeout(() => {
+          showToast('📄 Relatório salvo no histórico');
+      }, 500);
+      
+      setTimeout(() => {
+          // Only broadcast loudly if there are issues, or just a general confirmation
+          if (hasDiscrepancy) {
+              setShowDivergenceAlert(true);
+          } else {
+              showToast('✅ Sincronizado com Admin e Chat Geral');
+          }
+      }, 1500);
 
-    // Reset UI
-    setShowCountModal(false);
-    setShowJustificationModal(false);
-    setJustificationText('');
-    setDiscrepancies([]);
+      // Reset UI
+      setShowCountModal(false);
+      setShowJustificationModal(false);
+      setJustificationText('');
+      setDiscrepancies([]);
+    } catch (error) {
+      triggerHaptic('error');
+      showToast("Não foi possível completar a ação. Verifique os dados.");
+    }
   };
 
   const handleUpdateNextDate = () => {
@@ -337,27 +368,30 @@ const Inventory: React.FC = () => {
 
   const handleOpenProductModal = (product: any = null) => {
     if(isLocked) {
-        alert("Dia Bloqueado. Edição de produto não permitida.");
+        showToast("Dia Bloqueado. Edição de produto não permitida.");
+        triggerHaptic('error');
         return;
     }
     
     if (product && !canEditProduct) {
-        alert("Sem permissão para editar produtos.");
+        showToast("Sem permissão para editar produtos.");
+        triggerHaptic('error');
         return;
     }
     
     if (!product && !canCreateProduct) {
-        alert("Sem permissão para criar produtos.");
+        showToast("Sem permissão para criar produtos.");
+        triggerHaptic('error');
         return;
     }
 
     triggerHaptic('selection');
     if (product) {
-      setProductModal({ isOpen: true, data: { ...product, originalStock: product.stock } });
+      setProductModal({ isOpen: true, data: { ...product, originalStock: product.stock, reason: '' } });
     } else {
       setProductModal({ 
         isOpen: true, 
-        data: { name: '', category: 'Geral', stock: '', minStock: '', packSize: 24, packType: 'Grade', originalStock: 0 } 
+        data: { name: '', category: 'Geral', stock: '', minStock: '', packSize: 24, packType: 'Grade', originalStock: 0, reason: '' } 
       });
     }
   };
@@ -368,31 +402,53 @@ const Inventory: React.FC = () => {
     const data = productModal.data;
     if (!data.name) return;
 
-    const newStock = parseInt(data.stock) || 0;
-    
-    if (data.id) {
-      updateProduct(data.id, {
-        name: data.name,
-        category: data.category,
-        stock: newStock,
-        minStock: parseInt(data.minStock) || 0,
-        packSize: data.packSize,
-        packType: data.packType
-      });
-    } else {
-      addProduct({
-        name: data.name,
-        category: data.category,
-        stock: newStock,
-        minStock: parseInt(data.minStock) || 10,
-        sellPrice: 0,
-        buyPrice: 0,
-        packSize: data.packSize,
-        packType: data.packType
-      });
+    try {
+      const newStock = parseInt(data.stock) || 0;
+      
+      if (data.id) {
+        const originalProduct = products.find(p => p.id === data.id);
+        const stockDiff = newStock - (originalProduct?.stock || 0);
+
+        updateProduct(data.id, {
+          name: data.name,
+          category: data.category,
+          minStock: parseInt(data.minStock) || 0,
+          packSize: data.packSize,
+          packType: data.packType
+        });
+
+        if (stockDiff !== 0) {
+          if (!data.reason) {
+            showToast("Um motivo é obrigatório para ajustes manuais de stock.");
+            triggerHaptic('error');
+            return;
+          }
+          handleStockMovement(
+            data.id, 
+            Math.abs(stockDiff), 
+            stockDiff > 0 ? 'PURCHASE' : 'SALE', 
+            user?.name || 'Sistema', 
+            data.reason || 'Ajuste Manual (Inventário)'
+          );
+        }
+      } else {
+        addProduct({
+          name: data.name,
+          category: data.category,
+          stock: newStock,
+          minStock: parseInt(data.minStock) || 10,
+          sellPrice: 0,
+          buyPrice: 0,
+          packSize: data.packSize,
+          packType: data.packType
+        });
+      }
+      setProductModal({ isOpen: false, data: null });
+      showToast('Dados do produto atualizados!');
+    } catch (error: any) {
+      triggerHaptic('error');
+      showToast("Não foi possível completar a ação. Verifique os dados.");
     }
-    setProductModal({ isOpen: false, data: null });
-    showToast('Dados do produto atualizados!');
   };
 
   const handleAddStock = (amount: number) => {
@@ -417,11 +473,13 @@ const Inventory: React.FC = () => {
   // Abre o modal de confirmação em vez de window.confirm
   const handleRequestDelete = (product: any) => {
     if(isLocked) {
-        alert("Dia Bloqueado.");
+        showToast("Dia Bloqueado.");
+        triggerHaptic('error');
         return;
     }
     if (!canDeleteProduct) {
-        alert("Sem permissão para eliminar produtos.");
+        showToast("Sem permissão para eliminar produtos.");
+        triggerHaptic('error');
         return;
     }
     triggerHaptic('warning');
@@ -435,35 +493,66 @@ const Inventory: React.FC = () => {
       return;
     }
     if (deleteConfirmation.product) {
-        triggerHaptic('error'); // Haptic forte para delete
-        deleteProduct(deleteConfirmation.product.id);
-        showToast('Produto removido permanentemente.');
-        setDeleteConfirmation({ isOpen: false, product: null });
+        try {
+          triggerHaptic('error'); // Haptic forte para delete
+          deleteProduct(deleteConfirmation.product.id);
+          showToast('Produto arquivado para preservar histórico.');
+          setDeleteConfirmation({ isOpen: false, product: null });
+        } catch (error) {
+          triggerHaptic('error');
+          showToast("Não foi possível completar a ação. Verifique os dados.");
+        }
     }
   };
 
   const handleAddCategory = () => {
-    if (isLocked) {
-      triggerHaptic('error');
-      return;
-    }
     if (newCategoryName.trim()) {
-      triggerHaptic('success');
-      addCategory(newCategoryName.trim());
-      setNewCategoryName('');
-      showToast('Categoria adicionada!');
+      try {
+        addCategory(newCategoryName.trim());
+        setNewCategoryName('');
+        triggerHaptic('success');
+        showToast('Categoria adicionada!');
+      } catch (error) {
+        triggerHaptic('error');
+        showToast("Não foi possível completar a ação. Verifique os dados.");
+      }
     }
   };
 
   const handleRemoveCategory = (cat: string) => {
-    if (isLocked) {
-      triggerHaptic('error');
-      return;
-    }
     triggerHaptic('warning');
-    if (window.confirm(`Deseja remover a categoria "${cat}"?`)) {
-      removeCategory(cat);
-      showToast('Categoria removida.');
+    setDeleteCategoryConfirmation({ isOpen: true, categoryName: cat });
+  };
+
+  const confirmRemoveCategory = () => {
+    if (deleteCategoryConfirmation.categoryName) {
+      try {
+        removeCategory(deleteCategoryConfirmation.categoryName);
+        setDeleteCategoryConfirmation({ isOpen: false, categoryName: null });
+        triggerHaptic('success');
+        showToast('Categoria removida.');
+      } catch (error) {
+        triggerHaptic('error');
+        showToast("Não foi possível completar a ação. Verifique os dados.");
+      }
+    }
+  };
+
+  const handleEditCategory = (oldName: string) => {
+    setEditCategoryModal({ isOpen: true, oldName, newName: oldName });
+  };
+
+  const confirmEditCategory = async () => {
+    if (editCategoryModal.newName && editCategoryModal.newName !== editCategoryModal.oldName) {
+      try {
+        await editCategory(editCategoryModal.oldName, editCategoryModal.newName);
+        setEditCategoryModal({ isOpen: false, oldName: '', newName: '' });
+        triggerHaptic('success');
+        showToast('Categoria atualizada!');
+      } catch (error) {
+        triggerHaptic('error');
+        showToast("Não foi possível completar a ação. Verifique os dados.");
+      }
     }
   };
 
@@ -471,6 +560,7 @@ const Inventory: React.FC = () => {
     if(isLocked || !canAdjustStock) return;
     const val = parseInt(newMin);
     if (!isNaN(val)) {
+      try {
         updateProduct(productId, { minStock: val });
         const newSet = new Set(savedAlertIds);
         newSet.add(productId);
@@ -482,6 +572,10 @@ const Inventory: React.FC = () => {
             return next;
             });
         }, 2000);
+      } catch (error) {
+        triggerHaptic('error');
+        showToast("Não foi possível completar a ação. Verifique os dados.");
+      }
     }
   };
 
@@ -1296,8 +1390,7 @@ const Inventory: React.FC = () => {
                      <option value="Grade">Grade</option>
                      <option value="Caixa">Caixa</option>
                      <option value="Embalagem">Embalagem</option>
-                     <option value="Fardo">Fardo</option>
-                   </select>
+                    </select>
                 </div>
                 <div>
                    <label className="text-xs font-bold text-slate-400 uppercase">Tam. Pack</label>
@@ -1348,6 +1441,27 @@ const Inventory: React.FC = () => {
                 </div>
               </div>
 
+              {parseInt(productModal.data.stock) !== productModal.data.originalStock && (
+                <div className="animate-fade-in">
+                  <label className="text-xs font-bold text-amber-500 uppercase flex items-center gap-1">
+                    <AlertTriangle size={12} /> Motivo do Ajuste (Obrigatório)
+                  </label>
+                  <select 
+                    value={productModal.data.reason}
+                    onChange={e => setProductModal({ ...productModal, data: { ...productModal.data, reason: e.target.value } })}
+                    className="w-full p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-800 text-sm font-bold text-amber-900 dark:text-amber-200 outline-none focus:ring-2 focus:ring-amber-300"
+                  >
+                    <option value="">Selecione um motivo...</option>
+                    <option value="Quebra">Quebra / Dano</option>
+                    <option value="Validade">Validade / Estragado</option>
+                    <option value="Inventário">Correção de Inventário</option>
+                    <option value="Consumo Interno">Consumo Interno</option>
+                    <option value="Oferta">Oferta / Cortesia</option>
+                    <option value="Outro">Outro (Especificar nas notas)</option>
+                  </select>
+                </div>
+              )}
+
               <div className="flex gap-4 mt-6">
                 <button 
                   onClick={() => setProductModal({ isOpen: false, data: null })}
@@ -1397,10 +1511,7 @@ const Inventory: React.FC = () => {
                      <span className="font-bold text-slate-700 dark:text-white text-sm">{cat}</span>
                      <div className="flex gap-1">
                         <button 
-                          onClick={() => {
-                            const newName = prompt("Novo nome para a categoria:", cat);
-                            if (newName) editCategory(cat, newName);
-                          }}
+                          onClick={() => handleEditCategory(cat)}
                           className="text-blue-500 hover:bg-blue-100 p-1 rounded transition-colors"
                         >
                           <Edit3 size={16} />
@@ -1432,6 +1543,106 @@ const Inventory: React.FC = () => {
               </div>
           </div>
       </footer>
+      {/* Modal de Confirmação de Eliminação de Categoria */}
+      {deleteCategoryConfirmation.isOpen && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white dark:bg-slate-900 rounded-3xl p-8 max-w-sm w-full shadow-2xl border border-slate-100 dark:border-slate-800 text-center"
+          >
+            <div className="w-20 h-20 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Trash2 size={40} className="text-red-600 dark:text-red-400" />
+            </div>
+            <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-4">Eliminar Categoria</h3>
+            <p className="text-slate-500 dark:text-slate-400 mb-8 leading-relaxed">
+              Deseja eliminar a categoria <span className="font-bold text-slate-900 dark:text-white">"{deleteCategoryConfirmation.categoryName}"</span>?
+            </p>
+            <div className="flex gap-4">
+              <button 
+                onClick={() => setDeleteCategoryConfirmation({ isOpen: false, categoryName: null })}
+                className="flex-1 py-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-2xl font-bold hover:bg-slate-200 transition-all"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={confirmRemoveCategory}
+                className="flex-1 py-4 bg-red-600 text-white rounded-2xl font-bold shadow-lg shadow-red-200 dark:shadow-none hover:bg-red-700 transition-all"
+              >
+                Eliminar
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+      {/* Modal de Edição de Categoria */}
+      {editCategoryModal.isOpen && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white dark:bg-slate-900 rounded-3xl p-8 max-w-sm w-full shadow-2xl border border-slate-100 dark:border-slate-800 text-center"
+          >
+            <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-4">Editar Categoria</h3>
+            <div className="mb-6">
+              <label className="text-xs font-bold text-slate-400 uppercase mb-2 block text-left">Nome da Categoria</label>
+              <input 
+                type="text"
+                value={editCategoryModal.newName}
+                onChange={(e) => setEditCategoryModal({ ...editCategoryModal, newName: e.target.value })}
+                className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white"
+                placeholder="Nome da categoria"
+                autoFocus
+              />
+            </div>
+            <div className="flex gap-4">
+              <button 
+                onClick={() => setEditCategoryModal({ isOpen: false, oldName: '', newName: '' })}
+                className="flex-1 py-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-2xl font-bold hover:bg-slate-200 transition-all"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={confirmEditCategory}
+                className="flex-1 py-4 bg-[#003366] text-white rounded-2xl font-bold shadow-lg hover:bg-[#004488] transition-all"
+              >
+                Guardar
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Modal de Alerta de Divergência */}
+      {showDivergenceAlert && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white dark:bg-slate-900 rounded-3xl p-8 max-w-sm w-full shadow-2xl border border-slate-100 dark:border-slate-800 text-center"
+          >
+            <div className="w-20 h-20 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mx-auto mb-6">
+              <AlertTriangle size={40} className="text-amber-600 dark:text-amber-400" />
+            </div>
+            <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-4">Alerta Enviado!</h3>
+            <div className="text-slate-500 dark:text-slate-400 mb-8 text-left space-y-2">
+              <p>Foi enviado automaticamente um relatório para:</p>
+              <ul className="list-disc list-inside font-bold text-slate-700 dark:text-slate-300">
+                <li>Administrador Geral</li>
+                <li>Proprietário</li>
+                <li>Chat Geral</li>
+              </ul>
+              <p className="mt-4 italic">Motivo: {justificationText}</p>
+            </div>
+            <button 
+              onClick={() => setShowDivergenceAlert(false)}
+              className="w-full py-4 bg-[#003366] text-white rounded-2xl font-bold shadow-lg hover:bg-[#004488] transition-all"
+            >
+              Entendido
+            </button>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 };

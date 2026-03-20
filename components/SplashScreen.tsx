@@ -82,7 +82,7 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
               fontFamily: '"Outfit", sans-serif'
             }}
           >
-            Marguel Mobile
+            Marguel Sistema de Gestão Interna
           </h1>
           
           {/* Animated Underline */}

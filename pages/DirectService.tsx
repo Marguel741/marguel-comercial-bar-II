@@ -19,7 +19,18 @@ interface Product {
 }
 
 const DirectService: React.FC = () => {
-  const { products, categories, updateProduct, processTransaction, addSalesReport, isDayLocked, systemDate, getSystemDate, addAuditLog } = useProducts();
+  const { 
+    products, 
+    categories, 
+    updateProduct, 
+    processTransaction, 
+    addSalesReport, 
+    isDayLocked, 
+    systemDate, 
+    getSystemDate, 
+    addAuditLog,
+    handleStockMovement
+  } = useProducts();
   const { triggerHaptic, sidebarMode } = useLayout();
   const { user } = useAuth();
 
@@ -175,17 +186,8 @@ const DirectService: React.FC = () => {
       }
   }, [directSales, isSyncing]);
 
-  // Auto-sync Effect
-  useEffect(() => {
-      if (isOnline && !isSyncing) {
-          const hasPending = directSales.some(s => s.statusSync === 'pending');
-          if (hasPending) {
-              const timer = setTimeout(() => syncPendingSales(false), 1000);
-              return () => clearTimeout(timer);
-          }
-      }
-  }, [isOnline, directSales, isSyncing, syncPendingSales]);
-
+  // Auto-sync Effect - Disabled to focus on manual user actions
+  
   // Filtering
   const filteredProducts = useMemo(() => {
     return (products as Product[]).filter(p => {
@@ -281,60 +283,52 @@ const DirectService: React.FC = () => {
     }
 
     if (isLocked) {
-      triggerHaptic('error');
-      alert('Operação Negada: O dia atual está bloqueado.');
-      return;
-    }
-
-    // Integrity Check (Pre-Transaction Validation)
-    const safetyCheck = calculateTransaction(cart);
-    if (safetyCheck.total !== cartTotal) {
-         console.error("Integrity Error: Calculated", safetyCheck.total, "State", cartTotal);
-         setCart(prev => ({...prev})); // Force recalculation
-         setNetworkToast({
-            show: true,
-            message: "Inconsistência de preço detectada. Valor atualizado. Tente novamente.",
-            type: 'warning'
-        });
+        triggerHaptic('error');
+        alert('Operação Negada: O dia atual está bloqueado.');
         return;
     }
 
-    triggerHaptic('success');
-    
-    // 1. Create Sale Record (Independent History)
-    const now = getSystemDate();
-    const newSale: DirectSale = {
-        id: `${now.getTime()}-${deviceId}`,
-        uuid: crypto.randomUUID(), // Immutable
-        date: formatDateISO(now),
-        time: now.toLocaleTimeString('pt-AO'),
-        timestamp: now.getTime(),
-        serverTimestamp: undefined, // Will be set on sync
-        attendant: user?.name || 'Desconhecido',
-        userId: user?.id || 'unknown',
-        deviceId: deviceId,
-        total: cartTotal, // Final amount paid by customer (with discount applied)
-        totalDiscount: cartCalculations.discount > 0 ? cartCalculations.discount : undefined, // Global discount (Footer deduction)
-        paymentMethod: paymentMethod,
-        statusSync: 'pending', // Default offline state
-        isSyncTime: serverTimeOffset !== 0,
-        items: Object.entries(cart).map(([id, qty]) => {
-            const p = productMap.get(id);
-            return {
-                productId: id,
-                name: p?.name || 'Item Desconhecido',
-                qty: Number(qty),
-                price: p?.sellPrice || 0 // Original unit price (No discount applied here)
-            };
-        })
-    };
-
-    // 2. Save to IndexedDB
     try {
-        await dbAddSale(newSale);
-        setDirectSales(prev => [newSale, ...prev]);
+        triggerHaptic('success');
         
-        // Reset
+        // 1. Create Sale Record
+        const now = getSystemDate();
+        const newSale: DirectSale = {
+            id: `${now.getTime()}-${deviceId}`,
+            uuid: crypto.randomUUID(),
+            date: formatDateISO(now),
+            time: now.toLocaleTimeString('pt-AO'),
+            timestamp: now.getTime(),
+            serverTimestamp: undefined,
+            attendant: user?.name || 'Desconhecido',
+            userId: user?.id || 'unknown',
+            deviceId: deviceId,
+            total: cartTotal,
+            totalDiscount: cartCalculations.discount > 0 ? cartCalculations.discount : undefined,
+            paymentMethod: paymentMethod,
+            statusSync: 'pending',
+            isSyncTime: serverTimeOffset !== 0,
+            items: Object.entries(cart).map(([id, qty]) => {
+                const p = productMap.get(id);
+                return {
+                    productId: id,
+                    name: p?.name || 'Item Desconhecido',
+                    qty: Number(qty),
+                    price: p?.sellPrice || 0
+                };
+            })
+        };
+
+        // 2. Save to IndexedDB
+        await dbAddSale(newSale);
+        
+        // 3. Update Stock via handleStockMovement (This will throw if stock is insufficient or day is locked)
+        for (const item of newSale.items) {
+            handleStockMovement(item.productId, item.qty, 'SALE', user?.name || 'Sistema', 'Venda Direta', newSale.id);
+        }
+
+        // 4. Update local state only after successful stock update
+        setDirectSales(prev => [newSale, ...prev]);
         setCart({});
         setShowCheckout(false);
         
@@ -344,14 +338,15 @@ const DirectService: React.FC = () => {
             type: 'success'
         });
         setTimeout(() => setNetworkToast(prev => ({ ...prev, show: false })), 4000);
-    } catch (error) {
-        console.error("Failed to save sale", error);
+    } catch (error: any) {
+        console.error("Checkout failed", error);
+        triggerHaptic('error');
         setNetworkToast({
             show: true,
-            message: "Erro ao salvar venda. Tente novamente.",
+            message: "Não foi possível completar a ação. Verifique os dados.",
             type: 'warning'
         });
-        setTimeout(() => setNetworkToast(prev => ({ ...prev, show: false })), 4000);
+        setTimeout(() => setNetworkToast(prev => ({ ...prev, show: false })), 5000);
     }
   };
 
@@ -374,11 +369,51 @@ const DirectService: React.FC = () => {
   };
 
   const handleCancelSale = async (sale: DirectSale) => {
-      if (!confirm("Tem certeza que deseja anular esta venda?")) return;
+      if (isLocked) {
+          alert("Dia Bloqueado.");
+          return;
+      }
+      if (!confirm("Tem certeza que deseja anular esta venda? Será criado um registo de estorno e o stock será devolvido.")) return;
       
+      triggerHaptic('warning');
+      
+      // 1. Mark original as cancelled
       const updated = { ...sale, statusSync: 'cancelled' as const };
       await dbUpdateSale(updated);
       setDirectSales(prev => prev.map(s => s.id === sale.id ? updated : s));
+
+      // 2. Create Reversal Entry (Negative Sale)
+      const reversalSale: DirectSale = {
+          ...sale,
+          id: `rev_${sale.id}_${Date.now()}`,
+          uuid: crypto.randomUUID(),
+          timestamp: Date.now(),
+          total: -sale.total,
+          items: sale.items.map(item => ({ ...item, qty: -item.qty })),
+          statusSync: 'pending', // Reversal needs to be synced too
+          totalDiscount: sale.totalDiscount ? -sale.totalDiscount : undefined
+      };
+      await dbAddSale(reversalSale);
+      setDirectSales(prev => [reversalSale, ...prev]);
+
+      // 3. Reverse Stock
+      sale.items.forEach(item => {
+          handleStockMovement(
+              item.productId, 
+              item.qty, 
+              'PURCHASE', // Returning stock is like a purchase/entry
+              user?.name || 'Sistema', 
+              `Estorno de Venda: ${sale.id}`,
+              reversalSale.id
+          );
+      });
+
+      setNetworkToast({
+          show: true,
+          message: "Venda anulada. Stock devolvido e estorno registrado.",
+          type: 'success'
+      });
+      setTimeout(() => setNetworkToast(prev => ({ ...prev, show: false })), 4000);
   };
 
   const filteredHistory = useMemo(() => {

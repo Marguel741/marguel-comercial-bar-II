@@ -111,7 +111,7 @@ const Login: React.FC = () => {
           <div className="bg-slate-100 dark:bg-slate-800 p-2 rounded-lg inline-block text-[10px] text-slate-500">
              <strong>Emails de Teste:</strong> admin@marguel.com, dono@marguel.com, gerente@marguel.com, efetivo@marguel.com, func@marguel.com, remoto@marguel.com
           </div>
-          <p className="mt-2">Marguel Comercial Bar &copy; 2024</p>
+          <p className="mt-2">Marguel Comercial Bar &copy; {new Date().getFullYear()}</p>
         </div>
       </div>
     </div>

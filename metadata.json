@@ -1,6 +1,6 @@
 {
-  "name": "Marguel Group App",
-  "description": "A comprehensive, high-security internal management system for Marguel Comercial Bar, featuring inventory, sales tracking, financial reports, and internal communication.",
+  "name": "Marguel Sistema de Gestão Interna",
+  "description": "Sistema de gestão interna abrangente para a Marguel CGPS (SU) Lda, incluindo inventário, vendas, relatórios financeiros e auditoria.",
   "requestFramePermissions": [
     "camera",
     "microphone"

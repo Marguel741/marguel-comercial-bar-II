@@ -11,9 +11,9 @@ import AccountStatus from './pages/AccountStatus';
 import UserManagement from './pages/UserManagement';
 import DirectService from './pages/DirectService';
 import GlobalCalendar from './pages/GlobalCalendar';
-import TestCycle from './pages/TestCycle'; // Importação da nova página
 import SplashGenerator from './pages/SplashGenerator';
 import Audit from './pages/Audit';
+import TestCycle from './pages/TestCycle';
 import Settings from './pages/Settings';
 import AccessDenied from './pages/AccessDenied';
 import Sidebar from './components/Sidebar';
@@ -146,10 +146,15 @@ const AppContent: React.FC = () => {
                             <Audit />
                           </ProtectedRoute>
                         } />
+
+                        <Route path="/test-cycle" element={
+                          <ProtectedRoute permission="admin_global_admin">
+                            <TestCycle />
+                          </ProtectedRoute>
+                        } />
                         
                         <Route path="/settings" element={<Settings />} />
                         
-                        <Route path="/test-cycle" element={<TestCycle />} />
                         <Route path="/generate-splash" element={<SplashGenerator />} />
                         <Route path="*" element={<Navigate to="/" />} />
                       </Routes>

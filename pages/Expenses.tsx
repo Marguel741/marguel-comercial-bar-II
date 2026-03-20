@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { motion } from 'motion/react';
 import { 
   Plus, Wallet, FileText, Camera, Tag, X, Trash2, Calendar, 
   User, Paperclip, Check, Eye, Printer, Search, StickyNote, 
@@ -54,6 +55,8 @@ const Expenses: React.FC = () => {
   const [toast, setToast] = useState<{show: boolean, message: string}>({ show: false, message: '' });
   // Modais & Edição
   const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
+  const [deleteExpenseConfirmation, setDeleteExpenseConfirmation] = useState<{ isOpen: boolean, expenseId: string | null }>({ isOpen: false, expenseId: null });
+  const [deleteCategoryConfirmation, setDeleteCategoryConfirmation] = useState<{ isOpen: boolean, categoryId: string | null, categoryName: string | null }>({ isOpen: false, categoryId: null, categoryName: null });
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState<Expense | null>(null);
   const [showFullReport, setShowFullReport] = useState(false);
@@ -158,11 +161,17 @@ const Expenses: React.FC = () => {
       showToast('Dia bloqueado.');
       return;
     }
-    if (window.confirm("Tem certeza que deseja apagar este registo? O valor será devolvido à Conta Corrente.")) {
-      triggerHaptic('warning');
-      deleteExpense(id, user?.name || 'Sistema');
-      if (selectedExpense?.id === id) setSelectedExpense(null);
+    triggerHaptic('warning');
+    setDeleteExpenseConfirmation({ isOpen: true, expenseId: id });
+  };
+
+  const confirmDeleteExpense = () => {
+    if (deleteExpenseConfirmation.expenseId) {
+      deleteExpense(deleteExpenseConfirmation.expenseId, user?.name || 'Sistema');
+      if (selectedExpense?.id === deleteExpenseConfirmation.expenseId) setSelectedExpense(null);
+      setDeleteExpenseConfirmation({ isOpen: false, expenseId: null });
       showToast('Despesa removida e valor revertido.');
+      triggerHaptic('success');
     }
   };
 
@@ -208,9 +217,11 @@ const Expenses: React.FC = () => {
   // Cálculos para o relatório
   const filteredExpenses = useMemo(() => {
     return expenses.filter(ex => 
-      ex.title.toLowerCase().includes(reportSearch.toLowerCase()) ||
-      ex.category.toLowerCase().includes(reportSearch.toLowerCase()) ||
-      ex.user.toLowerCase().includes(reportSearch.toLowerCase())
+      (ex.status === undefined || ex.status === 'ACTIVE') && (
+        ex.title.toLowerCase().includes(reportSearch.toLowerCase()) ||
+        ex.category.toLowerCase().includes(reportSearch.toLowerCase()) ||
+        ex.user.toLowerCase().includes(reportSearch.toLowerCase())
+      )
     );
   }, [expenses, reportSearch]);
 
@@ -389,7 +400,7 @@ const Expenses: React.FC = () => {
           </div>
           
           <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4 max-h-[600px] pr-2">
-            {expenses.slice(0, 5).map((ex) => (
+            {expenses.slice(0, 10).map((ex) => (
               <SoftCard 
                 key={ex.id} 
                 onClick={() => {
@@ -397,14 +408,30 @@ const Expenses: React.FC = () => {
                   setSelectedExpense(ex);
                   setIsEditing(false);
                 }}
-                className="flex justify-between items-center border-l-4 border-red-500 cursor-pointer hover:bg-slate-50 transition-colors group"
+                className={`flex justify-between items-center border-l-4 cursor-pointer hover:bg-slate-50 transition-colors group ${
+                  ex.status === 'REVERSED' ? 'border-slate-300 opacity-60 grayscale' : 
+                  ex.status === 'REVERSAL' ? 'border-amber-500' : 'border-red-500'
+                }`}
               >
                 <div className="flex items-center gap-4">
-                  <div className="p-3 bg-red-50 text-red-500 rounded-2xl group-hover:scale-110 transition-transform">
+                  <div className={`p-3 rounded-2xl group-hover:scale-110 transition-transform ${
+                    ex.status === 'REVERSED' ? 'bg-slate-100 text-slate-400' : 
+                    ex.status === 'REVERSAL' ? 'bg-amber-50 text-amber-500' : 'bg-red-50 text-red-500'
+                  }`}>
                     <Wallet size={24} />
                   </div>
                   <div>
-                    <p className="font-bold text-[#003366] group-hover:underline">{ex.title}</p>
+                    <div className="flex items-center gap-2">
+                      <p className={`font-bold text-[#003366] group-hover:underline ${ex.status === 'REVERSED' ? 'line-through' : ''}`}>
+                        {ex.title}
+                      </p>
+                      {ex.status === 'REVERSED' && (
+                        <span className="text-[9px] bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded font-black uppercase">Anulada</span>
+                      )}
+                      {ex.status === 'REVERSAL' && (
+                        <span className="text-[9px] bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded font-black uppercase">Estorno</span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2 text-xs text-slate-400 font-bold uppercase">
                       <span>{formatDisplayDate(ex.date)}</span>
                       <span>•</span>
@@ -418,7 +445,12 @@ const Expenses: React.FC = () => {
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-xl font-black text-red-500">{(ex.amount || 0).toLocaleString('pt-AO')} Kz</p>
+                  <p className={`text-xl font-black ${
+                    ex.status === 'REVERSED' ? 'text-slate-400 line-through' : 
+                    ex.status === 'REVERSAL' ? 'text-amber-600' : 'text-red-500'
+                  }`}>
+                    {ex.amount < 0 ? '' : '-'}{(ex.amount || 0).toLocaleString('pt-AO')} Kz
+                  </p>
                   <p className="text-[10px] text-slate-400 font-bold uppercase">Por {ex.user}</p>
                 </div>
               </SoftCard>
@@ -704,8 +736,8 @@ const Expenses: React.FC = () => {
             </div>
 
             {/* Tabela */}
-            <div className="flex-1 overflow-auto custom-scrollbar p-6">
-              <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="flex-1 overflow-x-auto custom-scrollbar p-6">
+              <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden min-w-[600px]">
                 <table className="w-full text-left">
                   <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-bold border-b border-slate-200">
                     <tr>
@@ -875,10 +907,8 @@ const Expenses: React.FC = () => {
                       </button>
                       <button 
                         onClick={() => {
-                          if (window.confirm(`Eliminar categoria "${cat.name}"?`)) {
-                            deleteExpenseCategory(cat.id);
-                            triggerHaptic('warning');
-                          }
+                          triggerHaptic('warning');
+                          setDeleteCategoryConfirmation({ isOpen: true, categoryId: cat.id, categoryName: cat.name });
                         }}
                         className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
                       >
@@ -915,6 +945,77 @@ const Expenses: React.FC = () => {
           </div>
         </div>
       </footer>
+      {/* Modal de Confirmação de Eliminação de Despesa */}
+      {deleteExpenseConfirmation.isOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white dark:bg-slate-900 rounded-3xl p-8 max-w-sm w-full shadow-2xl border border-slate-100 dark:border-slate-800 text-center"
+          >
+            <div className="w-20 h-20 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Trash2 size={40} className="text-red-600 dark:text-red-400" />
+            </div>
+            <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-4">Confirmar Eliminação</h3>
+            <p className="text-slate-500 dark:text-slate-400 mb-8 leading-relaxed">
+              Tem certeza que deseja apagar este registo? O valor será devolvido à Conta Corrente.
+            </p>
+            <div className="flex gap-4">
+              <button 
+                onClick={() => setDeleteExpenseConfirmation({ isOpen: false, expenseId: null })}
+                className="flex-1 py-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-2xl font-bold hover:bg-slate-200 transition-all"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={confirmDeleteExpense}
+                className="flex-1 py-4 bg-red-600 text-white rounded-2xl font-bold shadow-lg shadow-red-200 dark:shadow-none hover:bg-red-700 transition-all"
+              >
+                Eliminar
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Modal de Confirmação de Eliminação de Categoria */}
+      {deleteCategoryConfirmation.isOpen && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white dark:bg-slate-900 rounded-3xl p-8 max-w-sm w-full shadow-2xl border border-slate-100 dark:border-slate-800 text-center"
+          >
+            <div className="w-20 h-20 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Trash2 size={40} className="text-red-600 dark:text-red-400" />
+            </div>
+            <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-4">Eliminar Categoria</h3>
+            <p className="text-slate-500 dark:text-slate-400 mb-8 leading-relaxed">
+              Deseja eliminar a categoria <span className="font-bold text-slate-900 dark:text-white">"{deleteCategoryConfirmation.categoryName}"</span>?
+            </p>
+            <div className="flex gap-4">
+              <button 
+                onClick={() => setDeleteCategoryConfirmation({ isOpen: false, categoryId: null, categoryName: null })}
+                className="flex-1 py-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-2xl font-bold hover:bg-slate-200 transition-all"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={() => {
+                  if (deleteCategoryConfirmation.categoryId) {
+                    deleteExpenseCategory(deleteCategoryConfirmation.categoryId);
+                    setDeleteCategoryConfirmation({ isOpen: false, categoryId: null, categoryName: null });
+                    showToast('Categoria eliminada.');
+                  }
+                }}
+                className="flex-1 py-4 bg-red-600 text-white rounded-2xl font-bold shadow-lg shadow-red-200 dark:shadow-none hover:bg-red-700 transition-all"
+              >
+                Eliminar
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 };

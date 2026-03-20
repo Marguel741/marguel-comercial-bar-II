@@ -917,12 +917,6 @@ const AccountStatus: React.FC = () => {
                   </div>
                 )}
               </div>
-
-              {/* ID da Transação */}
-              <div className="pt-4 border-t border-slate-100 dark:border-slate-700">
-                <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">ID da Transação</p>
-                <p className="font-mono text-[10px] text-slate-400">{selectedTransaction.id}</p>
-              </div>
             </div>
 
             {/* Footer */}

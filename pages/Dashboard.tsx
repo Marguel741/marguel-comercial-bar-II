@@ -19,11 +19,20 @@ const Dashboard: React.FC = () => {
   const { toggleSidebar } = useLayout();
   
   const [expandedAlerts, setExpandedAlerts] = useState<string[]>([]);
-  const [customAlerts, setCustomAlerts] = useState<any[]>([]);
+  const [customAlerts, setCustomAlerts] = useState<any[]>(() => {
+    const saved = localStorage.getItem('mg_custom_alerts');
+    return saved ? JSON.parse(saved) : [];
+  });
   const [showCreateAlert, setShowCreateAlert] = useState(false);
+
+  // Save customAlerts to localStorage
+  React.useEffect(() => {
+    localStorage.setItem('mg_custom_alerts', JSON.stringify(customAlerts));
+  }, [customAlerts]);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [timeRange, setTimeRange] = useState<'week' | 'month' | 'quarter' | 'year'>('week');
+  const [timeOffset, setTimeOffset] = useState(0);
   const [isChartFullScreen, setIsChartFullScreen] = useState(false);
   const [selectedChartDay, setSelectedChartDay] = useState<any>(null);
   const [newAlertTitle, setNewAlertTitle] = useState('');
@@ -68,6 +77,17 @@ const Dashboard: React.FC = () => {
     const dataPoints = [];
     const now = new Date(systemDate);
     
+    // Apply offset
+    if (timeRange === 'week') {
+        now.setDate(now.getDate() - (timeOffset * 7));
+    } else if (timeRange === 'month') {
+        now.setDate(now.getDate() - (timeOffset * 30));
+    } else if (timeRange === 'quarter') {
+        now.setMonth(now.getMonth() - (timeOffset * 3));
+    } else if (timeRange === 'year') {
+        now.setFullYear(now.getFullYear() - timeOffset);
+    }
+
     // Helper to parse DD/MM/YYYY
     const parseDateStr = (str: string) => {
         const [d, m, y] = str.split('/').map(Number);
@@ -236,6 +256,7 @@ const Dashboard: React.FC = () => {
         type: newAlertType,
         title: newAlertTitle,
         message: newAlertMsg,
+        isCustom: true,
         icon: newAlertType === 'CRITICO' ? AlertTriangle : newAlertType === 'SUCCESS' ? CheckCircle : FileText,
         color: newAlertType === 'CRITICO' ? 'red' : newAlertType === 'SUAVE' ? 'amber' : newAlertType === 'SUCCESS' ? 'green' : 'blue'
     };
@@ -243,6 +264,10 @@ const Dashboard: React.FC = () => {
     setShowCreateAlert(false);
     setNewAlertTitle('');
     setNewAlertMsg('');
+  };
+
+  const removeCustomAlert = (id: string) => {
+    setCustomAlerts(prev => prev.filter(a => a.id !== id));
   };
 
   return (
@@ -478,35 +503,60 @@ const Dashboard: React.FC = () => {
                         <p className="text-slate-400 text-xs">Fluxo de Vendas vs Despesas</p>
                     </div>
                 </div>
-                <button 
-                    onClick={() => setIsChartFullScreen(!isChartFullScreen)}
-                    className="p-2 hover:bg-slate-50 rounded-full text-slate-500"
-                >
-                    {isChartFullScreen ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
-                </button>
+                <div className="flex items-center gap-2">
+                    <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-lg p-1 mr-2">
+                        <button 
+                            onClick={() => setTimeOffset(prev => prev + 1)}
+                            className="p-1 hover:bg-white dark:hover:bg-slate-700 rounded-md text-slate-500 transition-all"
+                            title="Anterior"
+                        >
+                            <ChevronDown size={16} className="rotate-90" />
+                        </button>
+                        <button 
+                            onClick={() => setTimeOffset(0)}
+                            className="px-2 text-[10px] font-bold text-slate-500 hover:text-[#003366] dark:hover:text-blue-400"
+                        >
+                            HOJE
+                        </button>
+                        <button 
+                            onClick={() => setTimeOffset(prev => Math.max(0, prev - 1))}
+                            className="p-1 hover:bg-white dark:hover:bg-slate-700 rounded-md text-slate-500 transition-all disabled:opacity-30"
+                            disabled={timeOffset === 0}
+                            title="Próximo"
+                        >
+                            <ChevronDown size={16} className="-rotate-90" />
+                        </button>
+                    </div>
+                    <button 
+                        onClick={() => setIsChartFullScreen(!isChartFullScreen)}
+                        className="p-2 hover:bg-slate-50 rounded-full text-slate-500"
+                    >
+                        {isChartFullScreen ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
+                    </button>
+                </div>
             </div>
 
             <div className="flex gap-2 mb-6 overflow-x-auto pb-1 scrollbar-hide">
                 <button 
-                    onClick={() => setTimeRange('week')}
+                    onClick={() => { setTimeRange('week'); setTimeOffset(0); }}
                     className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${timeRange === 'week' ? 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-white' : 'text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
                 >
                     Semana
                 </button>
                 <button 
-                    onClick={() => setTimeRange('month')}
+                    onClick={() => { setTimeRange('month'); setTimeOffset(0); }}
                     className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${timeRange === 'month' ? 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-white' : 'text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
                 >
                     Mês
                 </button>
                 <button 
-                    onClick={() => setTimeRange('quarter')}
+                    onClick={() => { setTimeRange('quarter'); setTimeOffset(0); }}
                     className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${timeRange === 'quarter' ? 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-white' : 'text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
                 >
                     Trim.
                 </button>
                 <button 
-                    onClick={() => setTimeRange('year')}
+                    onClick={() => { setTimeRange('year'); setTimeOffset(0); }}
                     className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${timeRange === 'year' ? 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-white' : 'text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
                 >
                     Ano
@@ -752,11 +802,24 @@ const Dashboard: React.FC = () => {
                                     <h4 className="font-bold text-sm">{alert.title}</h4>
                                     <p className="text-xs opacity-80">{alert.message}</p>
                                 </div>
-                                {alert.details && (
-                                    <button onClick={() => toggleAlertExpand(alert.id)} className="p-1 hover:bg-black/5 dark:hover:bg-white/10 rounded-full">
-                                        {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-                                    </button>
-                                )}
+                                <div className="flex items-center gap-1">
+                                    {alert.isCustom && isAdmin && (
+                                        <button 
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                removeCustomAlert(alert.id);
+                                            }} 
+                                            className="p-1 hover:bg-black/5 dark:hover:bg-white/10 rounded-full text-current opacity-60 hover:opacity-100"
+                                        >
+                                            <X size={14} />
+                                        </button>
+                                    )}
+                                    {alert.details && (
+                                        <button onClick={() => toggleAlertExpand(alert.id)} className="p-1 hover:bg-black/5 dark:hover:bg-white/10 rounded-full">
+                                            {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                                        </button>
+                                    )}
+                                </div>
                             </div>
                             {isExpanded && alert.details && (
                                 <div className="mt-3 pt-3 border-t border-black/5 dark:border-white/10 text-xs space-y-1 max-h-40 overflow-y-auto custom-scrollbar">

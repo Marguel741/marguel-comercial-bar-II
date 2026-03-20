@@ -1,22 +1,17 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   Calendar, 
   Play, 
   ShoppingCart, 
-  ArrowUpRight, 
   ArrowDownLeft, 
   CheckCircle, 
-  AlertTriangle, 
   History, 
-  Database,
   FlaskConical,
-  RefreshCw,
   Trash2,
-  ChevronRight,
   Package,
   SkipForward
 } from 'lucide-react';
+import { motion } from 'motion/react';
 import SoftCard from '../components/SoftCard';
 import { useProducts } from '../contexts/ProductContext';
 import { useLayout } from '../contexts/LayoutContext';
@@ -27,8 +22,6 @@ const TestCycle: React.FC = () => {
     products, 
     updateProduct, 
     processTransaction, 
-    addSalesReport, 
-    currentBalance,
     addPurchase,
     salesReports,
     systemDate, // Data GLOBAL
@@ -36,7 +29,7 @@ const TestCycle: React.FC = () => {
     resetTestData,
     getSystemDate
   } = useProducts();
-  const { sidebarMode, triggerHaptic } = useLayout();
+  const { triggerHaptic, sidebarMode } = useLayout();
 
   // Logs locais apenas para feedback visual
   const [dailyLog, setDailyLog] = useState<string[]>([]);
@@ -120,7 +113,7 @@ const TestCycle: React.FC = () => {
   };
 
   const resetToToday = () => {
-      if(confirm("Voltar para a data real de hoje?")) {
+      if(window.confirm("Voltar para a data real de hoje?")) {
           setSystemDate(new Date());
           logAction("🔄 Data do sistema sincronizada com tempo real.");
       }
@@ -136,14 +129,14 @@ const TestCycle: React.FC = () => {
                     <FlaskConical size={32} className="text-amber-400" />
                 </div>
                 <div>
-                    <h2 className="text-2xl font-bold">MÁQUINA DO TEMPO / SIMULADOR</h2>
-                    <p className="text-blue-100 opacity-80 max-w-xl">
+                    <h2 className="text-2xl font-bold uppercase tracking-tighter">Máquina do Tempo / Simulador</h2>
+                    <p className="text-blue-100 opacity-80 max-w-xl text-sm">
                         Esta página controla a <strong className="text-white underline">Data do Sistema</strong>. 
                         Ao alterar a data aqui, o Dashboard, Controle de Vendas, Despesas e Inventário se comportarão como se fosse esse dia.
                     </p>
                 </div>
             </div>
-            <button onClick={resetToToday} className="whitespace-nowrap px-4 py-2 bg-amber-400 text-[#003366] font-bold rounded-xl hover:bg-amber-300 transition-colors shadow-lg">
+            <button onClick={resetToToday} className="whitespace-nowrap px-6 py-3 bg-amber-400 text-[#003366] font-black rounded-2xl hover:bg-amber-300 transition-all shadow-lg active:scale-95 uppercase text-xs tracking-widest">
                 Voltar para Hoje (Real)
             </button>
         </div>

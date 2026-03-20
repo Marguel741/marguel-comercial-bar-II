@@ -108,7 +108,8 @@ export interface Product {
   minStock: number;
   category: string;
   packSize?: number;
-  packType?: 'Grade' | 'Caixa' | 'Embalagem' | 'Fardo';
+  packType?: 'Grade' | 'Caixa' | 'Embalagem';
+  isArchived?: boolean;
   // Promo fields
   promoQty?: number;
   promoPrice?: number;
@@ -145,6 +146,7 @@ export interface PurchaseRecord {
   items: Record<string, number>;
   total: number;
   completedBy: string;
+  supplier?: string;
   timestamp: number;
   source: 'Prices' | 'Inventory' | 'Sales';
   attachments?: string[];
@@ -178,6 +180,7 @@ export interface Expense {
   attachments: string[];
   notes?: string;
   origin?: string;
+  status?: 'ACTIVE' | 'REVERSED' | 'REVERSAL';
 }
 
 export interface Alert {
@@ -219,6 +222,7 @@ export interface StockOperationLog {
   timestamp: number;
   performedBy: string;
   referenceId: string;
+  reason?: string;
 }
 
 export interface InventoryLog {

@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { useAudit } from '../contexts/AuditContext';
 import { useAuth } from '../contexts/AuthContext';
 import { UserRole } from '../types';
+import Footer from '../components/Footer';
 import { 
   Search, 
   Filter, 
@@ -84,14 +85,14 @@ const AuditPage: React.FC = () => {
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8 pl-8">
         <div>
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
             <History className="text-indigo-600" />
             Auditoria Global
           </h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-1">
-            Rastreabilidade total e segurança administrativa nível ERP.
+          <p className="text-slate-500 dark:text-slate-400 mt-1 pl-[2cm]">
+            Rastreabilidade total e segurança administrativa.
           </p>
         </div>
 
@@ -120,7 +121,7 @@ const AuditPage: React.FC = () => {
               }`}
             >
               {auditMode === 'IMMUTABLE' ? <Lock size={18} /> : <Unlock size={18} />}
-              Modo {auditMode === 'IMMUTABLE' ? 'Imutável' : 'Mutável'}
+              Modo {auditMode === 'IMMUTABLE' ? 'Protegido' : 'Mutável'}
             </button>
           </div>
         )}
@@ -163,7 +164,7 @@ const AuditPage: React.FC = () => {
             <span className="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Segurança</span>
             <Lock className="text-indigo-500" size={20} />
           </div>
-          <div className="font-bold">{auditMode === 'IMMUTABLE' ? 'Modo Imutável Ativo' : 'Modo de Teste (Mutável)'}</div>
+          <div className="font-bold">{auditMode === 'IMMUTABLE' ? 'Modo Protegido Ativo' : 'Modo de Teste (Mutável)'}</div>
         </div>
       </div>
 
@@ -245,14 +246,10 @@ const AuditPage: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
-              <AnimatePresence initial={false}>
                 {filteredLogs.length > 0 ? (
                   filteredLogs.map((log) => (
-                    <motion.tr
+                    <tr
                       key={log.id}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
                       className="hover:bg-slate-50/80 dark:hover:bg-slate-700/30 transition-colors group"
                     >
                       <td className="p-4 whitespace-nowrap">
@@ -302,7 +299,7 @@ const AuditPage: React.FC = () => {
                           </div>
                         </td>
                       )}
-                    </motion.tr>
+                    </tr>
                   ))
                 ) : (
                   <tr>
@@ -311,7 +308,6 @@ const AuditPage: React.FC = () => {
                     </td>
                   </tr>
                 )}
-              </AnimatePresence>
             </tbody>
           </table>
         </div>
@@ -320,15 +316,15 @@ const AuditPage: React.FC = () => {
       {/* Footer Info */}
       <div className="mt-6 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-slate-400 uppercase tracking-widest font-medium">
         <div className="flex items-center gap-4">
-          <span>ID de Sessão: {Math.random().toString(36).substring(7).toUpperCase()}</span>
-          <span>•</span>
-          <span>IP Local: 192.168.1.{Math.floor(Math.random() * 254)}</span>
+          <span>Sistema de Auditoria Marguel</span>
         </div>
         <div className="flex items-center gap-2">
           <Shield size={14} className="text-indigo-500" />
-          Sistema de Auditoria Protegido por Encriptação AES-256
+          Rastreabilidade e Segurança de Dados
         </div>
       </div>
+      {/* Footer */}
+      <Footer />
     </div>
   );
 };

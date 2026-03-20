@@ -86,7 +86,6 @@ interface ProductContextType {
   priceHistory: PriceHistoryLog[];
   systemDate: Date;
   getSystemDate: () => Date;
-  resetTestData: () => void;
   lockedDays: string[];
   equipments: Equipment[];
   
@@ -109,7 +108,7 @@ interface ProductContextType {
   addCategory: (category: string) => void;
   editCategory: (oldName: string, newName: string) => Promise<void>;
   removeCategory: (category: string) => void;
-  addPurchase: (items: Record<string, number>, source: 'Prices' | 'Inventory' | 'Sales', completedBy: string, attachments?: string[]) => void;
+  addPurchase: (items: Record<string, number>, source: 'Prices' | 'Inventory' | 'Sales', completedBy: string, attachments?: string[], supplier?: string) => void;
   getPurchasesByDate: (dateStr: string) => Record<string, number>;
   getTodayPurchases: () => Record<string, number>;
   processTransaction: (type: 'deposit' | 'withdraw', account: 'main' | 'savings' | string, amount: number, description: string, category?: string, referenceId?: string, referenceType?: Transaction['referenceType'], performedBy?: string) => void;
@@ -135,10 +134,11 @@ interface ProductContextType {
   addCard: (card: Omit<Card, 'id'>) => void;
   updateCard: (id: string, updates: Partial<Card>) => void;
   deleteCard: (id: string) => void;
+  resetTestData: () => void;
   isSyncing: boolean;
   hasPendingChanges: boolean;
   syncData: () => Promise<void>;
-  rebuildStockFromSales: () => Promise<void>;
+  handleStockMovement: (productId: string, quantity: number, type: 'SALE' | 'PURCHASE' | 'ADJUSTMENT', performedBy: string, reason: string, referenceId?: string) => void;
 }
 
 const ProductContext = createContext<ProductContextType | undefined>(undefined);
@@ -201,72 +201,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
 
 
 
-  const resetTestData = () => {
-    // 1. Operational Data
-    setPurchases([]);
-    setTransactions([]);
-    setSalesReports([]);
-    setExpenses([]);
-    setInventoryHistory([]);
-    setStockOperationHistory([]);
-    setLockedDays([]);
-    setPriceHistory([]);
-    
-    // 2. Reset Balances to defaults
-    setCurrentBalance(1250000);
-    setSavingsBalance(500000);
-    setCashBalance(850000);
-    setTPABalance(400000);
-    
-    // 3. Reset Cards to defaults
-    setCards([
-      {
-        id: 'main',
-        name: 'Conta Corrente',
-        holder: 'Marguel Bar',
-        balance: 1250000,
-        color: 'bg-gradient-to-bl from-[#003366] via-[#004488] to-[#0054A6]',
-        type: 'Corrente',
-        validity: '12/28'
-      },
-      {
-        id: 'savings',
-        name: 'Marguel Reserve',
-        holder: 'Marguel Reserve',
-        balance: 500000,
-        color: 'bg-gradient-to-br from-[#F5DF4D] via-[#D4AF37] to-[#AA6C39]',
-        type: 'Poupança',
-        validity: '06/30'
-      }
-    ]);
-
-    // 4. Reset Products Stock to 0
-    setProducts(prev => prev.map(p => ({ ...p, stock: 0 })));
-
-    // 5. Reset Equipments to defaults
-    setEquipments([
-        { id: '1', name: 'Mesas', qty: 20, prevQty: 20, status: 'Operacional' },
-        { id: '2', name: 'Cadeiras', qty: 80, prevQty: 80, status: 'Operacional' },
-        { id: '3', name: 'Grades (Vazias)', qty: 50, prevQty: 48, status: 'Operacional' },
-        { id: '4', name: 'Vasilhames', qty: 1200, prevQty: 1200, status: 'Operacional' },
-        { id: '5', name: 'Chaves de Abrir', qty: 10, prevQty: 12, status: 'Operacional' },
-        { id: '6', name: 'Freezer Vertical', qty: 3, prevQty: 3, status: 'Operacional' }
-    ]);
-
-    // 6. Reset System Date
-    setSystemDate(new Date());
-
-    // 7. Clear LocalStorage
-    const keysToRemove = [
-      'mg_purchases', 'mg_transactions', 'mg_sales_reports', 'mg_expenses',
-      'mg_inventory_history', 'mg_audit_logs', 'mg_stock_operation_history',
-      'mg_locked_days', 'mg_price_history', 'mg_current_balance',
-      'mg_savings_balance', 'mg_cash_balance', 'mg_tpa_balance', 'mg_cards',
-      '@Marguel:equipments', 'mg_system_date'
-    ];
-    keysToRemove.forEach(key => localStorage.removeItem(key));
-  };
-
   const addAuditLog = useCallback((log: any) => {
     addLog({
       action: log.action || 'AÇÃO_DESCONHECIDA',
@@ -309,12 +243,8 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     setSyncQueue([]);
   };
 
-  useEffect(() => {
-    if (navigator.onLine && syncQueue.length > 0) {
-      processSyncQueue();
-    }
-  }, [syncQueue, isOnline]);
-
+  // Removed automatic sync background process to focus on manual user actions
+  
   const [products, setProducts] = useState<Product[]>(() => {
     try {
       const saved = localStorage.getItem('mg_products');
@@ -362,6 +292,127 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       return saved ? JSON.parse(saved) : [];
     } catch { return []; }
   });
+
+  const isDayLocked = useCallback((date: string | Date) => {
+    if (!date) return false;
+    const dateStr = date instanceof Date ? formatDateISO(date) : date;
+    const cleanTarget = cleanDate(dateStr);
+    return lockedDays
+      .map(d => cleanDate(d))
+      .includes(cleanTarget);
+  }, [lockedDays]);
+
+  const validateAction = useCallback((type: string, payload: any) => {
+    // 1. Day Lock Check
+    if (isDayLocked(getSystemDate())) {
+      throw new Error('Operação Negada: O dia atual está bloqueado.');
+    }
+
+    // 2. Stock validation (Cannot go negative for sales)
+    if (type === 'SALE' || type === 'SALES_REPORT' || type === 'UPDATE_STOCK') {
+      const items = payload.items || (payload.productId ? [{ productId: payload.productId, qty: payload.qty }] : []);
+      for (const item of items) {
+        const product = products.find(p => p.id === item.productId || p.name === item.name);
+        if (product) {
+          const currentStock = product.stock;
+          const change = item.qty;
+          // If it's a SALE or SALES_REPORT, change is positive but we subtract it
+          // If it's UPDATE_STOCK, change is the delta
+          const finalStock = (type === 'SALE' || type === 'SALES_REPORT') ? currentStock - change : currentStock + change;
+          
+          if (finalStock < 0) {
+            // Permite stock negativo para vendas e relatórios de vendas para evitar bloqueios operacionais.
+            // O administrador pode corrigir o stock posteriormente com uma compra ou ajuste manual.
+            const isSaleRelated = type === 'SALE' || type === 'SALES_REPORT' || (type === 'UPDATE_STOCK' && item.qty < 0);
+            
+            if (!isSaleRelated) {
+              throw new Error(`Stock insuficiente para ${product.name}. Disponível: ${currentStock}`);
+            } else {
+              console.warn(`Stock insuficiente para ${product.name}. Permitindo stock negativo para não bloquear a operação.`);
+            }
+          }
+        }
+      }
+    }
+
+    // 3. Price validation (Must be positive)
+    if (payload.price !== undefined && payload.price <= 0) {
+      throw new Error('Preço inválido: O valor deve ser maior que zero.');
+    }
+
+    return true;
+  }, [products, isDayLocked, getSystemDate]);
+
+  const handleStockMovement = useCallback((productId: string, quantity: number, type: 'SALE' | 'PURCHASE' | 'ADJUSTMENT', performedBy: string, reason: string, referenceId?: string) => {
+    try {
+      if (type === 'ADJUSTMENT' && !reason) {
+        throw new Error('Um motivo é obrigatório para ajustes manuais de stock.');
+      }
+
+      // Active Protection: Validate before processing
+      validateAction('UPDATE_STOCK', { productId, qty: type === 'SALE' ? -quantity : quantity });
+
+      let qtyBefore = 0;
+      let qtyAfter = 0;
+      let productName = '';
+
+      setProducts(prevProducts => {
+        const productIndex = prevProducts.findIndex(p => p.id === productId);
+        if (productIndex === -1) return prevProducts;
+
+        const product = prevProducts[productIndex];
+        productName = product.name;
+        qtyBefore = product.stock;
+        
+        let qtyAdded = 0;
+        if (type === 'SALE') qtyAdded = -quantity;
+        else if (type === 'PURCHASE') qtyAdded = quantity;
+        else if (type === 'ADJUSTMENT') qtyAdded = quantity;
+
+        qtyAfter = Math.max(0, qtyBefore + qtyAdded);
+
+        const updatedProducts = [...prevProducts];
+        updatedProducts[productIndex] = { ...product, stock: qtyAfter };
+        return updatedProducts;
+      });
+
+      // Update Audit Log (StockOperationLog) - Move outside setProducts
+      const log: StockOperationLog = {
+        id: crypto.randomUUID(),
+        productId,
+        productName,
+        type: type as any,
+        qtyBefore,
+        qtyAdded: type === 'SALE' ? -quantity : quantity,
+        qtyAfter,
+        timestamp: Date.now(),
+        performedBy,
+        reason,
+        referenceId
+      };
+      setStockOperationHistory(prev => [log, ...prev]);
+
+      // Update Audit Context - Move outside setProducts
+      addLog({
+        action: type === 'SALE' ? 'VENDA_STOCK' : (type === 'PURCHASE' ? 'COMPRA_STOCK' : 'AJUSTE_STOCK'),
+        module: 'STOCK',
+        description: `${type === 'SALE' ? 'Venda' : (type === 'PURCHASE' ? 'Compra' : 'Ajuste')} de ${Math.abs(quantity)} unidades de ${productName}. Stock: ${qtyBefore} -> ${qtyAfter}. Motivo: ${reason || 'Ajuste Manual'}`,
+        entityId: productId,
+        previousValue: qtyBefore,
+        newValue: qtyAfter
+      }, user);
+
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Erro desconhecido';
+      addLog({
+        action: 'ERROR' as any,
+        module: 'STOCK',
+        description: `ERRO: ${msg}`,
+        entityId: productId
+      }, user);
+      throw error;
+    }
+  }, [user, addLog, validateAction]);
 
   const [priceHistory, setPriceHistory] = useState<PriceHistoryLog[]>(() => {
       try {
@@ -433,28 +484,58 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     } catch { return []; }
   });
 
-  useEffect(() => { localStorage.setItem('mg_products', JSON.stringify(products)); }, [products]);
-  useEffect(() => { localStorage.setItem('mg_purchases', JSON.stringify(purchases)); }, [purchases]);
-  useEffect(() => { localStorage.setItem('mg_expenses', JSON.stringify(expenses)); }, [expenses]);
-  useEffect(() => { localStorage.setItem('mg_expense_categories', JSON.stringify(expenseCategories)); }, [expenseCategories]);
-  useEffect(() => { localStorage.setItem('mg_inventory_history', JSON.stringify(inventoryHistory)); }, [inventoryHistory]);
-  useEffect(() => { localStorage.setItem('mg_stock_operation_history', JSON.stringify(stockOperationHistory)); }, [stockOperationHistory]);
-  useEffect(() => { localStorage.setItem('mg_current_balance', currentBalance.toString()); }, [currentBalance]);
-  useEffect(() => { localStorage.setItem('mg_savings_balance', savingsBalance.toString()); }, [savingsBalance]);
-  useEffect(() => { localStorage.setItem('mg_cash_balance', cashBalance.toString()); }, [cashBalance]);
-  useEffect(() => { localStorage.setItem('mg_tpa_balance', tpaBalance.toString()); }, [tpaBalance]);
-  useEffect(() => { localStorage.setItem('mg_cards', JSON.stringify(cards)); }, [cards]);
-  useEffect(() => { localStorage.setItem('mg_transactions', JSON.stringify(transactions)); }, [transactions]);
-  useEffect(() => { localStorage.setItem('mg_sales_reports', JSON.stringify(salesReports)); }, [salesReports]);
+  // Consolidate localStorage persistence to reduce overhead
+  useEffect(() => {
+    const data = {
+      mg_products: products,
+      mg_purchases: purchases,
+      mg_expenses: expenses,
+      mg_expense_categories: expenseCategories,
+      mg_inventory_history: inventoryHistory,
+      mg_stock_operation_history: stockOperationHistory,
+      mg_current_balance: currentBalance,
+      mg_savings_balance: savingsBalance,
+      mg_cash_balance: cashBalance,
+      mg_tpa_balance: tpaBalance,
+      mg_cards: cards,
+      mg_transactions: transactions,
+      mg_sales_reports: salesReports
+    };
+
+    Object.entries(data).forEach(([key, value]) => {
+      localStorage.setItem(key, typeof value === 'string' || typeof value === 'number' ? value.toString() : JSON.stringify(value));
+    });
+  }, [
+    products, purchases, expenses, expenseCategories, inventoryHistory, 
+    stockOperationHistory, currentBalance, savingsBalance, cashBalance, 
+    tpaBalance, cards, transactions, salesReports
+  ]);
   
-  const isDayLocked = useCallback((date: string | Date) => {
-    if (!date) return false;
-    const dateStr = date instanceof Date ? formatDateISO(date) : date;
+  const lockDay = (dateStr: string, performedBy: string) => {
     const cleanTarget = cleanDate(dateStr);
-    return lockedDays
-      .map(d => cleanDate(d))
-      .includes(cleanTarget);
-  }, [lockedDays]);
+
+    setLockedDays(prev => {
+      if (prev.includes(cleanTarget)) return prev;
+      return [...prev, cleanTarget];
+    });
+
+    addAuditLog({
+      action: 'BLOQUEAR_DIA',
+      module: 'CALENDÁRIO',
+      entityId: cleanTarget,
+      description: `Dia ${cleanTarget} confirmado (fecho finalizado)`,
+      performedBy
+    });
+
+    // Also update sales report status if it exists
+    setSalesReports(prevReports => prevReports.map(report => {
+      const reportDate = report.dateISO ? report.dateISO.split('T')[0] : report.date;
+      if (cleanDate(reportDate) === cleanTarget) {
+        return { ...report, status: ClosureStatus.BLOQUEADO };
+      }
+      return report;
+    }));
+  };
 
   const unlockDay = (dateStr: string, reason: string) => {
     if (!hasPermission(user, 'calendar_unlock')) {
@@ -464,29 +545,24 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     const cleanTarget = cleanDate(dateStr);
 
-    setLockedDays(prev => {
-      const updated = prev.filter(d => cleanDate(d) !== cleanTarget);
-      localStorage.setItem('mg_locked_days', JSON.stringify(updated));
+    setLockedDays(prev => prev.filter(d => cleanDate(d) !== cleanTarget));
 
-      addAuditLog({
-        action: 'UNLOCK_DAY',
-        entity: 'Calendar',
-        entityId: cleanTarget,
-        details: `Dia desbloqueado. Motivo: ${reason}`,
-        performedBy: user?.name || 'Sistema'
-      });
-
-      // Revert sales report status to FECHO_CONFIRMADO
-      setSalesReports(prevReports => prevReports.map(report => {
-        const reportDate = report.dateISO ? report.dateISO.split('T')[0] : report.date;
-        if (cleanDate(reportDate) === cleanTarget) {
-          return { ...report, status: ClosureStatus.FECHO_CONFIRMADO };
-        }
-        return report;
-      }));
-
-      return updated;
+    addAuditLog({
+      action: 'DESBLOQUEAR_DIA',
+      module: 'CALENDÁRIO',
+      entityId: cleanTarget,
+      description: `Dia ${cleanTarget} desbloqueado. Motivo: ${reason}`,
+      performedBy: user?.name || 'Sistema'
     });
+
+    // Revert sales report status to FECHO_CONFIRMADO
+    setSalesReports(prevReports => prevReports.map(report => {
+      const reportDate = report.dateISO ? report.dateISO.split('T')[0] : report.date;
+      if (cleanDate(reportDate) === cleanTarget) {
+        return { ...report, status: ClosureStatus.FECHO_CONFIRMADO };
+      }
+      return report;
+    }));
   };
 
   const checkDayLock = useCallback((date: Date | string) => {
@@ -521,10 +597,17 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   const addExpense = (expense: Expense) => {
     if (!checkPermission('expenses_execute')) return;
-    checkDayLock(expense.date);
     
     // 1. Register Expense
     setExpenses(prev => [expense, ...prev]);
+    
+    addAuditLog({
+      action: 'ADICIONAR_DESPESA',
+      module: 'FINANCEIRO',
+      entityId: expense.id,
+      description: `Despesa registada: ${expense.title} (${expense.amount.toLocaleString('pt-AO')} Kz). Categoria: ${expense.category}`,
+      performedBy: expense.user
+    });
     
     // 2. Financial Debit
     if (expense.amount > 0) {
@@ -545,94 +628,288 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     if (!checkPermission('expenses_execute')) return;
     
     const expense = expenses.find(e => e.id === id);
-    if (!expense) return;
+    if (!expense || expense.status === 'REVERSED') return;
     
-    checkDayLock(expense.date);
+    // 1. Mark original as reversed (Immutable History)
+    setExpenses(prev => prev.map(e => e.id === id ? { ...e, status: 'REVERSED' } : e));
 
-    // 1. Remove from active list
-    setExpenses(prev => prev.filter(e => e.id !== id));
+    // 2. Create Reversal Entry (Negative value entry)
+    const reversalExpense: Expense = {
+      ...expense,
+      id: `rev_${expense.id}_${Date.now()}`,
+      title: `ESTORNO: ${expense.title}`,
+      amount: -expense.amount,
+      notes: `Estorno de despesa realizado por ${deletedBy}. Referência Original: ${expense.id}`,
+      timestamp: getSystemDate().getTime(),
+      user: deletedBy,
+      status: 'REVERSAL'
+    };
+    setExpenses(prev => [reversalExpense, ...prev]);
 
-    // 2. Financial Refund (Reversal)
+    // 3. Financial Refund (Reversal)
     if (expense.amount > 0) {
       processTransaction(
         'deposit', 
         'main', 
         expense.amount, 
-        `Reversão de despesa: ${expense.title}`, 
-        'Reversão de Despesa', 
+        `Estorno de despesa: ${expense.title}`, 
+        'Estorno', 
         expense.id, 
         'reversal', 
         deletedBy
       );
     }
+
+    addAuditLog({
+      action: 'ESTORNO_DESPESA',
+      module: 'FINANCEIRO',
+      entityId: id,
+      description: `Estorno de despesa: ${expense.title}. Realizado por ${deletedBy}`,
+      performedBy: deletedBy
+    });
   };
   const updateExpense = (updated: Expense) => {
-    checkDayLock(updated.date);
     setExpenses(prev => prev.map(e => e.id === updated.id ? updated : e));
+    
+    addAuditLog({
+      action: 'EDITAR_DESPESA',
+      module: 'FINANCEIRO',
+      entityId: updated.id,
+      description: `Despesa editada: ${updated.title}`,
+      performedBy: user?.name || 'Sistema'
+    });
   };
 
   const addExpenseCategory = (category: Omit<ExpenseCategory, 'id'>) => {
     if (!checkPermission('expenses_category_manage')) return;
     const newCat = { ...category, id: Math.random().toString(36).substr(2, 9) };
     setExpenseCategories(prev => [...prev, newCat]);
+    
+    addAuditLog({
+      action: 'CRIAR_CATEGORIA_DESPESA',
+      module: 'FINANCEIRO',
+      entityId: newCat.id,
+      description: `Categoria de despesa criada: ${newCat.name}`,
+      performedBy: user?.name || 'Sistema'
+    });
   };
 
   const updateExpenseCategory = (id: string, updates: Partial<ExpenseCategory>) => {
     if (!checkPermission('expenses_category_manage')) return;
     setExpenseCategories(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+    
+    addAuditLog({
+      action: 'EDITAR_CATEGORIA_DESPESA',
+      module: 'FINANCEIRO',
+      entityId: id,
+      description: `Categoria de despesa atualizada: ${id}`,
+      performedBy: user?.name || 'Sistema'
+    });
   };
 
   const deleteExpenseCategory = (id: string) => {
     if (!checkPermission('expenses_category_manage')) return;
+    const cat = expenseCategories.find(c => c.id === id);
     setExpenseCategories(prev => prev.filter(c => c.id !== id));
+    
+    addAuditLog({
+      action: 'REMOVER_CATEGORIA_DESPESA',
+      module: 'FINANCEIRO',
+      entityId: id,
+      description: `Categoria de despesa removida: ${cat?.name || id}`,
+      performedBy: user?.name || 'Sistema'
+    });
   };
 
-  const addInventoryLog = (log: InventoryLog) => setInventoryHistory(prev => [log, ...prev]);
+  const addInventoryLog = (log: InventoryLog) => {
+    try {
+      validateAction('INVENTORY_LOG', {});
+      setInventoryHistory(prev => [log, ...prev]);
+      
+      addAuditLog({
+        action: 'REGISTRO_INVENTARIO',
+        module: 'INVENTARIO',
+        entityId: log.id,
+        description: `Relatório de inventário registado. Status: ${log.status}`,
+        performedBy: log.performedBy
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Erro desconhecido';
+      addLog({
+        action: 'ERROR' as any,
+        module: 'INVENTARIO',
+        description: `ERRO: ${msg}`,
+        entityId: log.id
+      }, user);
+      throw error;
+    }
+  };
 
   const addProduct = (product: Omit<Product, 'id'>) => {
-    if (!checkPermission('inventory_product_create')) return;
-    const newProduct = { ...product, id: Math.random().toString(36).substr(2, 9) };
-    setProducts(prev => [...prev, newProduct]);
+    try {
+      if (!checkPermission('inventory_product_create')) return;
+      validateAction('ADD_PRODUCT', { price: product.sellPrice });
+      const newProduct = { ...product, id: Math.random().toString(36).substr(2, 9) };
+      setProducts(prev => [...prev, newProduct]);
+      
+      addAuditLog({
+        action: 'CRIAR_PRODUTO',
+        module: 'INVENTARIO',
+        entityId: newProduct.id,
+        description: `Produto ${newProduct.name} criado.`,
+        performedBy: user?.name || 'Sistema'
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Erro desconhecido';
+      addLog({
+        action: 'ERROR' as any,
+        module: 'INVENTARIO',
+        description: `ERRO: ${msg}`,
+        entityId: product.name
+      }, user);
+      throw error;
+    }
   };
 
   const updateProduct = (id: string, updates: Partial<Product>) => {
-    if (!checkPermission('inventory_product_edit')) return;
-    setProducts(prevProducts => prevProducts.map(p => p.id === id ? { ...p, ...updates } : p));
+    try {
+      if (!checkPermission('inventory_product_edit')) return;
+      validateAction('UPDATE_PRODUCT', { price: updates.sellPrice });
+      
+      const product = products.find(p => p.id === id);
+      setProducts(prevProducts => prevProducts.map(p => p.id === id ? { ...p, ...updates } : p));
+      
+      addAuditLog({
+        action: 'EDITAR_PRODUTO',
+        module: 'INVENTARIO',
+        entityId: id,
+        description: `Produto ${product?.name || id} atualizado.`,
+        performedBy: user?.name || 'Sistema'
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Erro desconhecido';
+      addLog({
+        action: 'ERROR' as any,
+        module: 'INVENTARIO',
+        description: `ERRO: ${msg}`,
+        entityId: id
+      }, user);
+      throw error;
+    }
   };
 
   const deleteProduct = (id: string) => {
-    if (!checkPermission('inventory_product_delete')) return;
-    setProducts(prev => prev.filter(p => p.id !== id));
+    try {
+      if (!checkPermission('inventory_product_delete')) return;
+      validateAction('DELETE_PRODUCT', {});
+      
+      const product = products.find(p => p.id === id);
+      // Instead of deleting, we mark as archived to preserve history
+      setProducts(prev => prev.map(p => p.id === id ? { ...p, isArchived: true } : p));
+      
+      addAuditLog({
+        action: 'ARQUIVAR_PRODUTO',
+        module: 'INVENTARIO',
+        entityId: id,
+        description: `Produto ${product?.name || id} arquivado para preservar histórico.`,
+        performedBy: user?.name || 'Sistema'
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Erro desconhecido';
+      addLog({
+        action: 'ERROR' as any,
+        module: 'INVENTARIO',
+        description: `ERRO: ${msg}`,
+        entityId: id
+      }, user);
+      throw error;
+    }
   };
 
   const addCategory = (category: string) => {
-    if (!checkPermission('inventory_category_manage')) return;
-    if (!categories.includes(category)) setCategories([...categories, category].sort());
+    try {
+      if (!checkPermission('inventory_category_manage')) return;
+      // Removed validateAction to allow category management even on locked days
+      if (!categories.includes(category)) {
+        setCategories([...categories, category].sort());
+        addAuditLog({
+          action: 'CRIAR_CATEGORIA',
+          module: 'INVENTARIO',
+          description: `Categoria ${category} criada.`,
+          performedBy: user?.name || 'Sistema'
+        });
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Erro desconhecido';
+      addLog({
+        action: 'ERROR' as any,
+        module: 'INVENTARIO',
+        description: `ERRO: ${msg}`,
+        entityId: category
+      }, user);
+      throw error;
+    }
   };
 
   const editCategory = useCallback(async (oldName: string, newName: string) => {
-    if (!checkPermission('inventory_category_manage')) return;
-    if (!newName || oldName === newName) return;
+    try {
+      if (!checkPermission('inventory_category_manage')) return;
+      if (!newName || oldName === newName) return;
+      // Removed validateAction to allow category management even on locked days
 
-    // 1. Atualiza a lista de categorias
-    setCategories(prev => prev.map(cat => cat === oldName ? newName : cat));
+      // 1. Atualiza a lista de categorias
+      setCategories(prev => prev.map(cat => cat === oldName ? newName : cat));
 
-    // 2. Realoca todos os produtos da categoria antiga para a nova
-    setProducts(prevProducts => 
-      prevProducts.map(prod => 
-        prod.category === oldName ? { ...prod, category: newName } : prod
-      )
-    );
+      // 2. Realoca todos os produtos da categoria antiga para a nova
+      setProducts(prevProducts => 
+        prevProducts.map(prod => 
+          prod.category === oldName ? { ...prod, category: newName } : prod
+        )
+      );
 
-    // 3. Marcar para sincronização
-    setHasPendingChanges(true);
-    
-    // Aqui você chamaria o dbUpdate para persistir no IndexedDB/Backend
-  }, [setCategories, setProducts, checkPermission]);
+      // 3. Marcar para sincronização
+      setHasPendingChanges(true);
+      
+      addAuditLog({
+        action: 'EDITAR_CATEGORIA',
+        module: 'INVENTARIO',
+        description: `Categoria ${oldName} alterada para ${newName}.`,
+        performedBy: user?.name || 'Sistema'
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Erro desconhecido';
+      addLog({
+        action: 'ERROR' as any,
+        module: 'INVENTARIO',
+        description: `ERRO: ${msg}`,
+        entityId: oldName
+      }, user);
+      throw error;
+    }
+  }, [setCategories, setProducts, checkPermission, user, addAuditLog, addLog]);
 
   const removeCategory = (category: string) => {
-    if (!checkPermission('inventory_category_manage')) return;
-    setCategories(categories.filter(c => c !== category));
+    try {
+      if (!checkPermission('inventory_category_manage')) return;
+      // Removed validateAction to allow category management even on locked days
+      setCategories(categories.filter(c => c !== category));
+      
+      addAuditLog({
+        action: 'REMOVER_CATEGORIA',
+        module: 'INVENTARIO',
+        description: `Categoria ${category} removida.`,
+        performedBy: user?.name || 'Sistema'
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Erro desconhecido';
+      addLog({
+        action: 'ERROR' as any,
+        module: 'INVENTARIO',
+        description: `ERRO: ${msg}`,
+        entityId: category
+      }, user);
+      throw error;
+    }
   };
 
   const processTransaction = (
@@ -644,55 +921,87 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     referenceId?: string, 
     referenceType?: Transaction['referenceType'],
     performedBy?: string,
-    date?: string // Optional date for retroactive transactions
+    date?: string 
   ) => {
-    const targetDate = date || formatDateISO(getSystemDate());
-    checkDayLock(targetDate);
-
-    let accountName = '';
-    
-    if (account === 'main') {
-      setCurrentBalance(prev => type === 'deposit' ? prev + amount : prev - amount);
-      accountName = 'Conta Corrente';
-      // Sync with cards array
-      setCards(prev => prev.map(c => c.id === 'main' ? { ...c, balance: type === 'deposit' ? c.balance + amount : c.balance - amount } : c));
-    } else if (account === 'savings') {
-      setSavingsBalance(prev => type === 'deposit' ? prev + amount : prev - amount);
-      accountName = 'Conta Poupança';
-      // Sync with cards array
-      setCards(prev => prev.map(c => c.id === 'savings' ? { ...c, balance: type === 'deposit' ? c.balance + amount : c.balance - amount } : c));
-    } else {
-      // Custom card
-      setCards(prev => prev.map(c => {
-        if (c.id === account) {
-          accountName = c.name;
-          return { ...c, balance: type === 'deposit' ? c.balance + amount : c.balance - amount };
+    try {
+      // Duplicate prevention: Check if this referenceId already exists for this type
+      if (referenceId && (referenceType === 'expense' || referenceType === 'sales_report' || referenceType === 'day_closure')) {
+        const isDuplicate = transactions.some(t => t.referenceId === referenceId && t.type === (type === 'deposit' ? 'entrada' : 'saida'));
+        if (isDuplicate) {
+          console.warn(`Transação duplicada detectada para referenceId: ${referenceId}. Ignorando.`);
+          return;
         }
-        return c;
-      }));
+      }
+
+      const targetDate = date || formatDateISO(getSystemDate());
+
+      let accountName = '';
+      
+      if (account === 'main') {
+        setCurrentBalance(prev => type === 'deposit' ? prev + amount : prev - amount);
+        accountName = 'Conta Corrente';
+        setCards(prev => prev.map(c => c.id === 'main' ? { ...c, balance: type === 'deposit' ? c.balance + amount : c.balance - amount } : c));
+      } else if (account === 'savings') {
+        setSavingsBalance(prev => type === 'deposit' ? prev + amount : prev - amount);
+        accountName = 'Conta Poupança';
+        setCards(prev => prev.map(c => c.id === 'savings' ? { ...c, balance: type === 'deposit' ? c.balance + amount : c.balance - amount } : c));
+      } else {
+        setCards(prev => prev.map(c => {
+          if (c.id === account) {
+            accountName = c.name;
+            return { ...c, balance: type === 'deposit' ? c.balance + amount : c.balance - amount };
+          }
+          return c;
+        }));
+      }
+
+      // TPA Balance Rule: Any value marked as 'Transferência' reflects in TPA balance
+      if (category === 'Transferência' || category === 'TRANSFER' || description.toLowerCase().includes('transferência')) {
+        setTPABalance(prev => type === 'deposit' ? prev + amount : prev - amount);
+      }
+
+      const newTrans: Transaction = {
+        id: Date.now().toString(),
+        type: type === 'deposit' ? 'entrada' : 'saida',
+        category: category || accountName || 'Cartão',
+        amount: amount,
+        date: date ? (date + ', ' + getSystemDate().toLocaleTimeString('pt-AO', {hour:'2-digit', minute:'2-digit'})) : (formatDateISO(getSystemDate()) + ', ' + getSystemDate().toLocaleTimeString('pt-AO', {hour:'2-digit', minute:'2-digit'})),
+        description: description,
+        referenceId,
+        referenceType,
+        performedBy,
+        accountName: accountName || 'Conta Desconhecida',
+        status: 'ATIVO',
+        operationalDay: targetDate
+      };
+
+      setTransactions(prev => [newTrans, ...prev]);
+
+      // Log manual transactions
+      if (!referenceType) {
+        addAuditLog({
+          action: 'TRANSACAO_MANUAL',
+          module: 'FINANCEIRO',
+          entityId: newTrans.id,
+          description: `Transação manual: ${type === 'deposit' ? 'Depósito' : 'Levantamento'} de ${amount.toLocaleString('pt-AO')} Kz em ${accountName}. Descrição: ${description}`,
+          performedBy: performedBy || user?.name || 'Sistema'
+        });
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Erro desconhecido';
+      addLog({
+        action: 'ERROR' as any,
+        module: 'FINANCEIRO',
+        description: `ERRO: ${msg}`,
+        entityId: referenceId
+      }, user);
+      throw error;
     }
-
-    const newTrans: Transaction = {
-      id: Date.now().toString(),
-      type: type === 'deposit' ? 'entrada' : 'saida',
-      category: category || accountName || 'Cartão',
-      amount: amount,
-      date: date ? (date + ', ' + getSystemDate().toLocaleTimeString('pt-AO', {hour:'2-digit', minute:'2-digit'})) : (formatDateISO(getSystemDate()) + ', ' + getSystemDate().toLocaleTimeString('pt-AO', {hour:'2-digit', minute:'2-digit'})),
-      description: description,
-      referenceId,
-      referenceType,
-      performedBy,
-      accountName: accountName || 'Conta Desconhecida',
-      status: 'ATIVO',
-      operationalDay: targetDate
-    };
-
-    setTransactions(prev => [newTrans, ...prev]);
   };
 
   const processCashTPADebit = (origin: 'Cash' | 'TPA', amount: number, note: string, referenceId?: string, referenceType?: Transaction['referenceType'], performedBy?: string, date?: string) => {
     const targetDate = date || formatDateISO(getSystemDate());
-    checkDayLock(targetDate);
+    validateAction('TRANSACTION', { date: targetDate, amount });
 
     if (origin === 'Cash') {
       setCashBalance(prev => prev - amount);
@@ -716,87 +1025,97 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     };
 
     setTransactions(prev => [newTrans, ...prev]);
+
+    addAuditLog({
+      action: 'DEBITO_CASH_TPA',
+      module: 'FINANCEIRO',
+      entityId: newTrans.id,
+      description: `Débito de ${origin}: ${amount.toLocaleString('pt-AO')} Kz. Nota: ${note}`,
+      performedBy: performedBy || user?.name || 'Sistema'
+    });
   };
 
-  const addPurchase = (items: Record<string, number>, source: 'Prices' | 'Inventory' | 'Sales', completedBy: string, attachments?: string[]) => {
-    if (!checkPermission('purchases_execute')) return;
-    checkDayLock(systemDate);
-    let totalValue = 0;
-    const purchaseId = crypto.randomUUID();
-    const now = getSystemDate();
+  const addPurchase = (items: Record<string, number>, source: 'Prices' | 'Inventory' | 'Sales', completedBy: string, attachments?: string[], supplier?: string) => {
+    try {
+      if (!checkPermission('purchases_execute')) return;
+      validateAction('PURCHASE', { date: systemDate });
+      let totalValue = 0;
+      const purchaseId = crypto.randomUUID();
+      
+      // 1. Calcular total
+      products.forEach(p => {
+        if (items[p.id]) {
+          const qtyPacks = items[p.id];
+          const packSize = p.packSize || 1;
+          const packCost = p.buyPrice * packSize;
+          totalValue += packCost * qtyPacks;
+        }
+      });
 
-    const logs: StockOperationLog[] = [];
-
-    // 1. Calcular total e preparar logs de auditoria (Fórmula Correta e Conversão Controlada)
-    products.forEach(p => {
-      if (items[p.id]) {
-        const qtyPacks = items[p.id];
-        const packSize = p.packSize || 1; // Respeita packSize do cadastro
-        const unitsToAdd = qtyPacks * packSize;
-        const packCost = p.buyPrice * packSize;
-        
-        totalValue += packCost * qtyPacks;
-        
-        logs.push({
-          id: crypto.randomUUID(),
-          productId: p.id,
-          productName: p.name,
-          type: 'PURCHASE',
-          qtyBefore: p.stock,
-          qtyAdded: unitsToAdd,
-          qtyAfter: p.stock + unitsToAdd,
-          timestamp: now.getTime(),
-          performedBy: completedBy,
-          referenceId: purchaseId
-        });
+      if (user?.permissions?.purchases_limit && totalValue > user.permissions.purchases_limit) {
+        alert(`Limite de compra excedido! Limite: ${user.permissions.purchases_limit.toLocaleString('pt-AO')} Kz, Total: ${totalValue.toLocaleString('pt-AO')} Kz`);
+        return;
       }
-    });
 
-    if (user?.permissions?.purchases_limit && totalValue > user.permissions.purchases_limit) {
-      alert(`Limite de compra excedido! Limite: ${user.permissions.purchases_limit.toLocaleString('pt-AO')} Kz, Total: ${totalValue.toLocaleString('pt-AO')} Kz`);
-      return;
-    }
+      // 2. Atualização de Estoque via handleStockMovement
+      Object.entries(items).forEach(([productId, qtyPacks]) => {
+        if (qtyPacks > 0) {
+          const p = products.find(prod => prod.id === productId);
+          if (p) {
+            const packSize = p.packSize || 1;
+            const unitsToAdd = qtyPacks * packSize;
+            handleStockMovement(productId, unitsToAdd, 'PURCHASE', completedBy, 'Compra de Stock', purchaseId);
+          }
+        }
+      });
 
-    // 2. Atualização de Estoque (Atómica via State Update)
-    setProducts(prevProducts => prevProducts.map(p => {
-      if (items[p.id]) {
-        const qtyPacks = items[p.id];
-        const packSize = p.packSize || 1;
-        const unitsToAdd = qtyPacks * packSize;
-        return { ...p, stock: p.stock + unitsToAdd };
+      // 3. Registro da Compra
+      const newRecord: PurchaseRecord = {
+        id: purchaseId,
+        name: source === 'Inventory' ? 'Ajuste de Stock (Inventário)' : source === 'Sales' ? 'Compra Rápida (Vendas)' : `Compra Efectuada`,
+        date: getSystemDateStr(),
+        items, 
+        total: totalValue,
+        completedBy,
+        supplier,
+        timestamp: getSystemDate().getTime(),
+        source,
+        attachments,
+        synced: false
+      };
+
+      setPurchases(prev => [newRecord, ...prev]);
+
+      // 4. Débito Financeiro
+      if (totalValue > 0) {
+          processTransaction('withdraw', 'main', totalValue, 'Compra de estoque', 'Compra de Estoque', purchaseId, 'purchase', completedBy);
       }
-      return p;
-    }));
 
-    // 3. Registro da Compra
-    const newRecord: PurchaseRecord = {
-      id: purchaseId,
-      name: source === 'Inventory' ? 'Ajuste de Stock (Inventário)' : source === 'Sales' ? 'Compra Rápida (Vendas)' : `Compra Efectuada`,
-      date: getSystemDateStr(),
-      items, 
-      total: totalValue,
-      completedBy,
-      timestamp: now.getTime(),
-      source,
-      attachments,
-      synced: false
-    };
+      // 5. Fila de Sincronização
+      setSyncQueue(prev => [...prev, {
+        id: crypto.randomUUID(),
+        type: 'UPDATE_STOCK',
+        payload: newRecord,
+        timestamp: getSystemDate().getTime()
+      }]);
 
-    setPurchases(prev => [newRecord, ...prev]);
-    setStockOperationHistory(prev => [...logs, ...prev]);
-
-    // 4. Débito Financeiro
-    if (totalValue > 0) {
-        processTransaction('withdraw', 'main', totalValue, 'Compra de estoque', 'Compra de Estoque', purchaseId, 'purchase', completedBy);
+      addAuditLog({
+        action: 'CRIAR_COMPRA',
+        module: 'COMPRAS',
+        entityId: purchaseId,
+        description: `Compra registada: ${totalValue.toLocaleString('pt-AO')} Kz. Origem: ${source}`,
+        performedBy: completedBy
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Erro desconhecido';
+      addLog({
+        action: 'ERROR' as any,
+        module: 'COMPRAS',
+        description: `ERRO: ${msg}`,
+        entityId: source
+      }, user);
+      throw error;
     }
-
-    // 5. Fila de Sincronização
-    setSyncQueue(prev => [...prev, {
-      id: crypto.randomUUID(),
-      type: 'UPDATE_STOCK',
-      payload: newRecord,
-      timestamp: getSystemDate().getTime()
-    }]);
   };
 
   const getPurchasesByDate = (dateStr: string) => {
@@ -823,186 +1142,248 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     valor: number;
     usuario: string;
     data_operacional: string;
+    referenceId?: string; // Added referenceId
   }) => {
-    // Avoid double counting if it's from CONTROLE_VENDAS
-    if (data.origem === 'CONTROLE_VENDAS') {
-      const existing = expenses.find(e => e.origin === 'CONTROLE_VENDAS' && e.date === data.data_operacional);
-      if (existing) {
-        // Update existing expense if needed, or just return
-        // For now, let's update it to ensure it's synced
-        setExpenses(prev => prev.map(e => e.id === existing.id ? { ...e, amount: data.valor, title: data.descricao, notes: data.nota } : e));
-        
-        // Also update transaction if exists
-        setTransactions(prev => prev.map(t => t.referenceId === existing.id ? { ...t, amount: data.valor, description: `Despesa (${data.origem}): ${data.descricao}` } : t));
+    try {
+      validateAction('EXPENSE', { date: data.data_operacional, amount: data.valor });
+
+      // Robust duplicate prevention and update logic
+      const existingExpense = data.referenceId 
+        ? expenses.find(e => e.id === data.referenceId || e.notes?.includes(data.referenceId!))
+        : expenses.find(e => 
+            e.title === data.descricao && 
+            e.date === data.data_operacional &&
+            e.origin === data.origem
+          );
+
+      if (existingExpense) {
+        // If it exists but amount is different, update it
+        if (existingExpense.amount !== data.valor) {
+          setExpenses(prev => prev.map(e => e.id === existingExpense.id ? { ...e, amount: data.valor, title: data.descricao, notes: data.nota } : e));
+          
+          // Also update the associated transaction
+          setTransactions(prev => prev.map(t => t.referenceId === existingExpense.id ? { 
+            ...t, 
+            amount: data.valor, 
+            description: `Despesa (${data.origem}): ${data.descricao}`,
+            operationalDay: data.data_operacional
+          } : t));
+
+          // Update balances if necessary
+          const diff = data.valor - existingExpense.amount;
+          setCurrentBalance(prev => prev - diff);
+          setCards(prev => prev.map(c => c.id === 'main' ? { ...c, balance: c.balance - diff } : c));
+
+          addAuditLog({
+            action: 'EDITAR_DESPESA',
+            module: 'FINANCEIRO',
+            entityId: existingExpense.id,
+            description: `Despesa global atualizada (${data.origem}): ${data.descricao}. Valor: ${existingExpense.amount} -> ${data.valor}`,
+            performedBy: data.usuario
+          });
+        } else {
+          console.log(`Despesa já existe com o mesmo valor: ${data.descricao}. Ignorando.`);
+        }
         return;
       }
-    }
 
-    const newExpense: Expense = {
-      id: crypto.randomUUID(),
-      title: data.descricao,
-      amount: data.valor,
-      category: data.tipo,
-      date: data.data_operacional,
-      timestamp: getSystemDate().getTime(),
-      user: data.usuario,
-      notes: data.nota,
-      origin: data.origem,
-      attachments: []
-    };
-    
-    setExpenses(prev => [newExpense, ...prev]);
-    
-    if (newExpense.amount > 0) {
-      processTransaction(
-        'withdraw',
-        'main',
-        newExpense.amount,
-        `Despesa (${data.origem}): ${newExpense.title}`,
-        newExpense.category,
-        newExpense.id,
-        'expense',
-        newExpense.user,
-        data.data_operacional
-      );
+      const newExpense: Expense = {
+        id: data.referenceId || crypto.randomUUID(),
+        title: data.descricao,
+        amount: data.valor,
+        category: data.tipo,
+        date: data.data_operacional,
+        timestamp: getSystemDate().getTime(),
+        user: data.usuario,
+        notes: data.nota,
+        origin: data.origem,
+        attachments: []
+      };
+      
+      setExpenses(prev => [newExpense, ...prev]);
+      
+      if (newExpense.amount > 0) {
+        processTransaction(
+          'withdraw',
+          'main',
+          newExpense.amount,
+          `Despesa (${data.origem}): ${newExpense.title}`,
+          newExpense.category,
+          newExpense.id,
+          'expense',
+          newExpense.user,
+          data.data_operacional
+        );
+      }
+
+      addAuditLog({
+        action: 'ADICIONAR_DESPESA',
+        module: 'FINANCEIRO',
+        entityId: newExpense.id,
+        description: `Despesa global registada (${data.origem}): ${data.descricao}`,
+        performedBy: data.usuario
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Erro desconhecido';
+      addLog({
+        action: 'ERROR' as any,
+        module: 'FINANCEIRO',
+        description: `ERRO: ${msg}`,
+        entityId: data.origem
+      }, user);
+      throw error;
     }
   };
 
   const deductStockFromReport = (report: SalesReport) => {
     if (!report.itemsSummary || report.stockUpdated) return false;
     
+    validateAction('SALES_REPORT', { date: report.date, items: report.itemsSummary });
+
     const itemsToDeduct = report.itemsSummary.filter(i => i.qty > 0);
     if (itemsToDeduct.length === 0) return true; // Nothing to deduct, but mark as updated
 
-    setProducts(prevProducts => prevProducts.map(p => {
-      const soldItem = itemsToDeduct.find(item => item.name === p.name);
-      if (soldItem) {
-        return { ...p, stock: Math.max(0, p.stock - soldItem.qty) };
+    itemsToDeduct.forEach(item => {
+      const product = products.find(p => p.name === item.name);
+      if (product) {
+        handleStockMovement(product.id, item.qty, 'SALE', report.closedBy || 'Sistema', `Fecho de Vendas: ${report.date}`, report.id);
       }
-      return p;
-    }));
-
-    const newLogs: StockOperationLog[] = itemsToDeduct.map(item => {
-        const product = products.find(p => p.name === item.name);
-        const qtyBefore = product?.stock || 0;
-        const qtyAdded = -item.qty;
-        const qtyAfter = Math.max(0, qtyBefore + qtyAdded);
-        
-        return {
-            id: Math.random().toString(36).substr(2, 9),
-            productId: product?.id || 'unknown',
-            productName: item.name,
-            type: 'SALE',
-            qtyBefore,
-            qtyAdded,
-            qtyAfter,
-            timestamp: Date.now(),
-            performedBy: report.closedBy,
-            referenceId: report.id
-        };
     });
-    setStockOperationHistory(prev => [...newLogs, ...prev]);
+
     return true;
   };
 
   const addSalesReport = (report: SalesReport) => {
-    if (!checkPermission('sales_closure')) return;
-    if (!checkPermission('sales_execute')) return;
-    checkDayLock(report.date);
+    try {
+      // Any user can initiate a partial or final closure as requested
+      // if (!checkPermission('sales_closure')) return;
+      if (!checkPermission('sales_execute')) return;
+      validateAction('SALES_REPORT', { date: report.date, items: report.itemsSummary });
 
-    // Deduct stock automatically
-    const stockUpdated = deductStockFromReport(report);
+      // Deduct stock automatically
+      const stockUpdated = deductStockFromReport(report);
 
-    const finalReport = { 
-      ...report, 
-      id: report.id || crypto.randomUUID(),
-      synced: false,
-      stockUpdated
-    };
+      const finalReport = { 
+        ...report, 
+        id: report.id || crypto.randomUUID(),
+        synced: false,
+        stockUpdated
+      };
 
-    setSalesReports(prev => {
-      // Check if a report for this date already exists and is not confirmed
-      const existingIdx = prev.findIndex(r => r.date === report.date);
-      if (existingIdx !== -1 && 
-          prev[existingIdx].status !== ClosureStatus.FECHO_CONFIRMADO && 
-          prev[existingIdx].status !== ClosureStatus.BLOQUEADO &&
-          prev[existingIdx].status !== ClosureStatus.DIA_BLOQUEADO) {
-        const updated = [...prev];
-        updated[existingIdx] = finalReport;
-        return updated;
-      }
-      return [finalReport, ...prev];
-    });
-
-    // Sync lunch expense immediately
-    if (finalReport.lunchExpense > 0) {
-      registrarDespesaGlobal({
-        tipo: "DESPESA_OPERACIONAL",
-        origem: "CONTROLE_VENDAS",
-        descricao: `Almoço (${finalReport.date})`,
-        nota: `Despesa de almoço registada no fecho de vendas de ${finalReport.date}`,
-        valor: finalReport.lunchExpense,
-        usuario: finalReport.closedBy,
-        data_operacional: finalReport.date
+      setSalesReports(prev => {
+        const existingIdx = prev.findIndex(r => r.date === report.date);
+        if (existingIdx !== -1 && 
+            prev[existingIdx].status !== ClosureStatus.FECHO_CONFIRMADO && 
+            prev[existingIdx].status !== ClosureStatus.BLOQUEADO &&
+            prev[existingIdx].status !== ClosureStatus.DIA_BLOQUEADO) {
+          const updated = [...prev];
+          updated[existingIdx] = finalReport;
+          return updated;
+        }
+        return [finalReport, ...prev];
       });
-    }
 
-    const action: PendingAction = {
-      id: crypto.randomUUID(),
-      type: 'ADD_SALE',
-      payload: finalReport,
-      timestamp: getSystemDate().getTime()
-    };
-    setSyncQueue(prev => [...prev, action]);
+      if (finalReport.lunchExpense > 0) {
+        registrarDespesaGlobal({
+          tipo: "DESPESA_OPERACIONAL",
+          origem: "CONTROLE_VENDAS",
+          descricao: `Almoço (${finalReport.date})`,
+          nota: `Despesa de almoço registada no fecho de vendas de ${finalReport.date}`,
+          valor: finalReport.lunchExpense,
+          usuario: finalReport.closedBy,
+          data_operacional: finalReport.date,
+          referenceId: `lunch_${finalReport.id}`
+        });
+      }
+
+      const action: PendingAction = {
+        id: crypto.randomUUID(),
+        type: 'ADD_SALE',
+        payload: finalReport,
+        timestamp: getSystemDate().getTime()
+      };
+      setSyncQueue(prev => [...prev, action]);
+
+      addAuditLog({
+        action: 'CRIAR_RELATORIO_VENDAS',
+        module: 'VENDAS',
+        entityId: finalReport.id,
+        description: `Relatório de vendas criado/atualizado para ${finalReport.date}`,
+        performedBy: finalReport.closedBy
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Erro desconhecido';
+      addLog({
+        action: 'ERROR' as any,
+        module: 'VENDAS',
+        description: `ERRO: ${msg}`,
+        entityId: report.date
+      }, user);
+      throw error;
+    }
   };
 
   const updateSalesReport = (reportId: string, updates: Partial<SalesReport>) => {
-    const report = salesReports.find(r => r.id === reportId);
-    if (report) {
-      const reportDateStr = report.dateISO ? report.dateISO : report.date;
-      checkDayLock(reportDateStr);
+    try {
+      const report = salesReports.find(r => r.id === reportId);
+      if (report) {
+        const reportDateStr = report.dateISO ? report.dateISO : report.date;
+        validateAction('SALES_REPORT', { 
+          date: reportDateStr, 
+          items: updates.itemsSummary || report.itemsSummary 
+        });
 
-      // If report is already confirmed and processed, we need to handle financial adjustments
-      if (report.status === ClosureStatus.FECHO_CONFIRMADO && report.processedFinancials) {
-        const hasFinancialChanges = 
-          updates.cash !== undefined || 
-          updates.tpa !== undefined || 
-          updates.totalLifted !== undefined;
+        // If report is already confirmed and processed, we need to handle financial adjustments
+        if (report.status === ClosureStatus.FECHO_CONFIRMADO && report.processedFinancials) {
+          const hasFinancialChanges = 
+            updates.cash !== undefined || 
+            updates.tpa !== undefined || 
+            updates.totalLifted !== undefined;
 
-        if (hasFinancialChanges) {
-          // 1. Reverse old values
-          const oldCash = report.cash || 0;
-          const oldTpa = report.tpa || 0;
-          const oldTotalLifted = report.totalLifted || 0;
+          if (hasFinancialChanges) {
+            // 1. Reverse old values
+            const oldCash = report.cash || 0;
+            const oldTpa = report.tpa || 0;
+            const oldTotalLifted = report.totalLifted || 0;
 
-          setCashBalance(prev => prev - oldCash);
-          setTPABalance(prev => prev - oldTpa);
-          if (oldTotalLifted > 0) {
-            processTransaction('withdraw', 'main', oldTotalLifted, `Estorno Fecho (Edição): ${reportDateStr}`, 'Ajuste', reportId, 'reversal', user?.name || 'Sistema');
+            setCashBalance(prev => prev - oldCash);
+            setTPABalance(prev => prev - oldTpa);
+            if (oldTotalLifted > 0) {
+              processTransaction('withdraw', 'main', oldTotalLifted, `Estorno Fecho (Edição): ${reportDateStr}`, 'Ajuste', reportId, 'reversal', user?.name || 'Sistema');
+            }
+
+            // 2. Apply new values (merged)
+            const newCash = updates.cash !== undefined ? updates.cash : oldCash;
+            const newTpa = updates.tpa !== undefined ? updates.tpa : oldTpa;
+            const newTotalLifted = updates.totalLifted !== undefined ? updates.totalLifted : oldTotalLifted;
+
+            setCashBalance(prev => prev + newCash);
+            setTPABalance(prev => prev + newTpa);
+            if (newTotalLifted > 0) {
+              processTransaction('deposit', 'main', newTotalLifted, `Novo Valor Fecho (Edição): ${reportDateStr}`, 'Fecho de Caixa', reportId, 'day_closure', user?.name || 'Sistema');
+            }
+
+            addAuditLog({
+              action: 'AJUSTE_FINANCEIRO_FECHO',
+              entity: 'SalesReport',
+              entityId: reportId,
+              details: `Valores ajustados: Total Levantado(${oldTotalLifted}->${newTotalLifted}), Cash(${oldCash}->${newCash}), TPA(${oldTpa}->${newTpa})`,
+              performedBy: user?.name || 'Sistema'
+            });
           }
-
-          // 2. Apply new values (merged)
-          const newCash = updates.cash !== undefined ? updates.cash : oldCash;
-          const newTpa = updates.tpa !== undefined ? updates.tpa : oldTpa;
-          const newTotalLifted = updates.totalLifted !== undefined ? updates.totalLifted : oldTotalLifted;
-
-          setCashBalance(prev => prev + newCash);
-          setTPABalance(prev => prev + newTpa);
-          if (newTotalLifted > 0) {
-            processTransaction('deposit', 'main', newTotalLifted, `Novo Valor Fecho (Edição): ${reportDateStr}`, 'Fecho de Caixa', reportId, 'day_closure', user?.name || 'Sistema');
-          }
-
-          addAuditLog({
-            action: 'AJUSTE_FINANCEIRO_FECHO',
-            entity: 'SalesReport',
-            entityId: reportId,
-            details: `Valores ajustados: Total Levantado(${oldTotalLifted}->${newTotalLifted}), Cash(${oldCash}->${newCash}), TPA(${oldTpa}->${newTpa})`,
-            performedBy: user?.name || 'Sistema'
-          });
         }
       }
+      setSalesReports(prev => prev.map(r => r.id === reportId ? { ...r, ...updates } : r));
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Erro desconhecido';
+      addLog({
+        action: 'ERROR' as any,
+        module: 'VENDAS',
+        description: `ERRO: ${msg}`,
+        entityId: reportId
+      }, user);
+      throw error;
     }
-    setSalesReports(prev => prev.map(r => r.id === reportId ? { ...r, ...updates } : r));
   };
 
   const updateSalesReportJustification = (reportId: string, justificationData: any) => {
@@ -1016,6 +1397,14 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       justificationLog: justificationData,
       financials: r.financials ? { ...r.financials, justification: justificationData.justificativa } : undefined
     } : r));
+
+    addAuditLog({
+      action: 'JUSTIFICAR_FECHO',
+      module: 'VENDAS',
+      entityId: reportId,
+      description: `Justificativa de fecho adicionada/atualizada para o relatório ${reportId}`,
+      performedBy: user?.name || 'Sistema'
+    });
   };
 
   const confirmSalesReport = (reportId: string, confirmedBy: string, isUnilateral: boolean = false) => {
@@ -1024,10 +1413,10 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     if (!report) return;
 
     const reportDateStr = report.dateISO ? report.dateISO : report.date;
-    checkDayLock(reportDateStr);
+    validateAction('SALES_REPORT', { date: reportDateStr, items: report.itemsSummary });
 
-    // 1. Update report status
-    const updatedReport: SalesReport = {
+    // 1. Update report status and stock flag
+    let updatedReport: SalesReport = {
       ...report,
       status: ClosureStatus.FECHO_CONFIRMADO,
       confirmedBy,
@@ -1041,11 +1430,12 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     if (!report.processedFinancials) {
       const cash = updatedReport.cash || 0;
       const tpa = updatedReport.tpa || 0;
+      const transfer = updatedReport.transfer || 0;
       const totalLifted = updatedReport.totalLifted || 0;
 
       // Update accumulators
       setCashBalance(prev => prev + cash);
-      setTPABalance(prev => prev + tpa);
+      setTPABalance(prev => prev + tpa + transfer); // Transfer added to TPA balance
 
       // Total Lifted goes to main account (Conta Corrente)
       if (totalLifted > 0) {
@@ -1065,12 +1455,10 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
         action: 'INTEGRAÇÃO_FINANCEIRA_FECHO',
         entity: 'SalesReport',
         entityId: reportId,
-        details: `Valores de fecho integrados: Total Levantado(+${totalLifted}), Cash(+${cash}), TPA(+${tpa})`,
+        details: `Valores de fecho integrados: Total Levantado(+${totalLifted}), Cash(+${cash}), TPA(+${tpa}), Transferência(+${transfer})`,
         performedBy: confirmedBy
       });
     }
-
-    setSalesReports(prev => prev.map(r => r.id === reportId ? updatedReport : r));
 
     // 3. Register Global Expense if exists (Sync)
     if (updatedReport.lunchExpense > 0) {
@@ -1081,11 +1469,12 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
         nota: `Despesa de almoço registada no fecho de vendas de ${reportDateStr}`,
         valor: updatedReport.lunchExpense,
         usuario: confirmedBy,
-        data_operacional: reportDateStr
+        data_operacional: reportDateStr,
+        referenceId: `lunch_${reportId}` // Added referenceId for duplicate prevention
       });
     }
 
-    // 3. Update Stock (Only if not already updated)
+    // 4. Update Stock (Only if not already updated)
     if (updatedReport.itemsSummary && !updatedReport.stockUpdated) {
       setProducts(prevProducts => prevProducts.map(p => {
         const soldItem = updatedReport.itemsSummary.find(item => item.name === p.name);
@@ -1094,60 +1483,22 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
         }
         return p;
       }));
-      updatedReport.stockUpdated = true;
+      updatedReport = { ...updatedReport, stockUpdated: true };
     }
 
-    // 4. Add Transaction (Removed legacy totalLifted deposit, handled by integration logic)
-    /*
-    const totalLifted = updatedReport.totalLifted || 0;
-    processTransaction(
-      'deposit', 
-      'main', 
-      totalLifted, 
-      `Fecho Confirmado (${reportDateStr}) - Levantamento: ${(totalLifted || 0).toLocaleString('pt-AO')} Kz`, 
-      'Fecho de Caixa', 
-      reportId, 
-      'day_closure', 
-      confirmedBy
-    );
-    */
+    // 5. Update salesReports state
+    const newSalesReports = salesReports.map(r => r.id === reportId ? updatedReport : r);
+    setSalesReports(newSalesReports);
+    
+    // 6. Explicitly save to localStorage as requested
+    localStorage.setItem('mg_sales_reports', JSON.stringify(newSalesReports));
 
     addAuditLog({
-      action: isUnilateral ? 'CONFIRMAÇÃO_UNILATERAL_FECHO' : 'CONFIRMAÇÃO_FINAL_FECHO',
+      action: isUnilateral ? 'CONFIRMAÇÃO_UNILATERAL_FECHO' : 'VALIDAÇÃO_FINAL_FECHO',
       entity: 'SalesReport',
       entityId: reportId,
-      details: `Fecho de ${reportDateStr} confirmado por ${confirmedBy}${isUnilateral ? ' (Unilateral)' : ''}`,
+      details: `Validação final do fecho de ${reportDateStr} realizada por ${confirmedBy}${isUnilateral ? ' (Unilateral)' : ''}. Financeiro e Stock integrados.`,
       performedBy: confirmedBy
-    });
-  };
-
-  const lockDay = (dateStr: string, performedBy: string) => {
-    const cleanTarget = cleanDate(dateStr);
-
-    setLockedDays(prev => {
-      if (prev.includes(cleanTarget)) return prev;
-
-      const updated = [...prev, cleanTarget];
-      localStorage.setItem('mg_locked_days', JSON.stringify(updated));
-
-      addAuditLog({
-        action: 'LOCK_DAY',
-        entity: 'Calendar',
-        entityId: cleanTarget,
-        details: `Dia bloqueado`,
-        performedBy
-      });
-
-      // Also update sales report status if it exists
-      setSalesReports(prevReports => prevReports.map(report => {
-        const reportDate = report.dateISO ? report.dateISO.split('T')[0] : report.date;
-        if (cleanDate(reportDate) === cleanTarget) {
-          return { ...report, status: ClosureStatus.BLOQUEADO };
-        }
-        return report;
-      }));
-
-      return updated;
     });
   };
 
@@ -1197,92 +1548,115 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   }, [isOnline, isSyncing, products]);
 
-  const rebuildStockFromSales = useCallback(async () => {
-    // 1. Reset all stocks to 0
-    const resetProducts = products.map(p => ({ ...p, stock: 0 }));
-    
-    // 2. Process Purchases
-    const afterPurchases = resetProducts.map(p => {
-      let newStock = 0;
-      purchases.forEach(purchase => {
-        if (purchase.items[p.id]) {
-          const qtyPacks = purchase.items[p.id];
-          const packSize = p.packSize || 1;
-          newStock += qtyPacks * packSize;
-        }
-      });
-      return { ...p, stock: newStock };
-    });
-
-    // 3. Process Sales Reports
-    const afterSalesReports = afterPurchases.map(p => {
-      let currentStock = p.stock;
-      salesReports.forEach(report => {
-        if (report.itemsSummary) {
-          const item = report.itemsSummary.find(i => i.name === p.name);
-          if (item) {
-            currentStock -= item.qty;
-          }
-        }
-      });
-      return { ...p, stock: currentStock };
-    });
-
-    // 4. Process Direct Sales (IndexedDB)
-    const { dbGetAllSales } = await import('../src/services/db');
-    const directSales = await dbGetAllSales(365); // Last year
-    
-    const finalProducts = afterSalesReports.map(p => {
-      let currentStock = p.stock;
-      directSales.forEach(sale => {
-        if (sale.statusSync !== 'cancelled') {
-          sale.items.forEach(item => {
-            if (item.productId === p.id || item.name === p.name) {
-              currentStock -= item.qty;
-            }
-          });
-        }
-      });
-      return { ...p, stock: currentStock };
-    });
-
-    setProducts(finalProducts);
-    
-    addAuditLog({
-      action: 'SYSTEM_STOCK_REBUILD',
-      module: 'SISTEMA',
-      description: 'Reconstrução automática de stock executada com sucesso.',
-      performedBy: user?.name || 'Sistema'
-    });
-  }, [products, purchases, salesReports, addAuditLog, user]);
-
   const addEquipment = (equipment: Omit<Equipment, 'id' | 'prevQty'>) => {
-    const newEquip: Equipment = {
-        ...equipment,
-        id: Date.now().toString(),
-        prevQty: equipment.qty
-    };
-    setEquipments(prev => [...prev, newEquip]);
-    markAsPending();
+    try {
+      validateAction('EQUIPMENT', {});
+      const newEquip: Equipment = {
+          ...equipment,
+          id: Date.now().toString(),
+          prevQty: equipment.qty
+      };
+      setEquipments(prev => [...prev, newEquip]);
+      markAsPending();
+      
+      addAuditLog({
+        action: 'ADICIONAR_EQUIPAMENTO',
+        module: 'INVENTARIO',
+        entityId: newEquip.id,
+        description: `Equipamento ${newEquip.name} adicionado.`,
+        performedBy: user?.name || 'Sistema'
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Erro desconhecido';
+      addLog({
+        action: 'ERROR' as any,
+        module: 'INVENTARIO',
+        description: `ERRO: ${msg}`,
+        entityId: equipment.name
+      }, user);
+      throw error;
+    }
   };
 
   const updateEquipment = (id: string, updates: Partial<Equipment>) => {
-    setEquipments(prev => prev.map(eq => 
-        eq.id === id ? { ...eq, ...updates } : eq
-    ));
-    markAsPending();
+    try {
+      validateAction('EQUIPMENT', {});
+      setEquipments(prev => prev.map(eq => 
+          eq.id === id ? { ...eq, ...updates } : eq
+      ));
+      markAsPending();
+      
+      addAuditLog({
+        action: 'EDITAR_EQUIPAMENTO',
+        module: 'INVENTARIO',
+        entityId: id,
+        description: `Equipamento ${id} atualizado.`,
+        performedBy: user?.name || 'Sistema'
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Erro desconhecido';
+      addLog({
+        action: 'ERROR' as any,
+        module: 'INVENTARIO',
+        description: `ERRO: ${msg}`,
+        entityId: id
+      }, user);
+      throw error;
+    }
   };
 
   const updateEquipmentQty = (id: string, newQty: number) => {
-    setEquipments(prev => prev.map(eq => 
-        eq.id === id ? { ...eq, prevQty: eq.qty, qty: newQty } : eq
-    ));
-    markAsPending();
+    try {
+      validateAction('EQUIPMENT', {});
+      const equip = equipments.find(e => e.id === id);
+      setEquipments(prev => prev.map(eq => 
+          eq.id === id ? { ...eq, prevQty: eq.qty, qty: newQty } : eq
+      ));
+      markAsPending();
+
+      addAuditLog({
+        action: 'AJUSTE_QTD_EQUIPAMENTO',
+        module: 'INVENTARIO',
+        entityId: id,
+        description: `Quantidade de ${equip?.name || id} alterada de ${equip?.qty} para ${newQty}`,
+        performedBy: user?.name || 'Sistema'
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Erro desconhecido';
+      addLog({
+        action: 'ERROR' as any,
+        module: 'INVENTARIO',
+        description: `ERRO: ${msg}`,
+        entityId: id
+      }, user);
+      throw error;
+    }
   };
 
   const removeEquipment = (id: string) => {
-    setEquipments(prev => prev.filter(eq => eq.id !== id));
-    markAsPending();
+    try {
+      validateAction('EQUIPMENT', {});
+      const equip = equipments.find(e => e.id === id);
+      setEquipments(prev => prev.filter(eq => eq.id !== id));
+      markAsPending();
+      
+      addAuditLog({
+        action: 'REMOVER_EQUIPAMENTO',
+        module: 'INVENTARIO',
+        entityId: id,
+        description: `Equipamento ${equip?.name || id} removido.`,
+        performedBy: user?.name || 'Sistema'
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Erro desconhecido';
+      addLog({
+        action: 'ERROR' as any,
+        module: 'INVENTARIO',
+        description: `ERRO: ${msg}`,
+        entityId: id
+      }, user);
+      throw error;
+    }
   };
 
   const addCard = (card: Omit<Card, 'id'>) => {
@@ -1292,6 +1666,14 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       id: Math.random().toString(36).substr(2, 9)
     };
     setCards(prev => [...prev, newCard]);
+    
+    addAuditLog({
+      action: 'CRIAR_CARTAO',
+      module: 'FINANCEIRO',
+      entityId: newCard.id,
+      description: `Novo cartão/conta criado: ${newCard.name}`,
+      performedBy: user?.name || 'Sistema'
+    });
   };
 
   const updateCard = (id: string, updates: Partial<Card>) => {
@@ -1300,18 +1682,92 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     // Sync legacy balances if needed
     if (id === 'main' && updates.balance !== undefined) setCurrentBalance(updates.balance);
     if (id === 'savings' && updates.balance !== undefined) setSavingsBalance(updates.balance);
+
+    addAuditLog({
+      action: 'EDITAR_CARTAO',
+      module: 'FINANCEIRO',
+      entityId: id,
+      description: `Cartão/conta atualizado: ${id}`,
+      performedBy: user?.name || 'Sistema'
+    });
   };
 
   const deleteCard = (id: string) => {
     if (!checkPermission('finance_card_delete')) return;
     if (id === 'main' || id === 'savings') return; // Protect default cards
+    const card = cards.find(c => c.id === id);
     setCards(prev => prev.filter(c => c.id !== id));
+
+    addAuditLog({
+      action: 'REMOVER_CARTAO',
+      module: 'FINANCEIRO',
+      entityId: id,
+      description: `Cartão/conta removido: ${card?.name || id}`,
+      performedBy: user?.name || 'Sistema'
+    });
+  };
+
+  const resetTestData = () => {
+    if (!checkPermission('admin_global_admin')) return;
+    
+    setProducts(INITIAL_PRODUCTS);
+    setPurchases([]);
+    setExpenses([]);
+    setTransactions([]);
+    setSalesReports([]);
+    setInventoryHistory([]);
+    setStockOperationHistory([]);
+    setLockedDays([]);
+    setCurrentBalance(1250000);
+    setSavingsBalance(500000);
+    setCashBalance(850000);
+    setTPABalance(400000);
+    setCards([
+      {
+        id: 'main',
+        name: 'Conta Corrente',
+        holder: 'Marguel Bar',
+        balance: 1250000,
+        color: 'bg-gradient-to-bl from-[#003366] via-[#004488] to-[#0054A6]',
+        type: 'Corrente',
+        validity: '12/28'
+      },
+      {
+        id: 'savings',
+        name: 'Marguel Reserve',
+        holder: 'Marguel Reserve',
+        balance: 500000,
+        color: 'bg-gradient-to-br from-[#F5DF4D] via-[#D4AF37] to-[#AA6C39]',
+        type: 'Poupança',
+        validity: '06/30'
+      }
+    ]);
+    
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    setSystemDate(now);
+    
+    // Clear specific localStorage keys to avoid clearing auth
+    const keysToClear = [
+      'mg_products', 'mg_purchases', 'mg_expenses', 'mg_expense_categories',
+      'mg_inventory_history', 'mg_stock_operation_history', 'mg_current_balance',
+      'mg_savings_balance', 'mg_cash_balance', 'mg_tpa_balance', 'mg_cards',
+      'mg_transactions', 'mg_sales_reports', 'mg_locked_days', 'mg_system_date'
+    ];
+    keysToClear.forEach(key => localStorage.removeItem(key));
+    
+    addAuditLog({
+      action: 'RESET_SISTEMA',
+      module: 'SISTEMA',
+      description: 'Todos os dados de teste foram limpos.',
+      performedBy: user?.name || 'Sistema'
+    });
   };
 
   const value = useMemo(() => ({ 
     products, categories, purchases, currentBalance, savingsBalance, cashBalance, tpaBalance, cards, transactions, salesReports, 
     expenses, expenseCategories, inventoryHistory, priceHistory, lockedDays, systemDate,
-    getSystemDate, setSystemDate, resetTestData, unlockDay, lockDay, isDayLocked, checkDayLock,
+    getSystemDate, setSystemDate, unlockDay, lockDay, isDayLocked, checkDayLock,
     addExpense, deleteExpense, updateExpense,
     addExpenseCategory, updateExpenseCategory, deleteExpenseCategory,
     addInventoryLog, addProduct, updateProduct, deleteProduct, addCategory, editCategory, removeCategory,
@@ -1324,12 +1780,12 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     addAuditLog, 
     stockOperationHistory, 
     equipments, addEquipment, updateEquipment, updateEquipmentQty, removeEquipment,
-    addCard, updateCard, deleteCard,
-    isSyncing, hasPendingChanges, syncData, rebuildStockFromSales
+    addCard, updateCard, deleteCard, resetTestData,
+    isSyncing, hasPendingChanges, syncData, handleStockMovement
   }), [
     products, categories, purchases, currentBalance, savingsBalance, cashBalance, tpaBalance, cards, transactions, salesReports, 
     expenses, expenseCategories, inventoryHistory, priceHistory, lockedDays, systemDate,
-    getSystemDate, setSystemDate, resetTestData, unlockDay, lockDay, isDayLocked, checkDayLock,
+    getSystemDate, setSystemDate, unlockDay, lockDay, isDayLocked, checkDayLock,
     addExpense, deleteExpense, updateExpense,
     addExpenseCategory, updateExpenseCategory, deleteExpenseCategory,
     addInventoryLog, addProduct, updateProduct, deleteProduct, addCategory, editCategory, removeCategory,
@@ -1342,8 +1798,8 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     addAuditLog, 
     stockOperationHistory, 
     equipments, addEquipment, updateEquipment, updateEquipmentQty, removeEquipment,
-    addCard, updateCard, deleteCard,
-    isSyncing, hasPendingChanges, syncData, rebuildStockFromSales
+    addCard, updateCard, deleteCard, resetTestData,
+    isSyncing, hasPendingChanges, syncData, handleStockMovement
   ]);
 
   return (

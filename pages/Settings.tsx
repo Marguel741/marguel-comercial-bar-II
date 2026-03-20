@@ -30,6 +30,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { useProducts } from '../contexts/ProductContext';
 import SoftCard from '../components/SoftCard';
+import Footer from '../components/Footer';
 import { UserRole } from '../types';
 
 const Settings: React.FC = () => {
@@ -49,17 +50,10 @@ const Settings: React.FC = () => {
   const { 
     products, 
     syncData, 
-    rebuildStockFromSales, 
     salesReports,
     addAuditLog
   } = useProducts();
 
-  const [integrityResults, setIntegrityResults] = useState<{
-    status: 'clean' | 'issues' | null;
-    details: Array<{ product: string; error: string; page: string; date: string }>;
-  }>({ status: null, details: [] });
-  const [isCheckingIntegrity, setIsCheckingIntegrity] = useState(false);
-  const [isRebuilding, setIsRebuilding] = useState(false);
   const [isDiagnosing, setIsDiagnosing] = useState(false);
 
   // Account State
@@ -96,60 +90,11 @@ const Settings: React.FC = () => {
     }
   };
 
-  const systemIntegrityCheck = async () => {
-    setIsCheckingIntegrity(true);
-    const issues: typeof integrityResults.details = [];
-    
-    // 1. Negative Stock
-    products.forEach(p => {
-      if (p.stock < 0) {
-        issues.push({
-          product: p.name,
-          error: `Stock negativo: ${p.stock}`,
-          page: 'Inventário',
-          date: new Date().toISOString()
-        });
-      }
-    });
-
-    // 2. Sales without products
-    salesReports.forEach(report => {
-      report.itemsSummary?.forEach(item => {
-        const product = products.find(p => p.name === item.name);
-        if (!product) {
-          issues.push({
-            product: item.name,
-            error: 'Venda de produto inexistente',
-            page: 'Relatórios de Venda',
-            date: report.date
-          });
-        }
-      });
-    });
-
-    setIntegrityResults({
-      status: issues.length === 0 ? 'clean' : 'issues',
-      details: issues
-    });
-    setIsCheckingIntegrity(false);
-  };
-
-  const handleRebuildStock = async () => {
-    if (window.confirm('Tem certeza que deseja reconstruir o stock? Esta operação recalculará todos os saldos com base nas compras e vendas registadas.')) {
-      setIsRebuilding(true);
-      await rebuildStockFromSales();
-      setIsRebuilding(false);
-      alert('Reconstrução de stock concluída com sucesso.');
-    }
-  };
-
   const handleFullDiagnosis = async () => {
     setIsDiagnosing(true);
-    await systemIntegrityCheck();
-    await rebuildStockFromSales();
     await syncData();
     setIsDiagnosing(false);
-    alert('Diagnóstico completo concluído.');
+    alert('Sincronização concluída.');
   };
 
   const handleUpdatePin = async () => {
@@ -444,7 +389,7 @@ const Settings: React.FC = () => {
           </div>
         </SoftCard>
 
-        {/* 5. DIAGNÓSTICO */}
+        {/* 5. DIAGNÓSTICO E MANUTENÇÃO */}
         <SoftCard>
           <div className="flex items-center gap-3 mb-6">
             <div className="p-2 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-xl">
@@ -491,7 +436,7 @@ const Settings: React.FC = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.4 }}
-            className="space-y-6"
+            className="space-y-6 md:col-span-2"
           >
             <div className="flex items-center gap-3">
               <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl">
@@ -501,90 +446,6 @@ const Settings: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Controlo de Integridade */}
-              <SoftCard className="p-6 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                      <Database className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-slate-800 dark:text-white">Integridade do Sistema</h3>
-                      <p className="text-xs text-slate-500">Verificar inconsistências de dados</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={systemIntegrityCheck}
-                    disabled={isCheckingIntegrity}
-                    className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-xl hover:bg-blue-700 transition-all disabled:opacity-50"
-                  >
-                    {isCheckingIntegrity ? 'A verificar...' : 'Verificar'}
-                  </button>
-                </div>
-
-                {integrityResults.status && (
-                  <motion.div 
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    className={`p-4 rounded-2xl text-sm ${
-                      integrityResults.status === 'clean' 
-                        ? 'bg-emerald-50 dark:bg-emerald-900/10 text-emerald-700 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/30' 
-                        : 'bg-amber-50 dark:bg-amber-900/10 text-amber-700 dark:text-amber-400 border border-amber-100 dark:border-amber-900/30'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 font-bold mb-2">
-                      {integrityResults.status === 'clean' ? (
-                        <CheckCircle2 className="w-5 h-5" />
-                      ) : (
-                        <AlertTriangle className="w-5 h-5" />
-                      )}
-                      {integrityResults.status === 'clean' ? 'Sistema íntegro' : 'Inconsistências detectadas'}
-                    </div>
-                    {integrityResults.details.length > 0 && (
-                      <div className="mt-3 space-y-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
-                        {integrityResults.details.map((issue, idx) => (
-                          <div key={idx} className="p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 text-xs shadow-sm">
-                            <div className="font-bold text-slate-800 dark:text-white mb-1">{issue.product}</div>
-                            <div className="text-slate-500">{issue.error}</div>
-                            <div className="flex justify-between mt-2 pt-2 border-t border-slate-50 dark:border-slate-700/50 opacity-60">
-                              <span>{issue.page}</span>
-                              <span>{new Date(issue.date).toLocaleDateString()}</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </motion.div>
-                )}
-              </SoftCard>
-
-              {/* Reconstrução de Stock */}
-              <SoftCard className="p-6 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
-                      <RefreshCw className="w-5 h-5 text-orange-600 dark:text-orange-400" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-slate-800 dark:text-white">Reconstrução de Stock</h3>
-                      <p className="text-xs text-slate-500">Recalcular stock via histórico</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={handleRebuildStock}
-                    disabled={isRebuilding}
-                    className="px-4 py-2 bg-orange-600 text-white text-xs font-bold rounded-xl hover:bg-orange-700 transition-all disabled:opacity-50"
-                  >
-                    {isRebuilding ? 'A processar...' : 'Reconstruir'}
-                  </button>
-                </div>
-                <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-700">
-                  <p className="text-[10px] text-slate-500 leading-relaxed italic">
-                    * Esta operação recalcula o stock atual somando todas as compras e subtraindo todas as vendas registadas. Use apenas em caso de divergência grave.
-                  </p>
-                </div>
-              </SoftCard>
-
               {/* Modo Manutenção */}
               <SoftCard className="p-6 space-y-4">
                 <div className="flex items-center justify-between">
@@ -617,8 +478,8 @@ const Settings: React.FC = () => {
                 )}
               </SoftCard>
 
-              {/* Botão de Emergência */}
-              <SoftCard className="p-6 space-y-4 md:col-span-2 bg-slate-900 dark:bg-black text-white border-none overflow-hidden relative group">
+              {/* Sincronização Completa */}
+              <SoftCard className="p-6 space-y-4 bg-slate-900 dark:bg-black text-white border-none overflow-hidden relative group">
                 <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform">
                   <Activity size={120} />
                 </div>
@@ -629,8 +490,8 @@ const Settings: React.FC = () => {
                       <Zap className="w-8 h-8 text-yellow-400" />
                     </div>
                     <div>
-                      <h3 className="text-lg font-bold">Diagnóstico Completo do Sistema</h3>
-                      <p className="text-sm text-slate-400">Executar integridade, reconstrução e sincronização</p>
+                      <h3 className="text-lg font-bold">Sincronização do Sistema</h3>
+                      <p className="text-sm text-slate-400">Forçar sincronização de todos os dados locais</p>
                     </div>
                   </div>
                   <button
@@ -641,10 +502,10 @@ const Settings: React.FC = () => {
                     {isDiagnosing ? (
                       <>
                         <RefreshCw className="w-5 h-5 animate-spin" />
-                        A Processar...
+                        A Sincronizar...
                       </>
                     ) : (
-                      'Executar Diagnóstico'
+                      'Sincronizar Agora'
                     )}
                   </button>
                 </div>
@@ -693,14 +554,6 @@ const Settings: React.FC = () => {
               </div>
               <span className="text-xs font-bold text-blue-600">Sincronizada</span>
             </div>
-          </div>
-
-          <div className="mt-8 flex flex-col items-center">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="font-sans font-black text-xl tracking-tighter text-[#E3007E]">MG</span>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Comercial Bar</span>
-            </div>
-            <p className="text-[8px] text-slate-400 uppercase font-medium">© 2026 Marguel ERP Systems. Todos os direitos reservados.</p>
           </div>
         </SoftCard>
       </div>
@@ -773,6 +626,7 @@ const Settings: React.FC = () => {
           </div>
         )}
       </AnimatePresence>
+      <Footer />
     </div>
   );
 };

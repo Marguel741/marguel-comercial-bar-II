@@ -46,6 +46,30 @@ export const AuditProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const addLog = (params: Omit<AuditLog, 'id' | 'timestamp' | 'date' | 'time' | 'performedBy' | 'userRole' | 'source' | 'synced'>, user: User | null) => {
     if (!isAuditEnabled) return;
 
+    // Filter only critical actions
+    const criticalActions = [
+      'LOGIN', 'LOGOUT', 'SWITCH_USER',
+      'SALE', 'SALE_CANCELLED', 'SALES_REPORT',
+      'STOCK_ADJUSTMENT', 'PURCHASE', 'INVENTORY_ADJUST', 'UPDATE_STOCK',
+      'LOCK_DAY', 'UNLOCK_DAY', 'AJUSTE_FINANCEIRO_FECHO', 'CONFIRMAÇÃO_FINAL_FECHO', 'CONFIRMAÇÃO_UNILATERAL_FECHO',
+      'DELETE_PRODUCT', 'UPDATE_PRODUCT', 'ADD_PRODUCT',
+      'CRIAR_PRODUTO', 'EDITAR_PRODUTO', 'ARQUIVAR_PRODUTO',
+      'CRIAR_CATEGORIA', 'EDITAR_CATEGORIA', 'REMOVER_CATEGORIA',
+      'VENDA_STOCK', 'COMPRA_STOCK', 'AJUSTE_STOCK',
+      'REGISTRO_INVENTARIO', 'ALTERAR_DATA_SISTEMA', 'TENTATIVA_EDICAO_BLOQUEADA',
+      'INTEGRAÇÃO_FINANCEIRA_FECHO', 'RESET_SISTEMA',
+      'ADICIONAR_EQUIPAMENTO', 'EDITAR_EQUIPAMENTO', 'REMOVER_EQUIPAMENTO',
+      'ADICIONAR_DESPESA', 'ESTORNO_DESPESA', 'EDITAR_DESPESA', 'CRIAR_COMPRA',
+      'CRIAR_CARTAO', 'EDITAR_CARTAO', 'REMOVER_CARTAO',
+      'CRIAR_CATEGORIA_DESPESA', 'EDITAR_CATEGORIA_DESPESA', 'REMOVER_CATEGORIA_DESPESA',
+      'TRANSACAO_MANUAL', 'DEBITO_CASH_TPA', 'JUSTIFICAR_FECHO', 'AJUSTE_QTD_EQUIPAMENTO',
+      'CRIAR_RELATORIO_VENDAS'
+    ];
+
+    if (!criticalActions.includes(params.action)) {
+      return;
+    }
+
     const now = new Date();
     const date = now.toISOString().split('T')[0];
     const time = now.toTimeString().split(' ')[0];
