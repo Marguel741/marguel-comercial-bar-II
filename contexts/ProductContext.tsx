@@ -143,6 +143,7 @@ interface ProductContextType {
   syncData: () => Promise<void>;
   handleStockMovement: (productId: string, quantity: number, type: 'SALE' | 'PURCHASE' | 'ADJUSTMENT', performedBy: string, reason: string, referenceId?: string) => void;
   runSystemDiagnostic: () => void;
+  ignoreLockedDayWithoutClosure: (dateStr: string) => void;
 }
 
 const ProductContext = createContext<ProductContextType | undefined>(undefined);
@@ -1941,6 +1942,22 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   };
 
+  const ignoreLockedDayWithoutClosure = useCallback((dateStr: string) => {
+    const clean = cleanDate(dateStr);
+    const hasValidReport = salesReports.some(r => 
+      cleanDate(r.date) === clean && 
+      r.status === ClosureStatus.FECHO_CONFIRMADO && 
+      !(r as any).unilateralAdminConfirmation // opcional
+    );
+
+    if (!hasValidReport && isDayLocked(dateStr)) {
+      // Anula qualquer transação pendente desse dia (sem criar ghost)
+      setTransactions(prev => prev.filter(t => cleanDate(t.operationalDay) !== clean));
+      // Zera saldos que vieram desse dia (opcional, se quiseres forçar zero)
+      // Mas o ideal é só impedir visualização no Dashboard via filtro
+    }
+  }, [salesReports, isDayLocked]);
+
   const value = useMemo(() => ({ 
     products, categories, purchases, currentBalance, savingsBalance, cashBalance, tpaBalance, cards, transactions, salesReports, 
     expenses, expenseCategories, inventoryHistory, priceHistory, lockedDays, systemDate,
@@ -1960,6 +1977,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     equipments, addEquipment, updateEquipment, updateEquipmentQty, removeEquipment,
     addCard, updateCard, deleteCard, resetTestData,
     runSystemDiagnostic,
+    ignoreLockedDayWithoutClosure,
     isSyncing, hasPendingChanges, syncData, handleStockMovement
   }), [
     products, categories, purchases, currentBalance, savingsBalance, cashBalance, tpaBalance, cards, transactions, salesReports, 
@@ -1980,6 +1998,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     equipments, addEquipment, updateEquipment, updateEquipmentQty, removeEquipment,
     addCard, updateCard, deleteCard, resetTestData,
     runSystemDiagnostic,
+    ignoreLockedDayWithoutClosure,
     isSyncing, hasPendingChanges, syncData, handleStockMovement
   ]);
 
