@@ -362,8 +362,9 @@ const Sales: React.FC = () => {
 
       totalTheoreticalRevenue += revenue;
       const profit = revenue - (soldQty * product.buyPrice);
+      const discountAmount = isPromo ? ((product.sellPrice * soldQty) - revenue) : 0;
 
-      return { ...product, init, buy, end, soldQty, revenue, profit, isPromo, breakdown, isBalanced, promoQty, promoPrice };
+      return { ...product, init, buy, end, soldQty, revenue, profit, isPromo, breakdown, isBalanced, promoQty, promoPrice, discountAmount };
     });
 
     const totalTheoreticalProfit = items.reduce((acc, item) => acc + (item.profit || 0), 0);
@@ -532,12 +533,22 @@ const Sales: React.FC = () => {
       
       // Compatibility fields for Dashboard
       date: formatDateISO(reportTimestamp),
-      itemsSummary: calculatedData.items.filter(i => i.soldQty > 0).map(i => ({
+      itemsSummary: calculatedData.items
+        .filter(i => i.soldQty > 0)
+        .map(i => ({
           productId: i.id,
           name: i.name,
           qty: i.soldQty,
-          total: i.revenue
-      })),
+          total: i.revenue,
+          // DETALHES VISÍVEIS PARA TODOS OS UTILIZADORES
+          isMixMatch: i.isPromo || false,
+          discountAmount: i.isPromo 
+            ? ((i.sellPrice * i.soldQty) - i.revenue) 
+            : 0,
+          mixMatchQtyUsed: i.breakdown?.packs 
+            ? i.breakdown.packs * i.promoQty 
+            : undefined
+        })),
       totalLifted: totalLifted,
       cash: declaredCash,
       tpa: declaredTicket,
@@ -853,6 +864,7 @@ const Sales: React.FC = () => {
                                <th className="p-4 font-bold text-center">Compra</th>
                                <th className="p-4 font-bold text-center">Final</th>
                                <th className="p-4 font-bold text-center">Vendido</th>
+                               <th className="p-4 font-bold text-right">Desconto MixMatch</th>
                                <th className="p-4 font-bold text-right">Subtotal</th>
                             </tr>
                          </thead>
@@ -864,6 +876,9 @@ const Sales: React.FC = () => {
                                   <td className="p-4 text-center text-green-600 font-medium">+{item.buy}</td>
                                   <td className="p-4 text-center text-slate-500">{item.end}</td>
                                   <td className="p-4 text-center font-bold text-slate-700 dark:text-slate-200">{item.soldQty}</td>
+                                  <td className="p-4 text-right font-medium text-amber-600">
+                                    {item.discountAmount ? `-${item.discountAmount.toLocaleString()} Kz` : '-'}
+                                  </td>
                                   <td className="p-4 text-right font-bold text-[#003366] dark:text-blue-300">{(item.revenue || 0).toLocaleString('pt-AO')} Kz</td>
                                </tr>
                             ))}

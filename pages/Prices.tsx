@@ -13,7 +13,7 @@ import { useProducts } from '../contexts/ProductContext';
 import { useLayout } from '../contexts/LayoutContext';
 import SyncStatus from '../components/SyncStatus';
 import { useAuth } from '../contexts/AuthContext';
-import { PriceHistoryLog, SavedProposal, PurchaseRecord, UserPermissions, UserRole } from '../types';
+import { PriceHistoryLog, SavedProposal, PurchaseRecord, UserPermissions, UserRole, Product } from '../types';
 import { hasPermission } from '../src/utils/permissions';
 import { formatDisplayDate, formatDateISO, cleanDate, safeFormatCurrency, getFileReader, generateUUID } from '../src/utils';
 
@@ -207,18 +207,31 @@ const Prices: React.FC = () => {
       triggerHaptic('error');
       return;
     }
-    const finalUpdates: any = {};
-    if (updates.buy !== undefined) finalUpdates.buyPrice = updates.buy;
-    if (updates.sell !== undefined) finalUpdates.sellPrice = updates.sell;
-    if (updates.promoQty !== undefined) finalUpdates.promoQty = updates.promoQty;
-    if (updates.promoPrice !== undefined) finalUpdates.promoPrice = updates.promoPrice;
-    if (updates.isPromoActive !== undefined) finalUpdates.isPromoActive = updates.isPromoActive;
+    const finalUpdates: Partial<Product> = {
+      buyPrice: updates.buy !== undefined ? updates.buy : undefined,
+      sellPrice: updates.sell !== undefined ? updates.sell : undefined,
+      promoQty: updates.promoQty,
+      promoPrice: updates.promoPrice,
+      isPromoActive: updates.isPromoActive,
+      
+      // MIX MATCH REAL
+      isMixMatch: updates.isPromoActive,
+      mixMatchQty: updates.promoQty,
+      mixMatchPrice: updates.promoPrice,
+      discountAmount: updates.promoPrice 
+        ? (currentProduct.sellPrice * (updates.promoQty || 1) - updates.promoPrice) 
+        : (currentProduct.promoPrice && updates.promoPrice === undefined ? (currentProduct.sellPrice * (currentProduct.promoQty || 1) - currentProduct.promoPrice) : 0)
+    };
+
+    // Remove undefined to avoid overwriting existing data
+    Object.keys(finalUpdates).forEach(key => (finalUpdates as any)[key] === undefined && delete (finalUpdates as any)[key]);
 
     // Validation: Promo Price < Unit Price * Qty
-    if (finalUpdates.isPromoActive || (currentProduct.isPromoActive && finalUpdates.isPromoActive !== false)) {
-        const qty = finalUpdates.promoQty || currentProduct.promoQty || 0;
-        const price = finalUpdates.promoPrice || currentProduct.promoPrice || 0;
-        const unitPrice = finalUpdates.sellPrice || currentProduct.sellPrice || 0;
+    const valIsPromoActive = finalUpdates.isPromoActive ?? currentProduct.isPromoActive;
+    if (valIsPromoActive) {
+        const qty = finalUpdates.promoQty ?? currentProduct.promoQty ?? 0;
+        const price = finalUpdates.promoPrice ?? currentProduct.promoPrice ?? 0;
+        const unitPrice = finalUpdates.sellPrice ?? currentProduct.sellPrice ?? 0;
         
         if (qty > 1 && price >= (unitPrice * qty)) {
             triggerHaptic('error');
@@ -1087,7 +1100,11 @@ const Prices: React.FC = () => {
                         <h3 className="text-xl font-black text-[#003366] dark:text-white">Resumo da Proposta</h3>
                         <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">{formatDisplayDate(formatDateISO(getSystemDate()))}</p>
                       </div>
-                      <img src="/logo_rosa_cintilante.png" alt="Marguel Logo" className="h-12 w-auto opacity-80 object-contain" />
+                      <img 
+                        src="/logo_marguel_oficial.png" 
+                        alt="Marguel Logo" 
+                        className="h-12 w-auto opacity-80 object-contain" 
+                      />
                     </div>
 
                     <div className="space-y-4">

@@ -110,10 +110,15 @@ export interface Product {
   packSize?: number;
   packType?: 'Grade' | 'Caixa' | 'Embalagem';
   isArchived?: boolean;
-  // Promo fields
+  
+  // MIX MATCH COMPLETO (obrigatório)
+  isMixMatch?: boolean;
+  mixMatchQty?: number;        // ex: 3
+  mixMatchPrice?: number;      // preço do pack promocional
+  discountAmount?: number;     // desconto unitário
+  isPromoActive?: boolean;     // mantido para compatibilidade
   promoQty?: number;
   promoPrice?: number;
-  isPromoActive?: boolean;
 }
 
 export interface PriceHistoryLog {
@@ -290,7 +295,16 @@ export interface SalesReport {
   lunchExpense: number;
   notes: string;
   closedBy: string;
-  itemsSummary: { productId?: string, name: string, qty: number, total: number }[];
+  itemsSummary: { 
+    productId?: string; 
+    name: string; 
+    qty: number; 
+    total: number;
+    // NOVOS CAMPOS – agora todos os utilizadores veem o desconto
+    isMixMatch?: boolean;
+    discountAmount?: number;
+    mixMatchQtyUsed?: number;
+  }[];
   stockSnapshot?: {
     initial: Record<string, string>;
     final: Record<string, string>;
