@@ -1,5 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
+import { generateUUID } from '../src/utils';
 import { 
   Send, 
   Image as ImageIcon, 
@@ -91,7 +92,7 @@ const Chat: React.FC = () => {
     triggerHaptic('success');
 
     const newMessage: ChatMessage = {
-      id: Date.now().toString(),
+      id: generateUUID(),
       senderId: currentUser?.id || 'unknown',
       receiverId: activeChatId,
       content: content,

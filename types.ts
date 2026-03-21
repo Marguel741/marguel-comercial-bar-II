@@ -181,6 +181,7 @@ export interface Expense {
   notes?: string;
   origin?: string;
   status?: 'ACTIVE' | 'REVERSED' | 'REVERSAL';
+  isReverted?: boolean;
 }
 
 export interface Alert {

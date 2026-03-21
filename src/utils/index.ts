@@ -45,10 +45,23 @@ export const cleanDate = (str: string) => {
 };
 
 // Gera data no formato YYYY-MM-DD independente do navegador
-export const formatDateISO = (date: Date) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
+export const formatDateISO = (date: Date | string | number) => {
+  if (!date) return '';
+  
+  let d: Date;
+  if (date instanceof Date) {
+    d = date;
+  } else {
+    d = new Date(date);
+  }
+  
+  if (isNaN(d.getTime())) {
+    return '';
+  }
+
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 };
 
@@ -62,4 +75,74 @@ export const formatDisplayDate = (dateStr: string) => {
     }
   }
   return dateStr;
+};
+
+// Função para disparar eventos customizados de forma segura (fallback para navegadores antigos/ambientes restritos)
+export const dispatchCustomEvent = (name: string, detail?: any) => {
+  if (typeof window === 'undefined') return;
+  
+  try {
+    // Tenta usar o construtor moderno primeiro
+    const event = new CustomEvent(name, { detail, bubbles: true, cancelable: true });
+    window.dispatchEvent(event);
+  } catch (e) {
+    // Fallback para ambientes onde new CustomEvent falha (Illegal constructor)
+    try {
+      const event = document.createEvent('CustomEvent');
+      (event as any).initCustomEvent(name, true, true, detail);
+      window.dispatchEvent(event);
+    } catch (err) {
+      console.error(`Falha crítica ao disparar evento customizado: ${name}`, err);
+      
+      // Último recurso: disparar via callback global se existir (padrão legado)
+      if ((window as any).onCustomEvent) {
+        (window as any).onCustomEvent(name, detail);
+      }
+    }
+  }
+};
+
+// Formatação de moeda segura (evita Illegal constructor em Intl.NumberFormat)
+export const safeFormatCurrency = (value: number, currency = 'AOA', locale = 'pt-AO') => {
+  try {
+    if (typeof Intl !== 'undefined' && typeof Intl.NumberFormat === 'function') {
+      return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(value);
+    }
+  } catch (e) {
+    console.warn('Intl.NumberFormat falhou ou não é um construtor válido, usando fallback:', e);
+  }
+  
+  // Fallback manual de formatação
+  const formattedValue = (value || 0).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `${formattedValue} ${currency}`;
+};
+
+// Instanciação segura de FileReader
+export const getFileReader = (): FileReader | null => {
+  try {
+    if (typeof FileReader !== 'undefined' && typeof FileReader === 'function') {
+      return new FileReader();
+    }
+  } catch (e) {
+    console.error('Falha ao instanciar FileReader (Illegal constructor?):', e);
+  }
+  return null;
+};
+
+// Gerador de UUID seguro com fallback para contextos não-seguros (HTTP ou iframes restritos)
+export const generateUUID = (): string => {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+  } catch (e) {
+    // ignore and fallback
+  }
+  
+  // Fallback para contextos onde randomUUID não está disponível
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
 };

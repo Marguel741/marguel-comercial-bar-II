@@ -6,7 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import SoftCard from '../components/SoftCard';
 import { dbAddSale, dbGetAllSales, dbUpdateSale, DirectSale } from '../src/services/db';
 import { processSync, serverTimeOffset } from '../src/services/syncService';
-import { roundKz, formatKz, formatDateISO, formatDisplayDate } from '../src/utils';
+import { roundKz, formatKz, formatDateISO, formatDisplayDate, generateUUID } from '../src/utils';
 import { hasPermission } from '../src/utils/permissions';
 import AccessDenied from './AccessDenied';
 
@@ -102,7 +102,7 @@ const DirectService: React.FC = () => {
   useEffect(() => {
       let storedDeviceId = localStorage.getItem('mg_device_id');
       if (!storedDeviceId) {
-          storedDeviceId = crypto.randomUUID();
+          storedDeviceId = generateUUID();
           localStorage.setItem('mg_device_id', storedDeviceId);
       }
       setDeviceId(storedDeviceId);
@@ -295,7 +295,7 @@ const DirectService: React.FC = () => {
         const now = getSystemDate();
         const newSale: DirectSale = {
             id: `${now.getTime()}-${deviceId}`,
-            uuid: crypto.randomUUID(),
+            uuid: generateUUID(),
             date: formatDateISO(now),
             time: now.toLocaleTimeString('pt-AO'),
             timestamp: now.getTime(),
@@ -385,8 +385,8 @@ const DirectService: React.FC = () => {
       // 2. Create Reversal Entry (Negative Sale)
       const reversalSale: DirectSale = {
           ...sale,
-          id: `rev_${sale.id}_${Date.now()}`,
-          uuid: crypto.randomUUID(),
+          id: `rev_${sale.id}_${generateUUID()}`,
+          uuid: generateUUID(),
           timestamp: Date.now(),
           total: -sale.total,
           items: sale.items.map(item => ({ ...item, qty: -item.qty })),

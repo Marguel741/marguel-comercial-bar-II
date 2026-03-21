@@ -8,6 +8,7 @@ import { useAudit } from '../contexts/AuditContext';
 import { useLayout } from '../contexts/LayoutContext';
 import { DEFAULT_PERMISSIONS } from '../src/utils/permissions';
 import { getMockUsers, saveMockUsers } from '../src/services/mockUsers';
+import { dispatchCustomEvent } from '../src/utils';
 
 const UserManagement: React.FC = () => {
   const { user: currentUser, refreshUser } = useAuth();
@@ -129,7 +130,7 @@ const UserManagement: React.FC = () => {
     const updated = users.map(u => u.id === editingUser.id ? { ...u, permissions: tempPermissions } : u);
     setUsers(updated);
     saveMockUsers(updated);
-    window.dispatchEvent(new CustomEvent('mg_users_updated'));
+    dispatchCustomEvent('mg_users_updated');
     
     addLog({
       action: 'ALTERAR_PERMISSÕES',

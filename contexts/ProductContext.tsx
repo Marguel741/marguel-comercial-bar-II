@@ -4,7 +4,7 @@ import { Product, PurchaseRecord, Transaction, SalesReport, Expense, InventoryLo
 import { useAuth } from './AuthContext';
 import { useAudit } from './AuditContext';
 import { hasPermission } from '../src/utils/permissions';
-import { cleanDate, formatDateISO } from '../src/utils';
+import { cleanDate, formatDateISO, generateUUID } from '../src/utils';
 
 const INITIAL_PRODUCTS: Product[] = [
   { id: 'pepsi', name: 'Pepsi', sellPrice: 500, buyPrice: 250, stock: 0, minStock: 24, category: 'Refrigerantes', packSize: 24, packType: 'Grade' },
@@ -264,7 +264,17 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [purchases, setPurchases] = useState<PurchaseRecord[]>(() => {
     try {
       const saved = localStorage.getItem('mg_purchases');
-      return saved ? JSON.parse(saved) : [];
+      const parsed = saved ? JSON.parse(saved) : [];
+      // Deduplicate by ID
+      const unique: PurchaseRecord[] = [];
+      const seen = new Set();
+      parsed.forEach((p: PurchaseRecord) => {
+        if (!seen.has(p.id)) {
+          seen.add(p.id);
+          unique.push(p);
+        }
+      });
+      return unique;
     } catch { return []; }
   });
 
@@ -272,24 +282,53 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     try {
       const saved = localStorage.getItem('mg_expenses');
       const parsed = saved ? JSON.parse(saved) : [];
-      return parsed.map((item: any) => ({
+      // Deduplicate by ID
+      const unique: Expense[] = [];
+      const seen = new Set();
+      parsed.map((item: any) => ({
         ...item,
         attachments: item.attachments || (item.attachment ? [item.attachment] : [])
-      }));
+      })).forEach((e: Expense) => {
+        if (!seen.has(e.id)) {
+          seen.add(e.id);
+          unique.push(e);
+        }
+      });
+      return unique;
     } catch { return []; }
   });
 
   const [inventoryHistory, setInventoryHistory] = useState<InventoryLog[]>(() => {
     try {
       const saved = localStorage.getItem('mg_inventory_history');
-      return saved ? JSON.parse(saved) : [];
+      const parsed = saved ? JSON.parse(saved) : [];
+      // Deduplicate by ID
+      const unique: InventoryLog[] = [];
+      const seen = new Set();
+      parsed.forEach((l: InventoryLog) => {
+        if (!seen.has(l.id)) {
+          seen.add(l.id);
+          unique.push(l);
+        }
+      });
+      return unique;
     } catch { return []; }
   });
 
   const [stockOperationHistory, setStockOperationHistory] = useState<StockOperationLog[]>(() => {
     try {
       const saved = localStorage.getItem('mg_stock_operation_history');
-      return saved ? JSON.parse(saved) : [];
+      const parsed = saved ? JSON.parse(saved) : [];
+      // Deduplicate by ID
+      const unique: StockOperationLog[] = [];
+      const seen = new Set();
+      parsed.forEach((l: StockOperationLog) => {
+        if (!seen.has(l.id)) {
+          seen.add(l.id);
+          unique.push(l);
+        }
+      });
+      return unique;
     } catch { return []; }
   });
 
@@ -378,7 +417,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
 
       // Update Audit Log (StockOperationLog) - Move outside setProducts
       const log: StockOperationLog = {
-        id: crypto.randomUUID(),
+        id: generateUUID(),
         productId,
         productName,
         type: type as any,
@@ -473,16 +512,180 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
     try {
       const saved = localStorage.getItem('mg_transactions');
-      return saved ? JSON.parse(saved) : [];
+      const parsed = saved ? JSON.parse(saved) : [];
+      // Deduplicate by ID
+      const unique: Transaction[] = [];
+      const seen = new Set();
+      parsed.forEach((t: Transaction) => {
+        if (!seen.has(t.id)) {
+          seen.add(t.id);
+          unique.push(t);
+        }
+      });
+      return unique;
     } catch { return []; }
   });
 
   const [salesReports, setSalesReports] = useState<SalesReport[]>(() => {
     try {
       const saved = localStorage.getItem('mg_sales_reports');
-      return saved ? JSON.parse(saved) : [];
+      const parsed = saved ? JSON.parse(saved) : [];
+      // Deduplicate by ID
+      const unique: SalesReport[] = [];
+      const seen = new Set();
+      parsed.forEach((r: SalesReport) => {
+        if (!seen.has(r.id)) {
+          seen.add(r.id);
+          unique.push(r);
+        }
+      });
+      return unique;
     } catch { return []; }
   });
+
+  const processTransaction = useCallback((
+    type: 'deposit' | 'withdraw', 
+    account: 'main' | 'savings' | 'cash' | 'tpa' | string, 
+    amount: number, 
+    description: string, 
+    category?: string, 
+    referenceId?: string, 
+    referenceType?: Transaction['referenceType'],
+    performedBy?: string,
+    date?: string 
+  ) => {
+    try {
+      // Overwrite logic: if referenceId exists, reverse its effect first
+      const existingTrans = referenceId ? transactions.find(t => t.referenceId === referenceId && t.referenceType === referenceType) : null;
+      
+      if (existingTrans) {
+        const oldAmount = existingTrans.amount;
+        const oldType = existingTrans.type === 'entrada' ? 'deposit' : 'withdraw';
+        const oldAccountName = existingTrans.accountName;
+        const oldCategory = existingTrans.category;
+
+        // Reverse balance based on accountName
+        if (oldAccountName === 'Conta Corrente') {
+           setCurrentBalance(prev => oldType === 'deposit' ? prev - oldAmount : prev + oldAmount);
+           setCards(prev => prev.map(c => c.id === 'main' ? { ...c, balance: oldType === 'deposit' ? c.balance - oldAmount : c.balance + oldAmount } : c));
+        } else if (oldAccountName === 'Marguel Reserve' || oldAccountName === 'Conta Poupança') {
+           setSavingsBalance(prev => oldType === 'deposit' ? prev - oldAmount : prev + oldAmount);
+           setCards(prev => prev.map(c => c.id === 'savings' ? { ...c, balance: oldType === 'deposit' ? c.balance - oldAmount : c.balance + oldAmount } : c));
+        } else if (oldAccountName === 'Caixa (Dinheiro)') {
+           setCashBalance(prev => oldType === 'deposit' ? prev - oldAmount : prev + oldAmount);
+        } else if (oldAccountName === 'TPA') {
+           setTPABalance(prev => oldType === 'deposit' ? prev - oldAmount : prev + oldAmount);
+        } else {
+           setCards(prev => prev.map(c => {
+             if (c.name === oldAccountName) {
+               return { ...c, balance: oldType === 'deposit' ? c.balance - oldAmount : c.balance + oldAmount };
+             }
+             return c;
+           }));
+        }
+
+        // Reverse TPA if it was a transfer (and not already handled by accountName === 'TPA')
+        if (oldAccountName !== 'TPA' && (oldCategory === 'Transferência' || oldCategory === 'TRANSFER')) {
+           setTPABalance(prev => oldType === 'deposit' ? prev - oldAmount : prev + oldAmount);
+        }
+      }
+
+      // Apply new transaction
+      const isTransfer = category === 'Transferência' || category === 'TRANSFER' || description.toLowerCase().includes('transferência');
+      
+      let accountName = '';
+      if (isTransfer) {
+        setTPABalance(prev => type === 'deposit' ? prev + amount : prev - amount);
+        accountName = 'TPA';
+        // Strictly TPA balance for transfers
+      } else {
+        if (account === 'main') {
+          setCurrentBalance(prev => type === 'deposit' ? prev + amount : prev - amount);
+          accountName = 'Conta Corrente';
+          setCards(prev => prev.map(c => c.id === 'main' ? { ...c, balance: type === 'deposit' ? c.balance + amount : c.balance - amount } : c));
+        } else if (account === 'savings') {
+          setSavingsBalance(prev => type === 'deposit' ? prev + amount : prev - amount);
+          accountName = 'Conta Poupança';
+          setCards(prev => prev.map(c => c.id === 'savings' ? { ...c, balance: type === 'deposit' ? c.balance + amount : c.balance - amount } : c));
+        } else if (account === 'cash') {
+          setCashBalance(prev => type === 'deposit' ? prev + amount : prev - amount);
+          accountName = 'Caixa (Dinheiro)';
+        } else if (account === 'tpa') {
+          setTPABalance(prev => type === 'deposit' ? prev + amount : prev - amount);
+          accountName = 'TPA';
+        } else {
+          setCards(prev => prev.map(c => {
+            if (c.id === account) {
+              accountName = c.name;
+              return { ...c, balance: type === 'deposit' ? c.balance + amount : c.balance - amount };
+            }
+            return c;
+          }));
+        }
+      }
+
+      const targetDate = date || formatDateISO(getSystemDate());
+      const newTrans: Transaction = {
+        id: existingTrans ? existingTrans.id : generateUUID(),
+        type: type === 'deposit' ? 'entrada' : 'saida',
+        category: category || accountName || 'Cartão',
+        amount: amount,
+        date: date ? (date + ', ' + getSystemDate().toLocaleTimeString('pt-AO', {hour:'2-digit', minute:'2-digit'})) : (formatDateISO(getSystemDate()) + ', ' + getSystemDate().toLocaleTimeString('pt-AO', {hour:'2-digit', minute:'2-digit'})),
+        description: description,
+        referenceId,
+        referenceType,
+        performedBy,
+        accountName: accountName || 'Conta Desconhecida',
+        status: 'ATIVO',
+        operationalDay: targetDate
+      };
+
+      if (existingTrans) {
+        setTransactions(prev => prev.map(t => t.id === existingTrans.id ? newTrans : t));
+      } else {
+        setTransactions(prev => [newTrans, ...prev]);
+      }
+
+      // Log manual transactions
+      if (!referenceType) {
+        addAuditLog({
+          action: 'TRANSACAO_MANUAL',
+          module: 'FINANCEIRO',
+          entityId: newTrans.id,
+          description: `Transação manual: ${type === 'deposit' ? 'Depósito' : 'Levantamento'} de ${amount.toLocaleString('pt-AO')} Kz em ${accountName}. Descrição: ${description}`,
+          performedBy: performedBy || user?.name || 'Sistema'
+        });
+      }
+    } catch (error) {
+      console.error('Erro ao processar transação:', error);
+    }
+  }, [transactions, user, getSystemDate, addAuditLog]);
+
+  const adjustFinancialsForReport = useCallback((oldReport: SalesReport, newReport: SalesReport) => {
+    const reportDateStr = oldReport.dateISO ? oldReport.dateISO.split('T')[0] : oldReport.date;
+    
+    // 1. Adjust Cash and TPA via processTransaction (Estado de Conta logic)
+    processTransaction('deposit', 'cash', newReport.cash || 0, `Venda Cash: ${reportDateStr}`, 'Venda', `cash_${newReport.id}`, 'sales_report', user?.name || 'Sistema', reportDateStr);
+    processTransaction('deposit', 'tpa', (newReport.tpa || 0) + (newReport.transfer || 0), `Venda TPA/Transf: ${reportDateStr}`, 'Venda', `tpa_${newReport.id}`, 'sales_report', user?.name || 'Sistema', reportDateStr);
+    
+    // 2. Adjust "Total Levantado" (Main Account Transaction)
+    const newTotalLifted = newReport.totalLifted || 0;
+    if (newTotalLifted > 0) {
+      processTransaction('deposit', 'main', newTotalLifted, `Fecho Confirmado (${reportDateStr}) - Total Levantado`, 'Fecho de Caixa', newReport.id, 'day_closure', user?.name || 'Sistema', reportDateStr);
+    }
+  }, [user, processTransaction]);
+
+  const revertStockFromReport = useCallback((report: SalesReport) => {
+    if (!report.itemsSummary || !report.stockUpdated) return;
+
+    report.itemsSummary.forEach(item => {
+      const product = products.find(p => p.name === item.name);
+      if (product) {
+        // Revert by adding back the quantity (ADJUSTMENT adds quantity)
+        handleStockMovement(product.id, item.qty, 'ADJUSTMENT', 'Sistema', `Estorno de Venda (Edição): ${report.date}`, report.id);
+      }
+    });
+  }, [products, handleStockMovement]);
 
   // Consolidate localStorage persistence to reduce overhead
   useEffect(() => {
@@ -513,6 +716,17 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   
   const lockDay = (dateStr: string, performedBy: string) => {
     const cleanTarget = cleanDate(dateStr);
+
+    // Check if there is a confirmed report for this day
+    const report = salesReports.find(r => {
+      const reportDate = r.dateISO ? r.dateISO.split('T')[0] : r.date;
+      return cleanDate(reportDate) === cleanTarget;
+    });
+
+    if (!report || (report.status !== ClosureStatus.FECHO_CONFIRMADO && report.status !== ClosureStatus.BLOQUEADO)) {
+      alert("Operação Negada: O dia só pode ser bloqueado se o fecho estiver confirmado (FECHO CONFIRMADO ou DIA CONFIRMADO).");
+      return;
+    }
 
     setLockedDays(prev => {
       if (prev.includes(cleanTarget)) return prev;
@@ -628,21 +842,22 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     if (!checkPermission('expenses_execute')) return;
     
     const expense = expenses.find(e => e.id === id);
-    if (!expense || expense.status === 'REVERSED') return;
+    if (!expense || expense.status === 'REVERSED' || expense.isReverted) return;
     
     // 1. Mark original as reversed (Immutable History)
-    setExpenses(prev => prev.map(e => e.id === id ? { ...e, status: 'REVERSED' } : e));
+    setExpenses(prev => prev.map(e => e.id === id ? { ...e, status: 'REVERSED', isReverted: true } : e));
 
     // 2. Create Reversal Entry (Negative value entry)
     const reversalExpense: Expense = {
       ...expense,
-      id: `rev_${expense.id}_${Date.now()}`,
+      id: `rev_${expense.id}_${generateUUID()}`,
       title: `ESTORNO: ${expense.title}`,
       amount: -expense.amount,
       notes: `Estorno de despesa realizado por ${deletedBy}. Referência Original: ${expense.id}`,
       timestamp: getSystemDate().getTime(),
       user: deletedBy,
-      status: 'REVERSAL'
+      status: 'REVERSAL',
+      isReverted: true
     };
     setExpenses(prev => [reversalExpense, ...prev]);
 
@@ -749,7 +964,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     try {
       if (!checkPermission('inventory_product_create')) return;
       validateAction('ADD_PRODUCT', { price: product.sellPrice });
-      const newProduct = { ...product, id: Math.random().toString(36).substr(2, 9) };
+      const newProduct = { ...product, id: generateUUID() };
       setProducts(prev => [...prev, newProduct]);
       
       addAuditLog({
@@ -912,93 +1127,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   };
 
-  const processTransaction = (
-    type: 'deposit' | 'withdraw', 
-    account: 'main' | 'savings' | string, 
-    amount: number, 
-    description: string, 
-    category?: string, 
-    referenceId?: string, 
-    referenceType?: Transaction['referenceType'],
-    performedBy?: string,
-    date?: string 
-  ) => {
-    try {
-      // Duplicate prevention: Check if this referenceId already exists for this type
-      if (referenceId && (referenceType === 'expense' || referenceType === 'sales_report' || referenceType === 'day_closure')) {
-        const isDuplicate = transactions.some(t => t.referenceId === referenceId && t.type === (type === 'deposit' ? 'entrada' : 'saida'));
-        if (isDuplicate) {
-          console.warn(`Transação duplicada detectada para referenceId: ${referenceId}. Ignorando.`);
-          return;
-        }
-      }
-
-      const targetDate = date || formatDateISO(getSystemDate());
-
-      let accountName = '';
-      
-      if (account === 'main') {
-        setCurrentBalance(prev => type === 'deposit' ? prev + amount : prev - amount);
-        accountName = 'Conta Corrente';
-        setCards(prev => prev.map(c => c.id === 'main' ? { ...c, balance: type === 'deposit' ? c.balance + amount : c.balance - amount } : c));
-      } else if (account === 'savings') {
-        setSavingsBalance(prev => type === 'deposit' ? prev + amount : prev - amount);
-        accountName = 'Conta Poupança';
-        setCards(prev => prev.map(c => c.id === 'savings' ? { ...c, balance: type === 'deposit' ? c.balance + amount : c.balance - amount } : c));
-      } else {
-        setCards(prev => prev.map(c => {
-          if (c.id === account) {
-            accountName = c.name;
-            return { ...c, balance: type === 'deposit' ? c.balance + amount : c.balance - amount };
-          }
-          return c;
-        }));
-      }
-
-      // TPA Balance Rule: Any value marked as 'Transferência' reflects in TPA balance
-      if (category === 'Transferência' || category === 'TRANSFER' || description.toLowerCase().includes('transferência')) {
-        setTPABalance(prev => type === 'deposit' ? prev + amount : prev - amount);
-      }
-
-      const newTrans: Transaction = {
-        id: Date.now().toString(),
-        type: type === 'deposit' ? 'entrada' : 'saida',
-        category: category || accountName || 'Cartão',
-        amount: amount,
-        date: date ? (date + ', ' + getSystemDate().toLocaleTimeString('pt-AO', {hour:'2-digit', minute:'2-digit'})) : (formatDateISO(getSystemDate()) + ', ' + getSystemDate().toLocaleTimeString('pt-AO', {hour:'2-digit', minute:'2-digit'})),
-        description: description,
-        referenceId,
-        referenceType,
-        performedBy,
-        accountName: accountName || 'Conta Desconhecida',
-        status: 'ATIVO',
-        operationalDay: targetDate
-      };
-
-      setTransactions(prev => [newTrans, ...prev]);
-
-      // Log manual transactions
-      if (!referenceType) {
-        addAuditLog({
-          action: 'TRANSACAO_MANUAL',
-          module: 'FINANCEIRO',
-          entityId: newTrans.id,
-          description: `Transação manual: ${type === 'deposit' ? 'Depósito' : 'Levantamento'} de ${amount.toLocaleString('pt-AO')} Kz em ${accountName}. Descrição: ${description}`,
-          performedBy: performedBy || user?.name || 'Sistema'
-        });
-      }
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : 'Erro desconhecido';
-      addLog({
-        action: 'ERROR' as any,
-        module: 'FINANCEIRO',
-        description: `ERRO: ${msg}`,
-        entityId: referenceId
-      }, user);
-      throw error;
-    }
-  };
-
   const processCashTPADebit = (origin: 'Cash' | 'TPA', amount: number, note: string, referenceId?: string, referenceType?: Transaction['referenceType'], performedBy?: string, date?: string) => {
     const targetDate = date || formatDateISO(getSystemDate());
     validateAction('TRANSACTION', { date: targetDate, amount });
@@ -1010,7 +1138,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
 
     const newTrans: Transaction = {
-      id: Date.now().toString(),
+      id: generateUUID(),
       type: 'saida',
       category: `Débito ${origin}`,
       amount: amount,
@@ -1040,7 +1168,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       if (!checkPermission('purchases_execute')) return;
       validateAction('PURCHASE', { date: systemDate });
       let totalValue = 0;
-      const purchaseId = crypto.randomUUID();
+      const purchaseId = generateUUID();
       
       // 1. Calcular total
       products.forEach(p => {
@@ -1093,7 +1221,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
 
       // 5. Fila de Sincronização
       setSyncQueue(prev => [...prev, {
-        id: crypto.randomUUID(),
+        id: generateUUID(),
         type: 'UPDATE_STOCK',
         payload: newRecord,
         timestamp: getSystemDate().getTime()
@@ -1157,22 +1285,21 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
           );
 
       if (existingExpense) {
-        // If it exists but amount is different, update it
-        if (existingExpense.amount !== data.valor) {
+        // If it exists but amount or title is different, update it using processTransaction
+        if (existingExpense.amount !== data.valor || existingExpense.title !== data.descricao) {
           setExpenses(prev => prev.map(e => e.id === existingExpense.id ? { ...e, amount: data.valor, title: data.descricao, notes: data.nota } : e));
           
-          // Also update the associated transaction
-          setTransactions(prev => prev.map(t => t.referenceId === existingExpense.id ? { 
-            ...t, 
-            amount: data.valor, 
-            description: `Despesa (${data.origem}): ${data.descricao}`,
-            operationalDay: data.data_operacional
-          } : t));
-
-          // Update balances if necessary
-          const diff = data.valor - existingExpense.amount;
-          setCurrentBalance(prev => prev - diff);
-          setCards(prev => prev.map(c => c.id === 'main' ? { ...c, balance: c.balance - diff } : c));
+          processTransaction(
+            'withdraw',
+            'main',
+            data.valor,
+            `Despesa (${data.origem}): ${data.descricao}`,
+            data.tipo,
+            existingExpense.id,
+            'expense',
+            data.usuario,
+            data.data_operacional
+          );
 
           addAuditLog({
             action: 'EDITAR_DESPESA',
@@ -1188,7 +1315,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       }
 
       const newExpense: Expense = {
-        id: data.referenceId || crypto.randomUUID(),
+        id: data.referenceId || generateUUID(),
         title: data.descricao,
         amount: data.valor,
         category: data.tipo,
@@ -1260,27 +1387,47 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       if (!checkPermission('sales_execute')) return;
       validateAction('SALES_REPORT', { date: report.date, items: report.itemsSummary });
 
+      // Inventory Consistency: Revert old stock before applying new count if editing
+      const existingReport = salesReports.find(r => r.date === report.date);
+      if (existingReport && existingReport.stockUpdated) {
+        revertStockFromReport(existingReport);
+      }
+
       // Deduct stock automatically
       const stockUpdated = deductStockFromReport(report);
 
       const finalReport = { 
         ...report, 
-        id: report.id || crypto.randomUUID(),
+        id: report.id || generateUUID(),
         synced: false,
         stockUpdated
       };
 
       setSalesReports(prev => {
         const existingIdx = prev.findIndex(r => r.date === report.date);
-        if (existingIdx !== -1 && 
-            prev[existingIdx].status !== ClosureStatus.FECHO_CONFIRMADO && 
-            prev[existingIdx].status !== ClosureStatus.BLOQUEADO &&
-            prev[existingIdx].status !== ClosureStatus.DIA_BLOQUEADO) {
+        
+        if (existingIdx !== -1) {
+          const existingReport = prev[existingIdx];
+          
+          // Bloqueado ou Dia Bloqueado não podem ser editados
+          if (existingReport.status === ClosureStatus.BLOQUEADO || 
+              existingReport.status === ClosureStatus.DIA_BLOQUEADO) {
+            return prev;
+          }
+
+          // Se já estava confirmado, precisamos ajustar o financeiro se os valores mudaram
+          if (existingReport.status === ClosureStatus.FECHO_CONFIRMADO && existingReport.processedFinancials) {
+            adjustFinancialsForReport(existingReport, finalReport as SalesReport);
+            // Mantém o status como confirmado
+            finalReport.status = ClosureStatus.FECHO_CONFIRMADO;
+            (finalReport as any).processedFinancials = true;
+          }
+
           const updated = [...prev];
-          updated[existingIdx] = finalReport;
+          updated[existingIdx] = finalReport as SalesReport;
           return updated;
         }
-        return [finalReport, ...prev];
+        return [finalReport as SalesReport, ...prev];
       });
 
       if (finalReport.lunchExpense > 0) {
@@ -1297,7 +1444,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       }
 
       const action: PendingAction = {
-        id: crypto.randomUUID(),
+        id: generateUUID(),
         type: 'ADD_SALE',
         payload: finalReport,
         timestamp: getSystemDate().getTime()
@@ -1338,36 +1485,18 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
           const hasFinancialChanges = 
             updates.cash !== undefined || 
             updates.tpa !== undefined || 
+            updates.transfer !== undefined ||
             updates.totalLifted !== undefined;
 
           if (hasFinancialChanges) {
-            // 1. Reverse old values
-            const oldCash = report.cash || 0;
-            const oldTpa = report.tpa || 0;
-            const oldTotalLifted = report.totalLifted || 0;
-
-            setCashBalance(prev => prev - oldCash);
-            setTPABalance(prev => prev - oldTpa);
-            if (oldTotalLifted > 0) {
-              processTransaction('withdraw', 'main', oldTotalLifted, `Estorno Fecho (Edição): ${reportDateStr}`, 'Ajuste', reportId, 'reversal', user?.name || 'Sistema');
-            }
-
-            // 2. Apply new values (merged)
-            const newCash = updates.cash !== undefined ? updates.cash : oldCash;
-            const newTpa = updates.tpa !== undefined ? updates.tpa : oldTpa;
-            const newTotalLifted = updates.totalLifted !== undefined ? updates.totalLifted : oldTotalLifted;
-
-            setCashBalance(prev => prev + newCash);
-            setTPABalance(prev => prev + newTpa);
-            if (newTotalLifted > 0) {
-              processTransaction('deposit', 'main', newTotalLifted, `Novo Valor Fecho (Edição): ${reportDateStr}`, 'Fecho de Caixa', reportId, 'day_closure', user?.name || 'Sistema');
-            }
+            const newReport = { ...report, ...updates };
+            adjustFinancialsForReport(report, newReport);
 
             addAuditLog({
               action: 'AJUSTE_FINANCEIRO_FECHO',
               entity: 'SalesReport',
               entityId: reportId,
-              details: `Valores ajustados: Total Levantado(${oldTotalLifted}->${newTotalLifted}), Cash(${oldCash}->${newCash}), TPA(${oldTpa}->${newTpa})`,
+              details: `Valores ajustados via edição parcial.`,
               performedBy: user?.name || 'Sistema'
             });
           }
@@ -1553,7 +1682,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       validateAction('EQUIPMENT', {});
       const newEquip: Equipment = {
           ...equipment,
-          id: Date.now().toString(),
+          id: generateUUID(),
           prevQty: equipment.qty
       };
       setEquipments(prev => [...prev, newEquip]);

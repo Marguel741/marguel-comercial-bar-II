@@ -1,4 +1,6 @@
 
+import { dispatchCustomEvent } from '../utils';
+
 export interface CartItem {
   productId: string;
   name: string;
@@ -49,16 +51,7 @@ export const openDB = (retries = 3): Promise<IDBDatabase> => {
         }, 500);
       } else {
         const error = new Error("CRITICAL: Failed to open IndexedDB after 3 attempts.");
-        if (typeof window !== 'undefined') {
-            let event;
-            try {
-                event = new CustomEvent('db-critical-error', { detail: error });
-            } catch (e) {
-                event = document.createEvent('CustomEvent');
-                (event as any).initCustomEvent('db-critical-error', true, true, error);
-            }
-            window.dispatchEvent(event);
-        }
+        dispatchCustomEvent('db-critical-error', error);
         reject(error);
       }
     };

@@ -17,7 +17,7 @@ import { useLayout } from '../contexts/LayoutContext';
 import { useAuth } from '../contexts/AuthContext';
 import { UserRole, ClosureStatus } from '../types';
 import { hasPermission } from '../src/utils/permissions';
-import { formatDisplayDate, formatDateISO } from '../src/utils';
+import { formatDisplayDate, formatDateISO, generateUUID } from '../src/utils';
 import { useFinance } from '../contexts/FinanceContext';
 import SyncStatus from '../components/SyncStatus';
 
@@ -94,6 +94,11 @@ const Sales: React.FC = () => {
   const pageTopRef = useRef<HTMLDivElement>(null);
   const todayISO = getSystemDate().toISOString().split('T')[0];
   const [reportDate, setReportDate] = useState(todayISO);
+
+  const existingReport = salesReports.find(r => {
+    const reportDateISO = (r as any).dateISO ? (r as any).dateISO.split('T')[0] : r.date;
+    return reportDateISO === reportDate;
+  });
 
   // Sync reportDate with systemDate
   useEffect(() => {
@@ -255,7 +260,7 @@ const Sales: React.FC = () => {
   const canViewMargins = hasPermission(user, 'sales_view_margins');
   
   const isLocked = isDayLocked(reportDate);
-  const isReadOnly = (!canExecuteSales || isLocked) && !forceEditMode;
+  const isReadOnly = isLocked || (!forceEditMode && (existingReport?.status !== undefined && existingReport.status !== ClosureStatus.ABERTO));
 
   const showToast = (message: string) => {
     setToast({ show: true, message });
@@ -489,10 +494,11 @@ const Sales: React.FC = () => {
 
     await new Promise(resolve => setTimeout(resolve, 800));
 
-    const reportId = Date.now().toString();
+    const reportId = existingReport?.id || generateUUID();
     const performer = user?.name || 'Sistema';
 
     const initialStatus = 
+      existingReport?.status === ClosureStatus.FECHO_CONFIRMADO ? ClosureStatus.FECHO_CONFIRMADO :
       user?.role === UserRole.GERENTE ? ClosureStatus.FECHO_PARCIAL_GERENTE :
       user?.role === UserRole.ADMIN_GERAL || user?.role === UserRole.PROPRIETARIO ? ClosureStatus.FECHO_PARCIAL_ADMIN :
       ClosureStatus.FECHO_PARCIAL_FUNCIONARIO;
@@ -626,11 +632,6 @@ const Sales: React.FC = () => {
       };
   };
 
-  const existingReport = salesReports.find(r => {
-    const reportDateISO = (r as any).dateISO ? (r as any).dateISO.split('T')[0] : r.date;
-    return reportDateISO === reportDate;
-  });
-
   // Só mostra a visualização de relatório se for um relatório do histórico 
   // ou se o relatório do dia atual já tiver sido fechado (status !== ABERTO)
   if ((viewHistoryReport || (existingReport && existingReport.status !== ClosureStatus.ABERTO)) && !forceEditMode) {
@@ -711,28 +712,34 @@ const Sales: React.FC = () => {
                            isConfirmed ? 'FECHO CONFIRMADO' : 'AGUARDANDO REVISÃO'}
                         </div>
                         
-                        {!isConfirmed && reportData.status !== ClosureStatus.BLOQUEADO && (
-                          <button 
-                            onClick={() => {
-                              setForceEditMode(true);
-                              triggerHaptic('selection');
-                            }}
-                            className="px-4 py-2 bg-[#003366] text-white rounded-full font-bold text-sm flex items-center gap-2 hover:opacity-90 transition-all shadow-md"
-                          >
-                            <Unlock size={18} /> Editar Dados
-                          </button>
+                        {isLocked ? (
+                          <div className="flex items-center gap-2 text-red-600 font-bold text-sm bg-red-50 dark:bg-red-900/20 px-4 py-2 rounded-full border border-red-100 dark:border-red-800">
+                            <Lock size={18} /> Edição bloqueada: Este dia está encerrado no Calendário Global.
+                          </div>
+                        ) : (
+                          (!isConfirmed || reportData.status !== ClosureStatus.BLOQUEADO) && (
+                            <button 
+                              onClick={() => {
+                                setForceEditMode(true);
+                                triggerHaptic('selection');
+                              }}
+                              className="px-4 py-2 bg-[#003366] text-white rounded-full font-bold text-sm flex items-center gap-2 hover:opacity-90 transition-all shadow-md"
+                            >
+                              <Unlock size={18} /> Editar Dados
+                            </button>
+                          )
                         )}
                       </div>
                    </div>
 
-                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                         <div className="p-6 bg-slate-50 dark:bg-slate-700/50 rounded-2xl border border-slate-100 dark:border-slate-700">
                             <p className="text-xs font-bold text-slate-400 uppercase">Total Vendido</p>
                             <p className="text-2xl font-black text-[#003366] dark:text-white">{(reportData.totals?.soldStock || 0).toLocaleString('pt-AO')} Kz</p>
                         </div>
-                        <div className="p-6 bg-slate-50 dark:bg-slate-700/50 rounded-2xl border border-slate-100 dark:border-slate-700">
-                            <p className="text-xs font-bold text-slate-400 uppercase">Total Levantado</p>
-                            <p className="text-2xl font-black text-[#003366] dark:text-white">{(reportData.totals?.lifted || 0).toLocaleString('pt-AO')} Kz</p>
+                        <div className="p-6 bg-[#003366] text-white rounded-2xl border border-[#003366] shadow-lg">
+                            <p className="text-xs font-bold text-white/70 uppercase">Total Levantado</p>
+                            <p className="text-3xl font-black">{(reportData.totals?.lifted || 0).toLocaleString('pt-AO')} Kz</p>
                         </div>
                          <div className={`p-6 rounded-2xl border ${(reportData.totals?.discrepancy || 0) !== 0 ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-100'}`}>
                             <p className="text-xs font-bold text-slate-400 uppercase">Divergência</p>
@@ -1226,10 +1233,13 @@ const Sales: React.FC = () => {
             <h3 className="font-bold text-white/90 mb-6">Apuramento do Gestor</h3>
             <div className="space-y-4">
               <div className="pb-4 border-b border-white/10 flex justify-between items-center"><span className="text-sm opacity-70">Total Venda (Stock)</span><span className="font-bold">{(calculatedData.totalTheoreticalRevenue || 0).toLocaleString('pt-AO')} Kz</span></div>
+              <div className="pt-2 flex justify-between items-center"><span className="text-lg opacity-90 font-bold uppercase">Total Levantado</span><span className="font-black text-4xl text-white">{(totalLifted || 0).toLocaleString('pt-AO')} Kz</span></div>
               {canViewMargins && (
-                <div className="pb-4 border-b border-white/10 flex justify-between items-center text-emerald-400"><span className="text-sm opacity-70">Margem de Lucro Est.</span><span className="font-bold">{(calculatedData.totalTheoreticalProfit || 0).toLocaleString('pt-AO')} Kz</span></div>
+                <div className="pt-4 mt-4 border-t border-white/20 flex justify-between items-center text-emerald-400">
+                  <span className="text-lg opacity-90 font-bold uppercase">Margem de Lucro</span>
+                  <span className="font-black text-4xl">{(calculatedData.totalTheoreticalProfit || 0).toLocaleString('pt-AO')} Kz</span>
+                </div>
               )}
-              <div className="pt-2 flex justify-between items-center"><span className="text-lg opacity-90 font-bold uppercase">Total Levantado</span><span className="font-black text-3xl text-white">{(totalLifted || 0).toLocaleString('pt-AO')} Kz</span></div>
             </div>
           </SoftCard>
           {hasDiscrepancy && (

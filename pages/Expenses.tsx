@@ -11,7 +11,7 @@ import SyncStatus from '../components/SyncStatus';
 import { useAuth } from '../contexts/AuthContext';
 import { useProducts } from '../contexts/ProductContext';
 import { hasPermission } from '../src/utils/permissions';
-import { formatDisplayDate, formatDateISO } from '../src/utils';
+import { formatDisplayDate, formatDateISO, getFileReader, generateUUID } from '../src/utils';
 import { Expense } from '../types';
 
 const Expenses: React.FC = () => {
@@ -93,7 +93,11 @@ const Expenses: React.FC = () => {
         return;
       }
       triggerHaptic('impact');
-      const reader = new FileReader();
+      const reader = getFileReader();
+      if (!reader) {
+        showToast('Navegador não suporta leitura de arquivos.');
+        return;
+      }
       reader.onloadend = () => {
         setAttachments(prev => [...prev, reader.result as string]);
       };
@@ -137,7 +141,7 @@ const Expenses: React.FC = () => {
     
     const now = getSystemDate();
     const newExpense: Expense = {
-      id: Date.now().toString(),
+      id: generateUUID(),
       title: formData.title,
       amount: amountVal,
       category: formData.category,
@@ -644,9 +648,14 @@ const Expenses: React.FC = () => {
                     </button>
                     <button 
                       onClick={() => handleDeleteExpense(selectedExpense.id)}
-                      className="flex-1 py-4 text-red-500 font-bold bg-red-50 rounded-2xl hover:bg-red-100 transition-colors flex items-center justify-center gap-2 border border-red-100"
+                      disabled={selectedExpense.status === 'REVERSED' || selectedExpense.status === 'REVERSAL' || selectedExpense.isReverted}
+                      className={`flex-1 py-4 font-bold rounded-2xl transition-colors flex items-center justify-center gap-2 border ${
+                        selectedExpense.status === 'REVERSED' || selectedExpense.status === 'REVERSAL' || selectedExpense.isReverted
+                        ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+                        : 'text-red-500 bg-red-50 hover:bg-red-100 border-red-100'
+                      }`}
                     >
-                      <Trash2 size={18} /> Apagar
+                      <Trash2 size={18} /> {selectedExpense.isReverted ? 'Estornado' : 'Apagar'}
                     </button>
                   </>
                 )}
@@ -736,35 +745,36 @@ const Expenses: React.FC = () => {
             </div>
 
             {/* Tabela */}
-            <div className="flex-1 overflow-x-auto custom-scrollbar p-6">
-              <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden min-w-[600px]">
-                <table className="w-full text-left">
-                  <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-bold border-b border-slate-200">
-                    <tr>
-                      <th className="p-4">Data</th>
-                      <th className="p-4">Descrição</th>
-                      <th className="p-4">Categoria</th>
-                      <th className="p-4">Nota</th>
-                      <th className="p-4">Responsável</th>
-                      <th className="p-4 text-right">Valor</th>
-                      <th className="p-4 text-center">Anexos</th>
-                      <th className="p-4 text-center">Ações</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-sm">
-                    {filteredExpenses.length > 0 ? (
-                      filteredExpenses.map((ex) => (
-                        <tr key={ex.id} className="hover:bg-slate-50 transition-colors">
-                          <td className="p-4 text-slate-500 font-medium whitespace-nowrap">{formatDisplayDate(ex.date)}</td>
-                          <td className="p-4 font-bold text-[#003366]">{ex.title}</td>
-                          <td className="p-4">
-                            <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-bold border border-slate-200">
-                              {ex.category}
-                            </span>
-                          </td>
-                          <td className="p-4 text-slate-500 italic max-w-xs truncate">
-                            {ex.notes || '-'}
-                          </td>
+            <div className="flex-1 p-6">
+              <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                <div className="w-full overflow-x-auto custom-scrollbar">
+                  <table className="w-full text-left min-w-[800px]">
+                    <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-bold border-b border-slate-200">
+                      <tr>
+                        <th className="p-4 whitespace-nowrap">Data</th>
+                        <th className="p-4">Descrição</th>
+                        <th className="p-4">Categoria</th>
+                        <th className="p-4 whitespace-nowrap">Nota</th>
+                        <th className="p-4">Responsável</th>
+                        <th className="p-4 text-right">Valor</th>
+                        <th className="p-4 text-center">Anexos</th>
+                        <th className="p-4 text-center">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-sm">
+                      {filteredExpenses.length > 0 ? (
+                        filteredExpenses.map((ex) => (
+                          <tr key={ex.id} className="hover:bg-slate-50 transition-colors">
+                            <td className="p-4 text-slate-500 font-medium whitespace-nowrap">{formatDisplayDate(ex.date)}</td>
+                            <td className="p-4 font-bold text-[#003366]">{ex.title}</td>
+                            <td className="p-4">
+                              <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-bold border border-slate-200">
+                                {ex.category}
+                              </span>
+                            </td>
+                            <td className="p-4 text-slate-500 italic whitespace-nowrap">
+                              {ex.notes || '-'}
+                            </td>
                           <td className="p-4 text-slate-600 flex items-center gap-2">
                             <div className="w-6 h-6 bg-slate-200 rounded-full flex items-center justify-center text-[10px] font-bold">
                               {ex.user.charAt(0)}
@@ -807,6 +817,7 @@ const Expenses: React.FC = () => {
                     )}
                   </tbody>
                 </table>
+                </div>
               </div>
             </div>
           </div>

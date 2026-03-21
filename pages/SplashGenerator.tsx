@@ -21,16 +21,30 @@ const SplashGenerator: React.FC = () => {
       }
 
       setStatus("Initializing GenAI...");
-      // The key is automatically injected into process.env.API_KEY after selection
-      // But we need to make sure we get the latest one.
-      // In this environment, we might need to rely on the injection.
       
       const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
       if (!apiKey) {
-        throw new Error("API Key not found. Please select a key.");
+        throw new Error("API Key não encontrada. Por favor, selecione uma chave.");
       }
 
-      const ai = new GoogleGenAI({ apiKey });
+      let ai;
+      try {
+        // Verificação extra para evitar "Illegal constructor"
+        if (typeof GoogleGenAI !== 'function') {
+          throw new Error(`GoogleGenAI não é uma função/construtor válido. Tipo: ${typeof GoogleGenAI}`);
+        }
+        
+        // Tenta instanciar com tratamento de erro específico para o construtor
+        try {
+          ai = new GoogleGenAI({ apiKey });
+        } catch (constrErr: any) {
+          console.error("Erro no construtor GoogleGenAI:", constrErr);
+          throw new Error(`Erro ao chamar 'new GoogleGenAI': ${constrErr.message}`);
+        }
+      } catch (e: any) {
+        console.error("Falha ao inicializar GoogleGenAI:", e);
+        throw new Error(`Falha ao inicializar GenAI: ${e.message}. Verifique se a biblioteca @google/genai está carregada corretamente.`);
+      }
 
       setStatus("Generating video... (this may take a few minutes)");
       

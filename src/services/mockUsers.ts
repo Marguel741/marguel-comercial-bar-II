@@ -1,6 +1,7 @@
 
 import { User, UserRole } from '../../types';
 import { DEFAULT_PERMISSIONS } from '../utils/permissions';
+import { dispatchCustomEvent } from '../utils';
 
 export const MOCK_USERS_DB: User[] = [
   { 
@@ -68,9 +69,6 @@ export const getMockUsers = (): User[] => {
 export const saveMockUsers = (users: User[]) => {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(users));
   
-  if (typeof window !== 'undefined') {
-    // Notifica o AuthContext para atualizar o usuário logado imediatamente
-    const event = new CustomEvent('mg_users_updated');
-    window.dispatchEvent(event);
-  }
+  // Notifica o AuthContext para atualizar o usuário logado imediatamente
+  dispatchCustomEvent('mg_users_updated');
 };

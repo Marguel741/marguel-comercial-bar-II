@@ -432,14 +432,14 @@ const GlobalCalendar: React.FC = () => {
                                     <span className="font-bold text-red-500">-{formatKz(dayData.totalExpenses)}</span>
                                 </div>
                                 <div className="pt-4 border-t border-slate-200 dark:border-slate-700 flex justify-between items-center">
-                                    <span className="text-slate-900 dark:text-white font-black">SALDO ESTIMADO</span>
-                                    <span className={`text-xl font-black ${dayData.netBalance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                        {formatKz(dayData.netBalance)}
+                                    <span className="text-slate-900 dark:text-white font-black uppercase text-xs">Total Levantado</span>
+                                    <span className={`text-xl font-black ${dayData.isConfirmed ? 'text-[#003366] dark:text-white' : 'text-slate-400 italic'}`}>
+                                        {dayData.isConfirmed ? formatKz(dayData.report?.totalLifted || 0) : 'N/A'}
                                     </span>
                                 </div>
-                                <div className="flex justify-between items-center text-sm pt-2 border-t border-dashed border-slate-200 dark:border-slate-700">
-                                    <span className="text-slate-500 font-bold">Margem de Lucro</span>
-                                    <span className={`font-black ${dayData.isConfirmed ? (dayData.report?.profit || 0) >= 0 ? 'text-green-600' : 'text-red-600' : 'text-slate-400 italic'}`}>
+                                <div className="flex justify-between items-center pt-2 border-t border-dashed border-slate-200 dark:border-slate-700">
+                                    <span className="text-slate-900 dark:text-white font-black uppercase text-xs">Margem de Lucro</span>
+                                    <span className={`text-2xl font-black ${dayData.isConfirmed ? (dayData.report?.profit || 0) >= 0 ? 'text-green-600' : 'text-red-600' : 'text-slate-400 italic'}`}>
                                         {dayData.isConfirmed ? formatKz(dayData.report?.profit || 0) : 'N/A'}
                                     </span>
                                 </div>

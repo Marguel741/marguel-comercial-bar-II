@@ -8,8 +8,9 @@ import { useProducts } from '../contexts/ProductContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useLayout } from '../contexts/LayoutContext';
 import { UserRole } from '../types';
-import { formatDateISO, formatDisplayDate } from '../src/utils';
+import { formatDateISO, formatDisplayDate, generateUUID } from '../src/utils';
 import SyncStatus from '../components/SyncStatus';
+import Footer from '../components/Footer';
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -238,7 +239,18 @@ const Dashboard: React.FC = () => {
     // Custom Alerts
     list.push(...customAlerts);
 
-    return list;
+    // Deduplicate by ID to prevent React key errors
+    const uniqueList: any[] = [];
+    const seenIds = new Set();
+    
+    list.forEach(item => {
+      if (!seenIds.has(item.id)) {
+        seenIds.add(item.id);
+        uniqueList.push(item);
+      }
+    });
+
+    return uniqueList;
   }, [products, salesReports, systemDate, customAlerts]);
 
   const toggleNotificationExpand = (id: string) => {
@@ -252,7 +264,7 @@ const Dashboard: React.FC = () => {
   const handleCreateAlert = () => {
     if (!newAlertTitle || !newAlertMsg) return;
     const newAlert = {
-        id: Date.now().toString(),
+        id: generateUUID(),
         type: newAlertType,
         title: newAlertTitle,
         message: newAlertMsg,
@@ -838,19 +850,7 @@ const Dashboard: React.FC = () => {
         </div>
 
         {/* Footer */}
-        <footer className="mt-16 py-10 px-6 bg-white rounded-2xl text-center flex flex-col gap-4 font-sans">
-            <p className="text-sm font-bold tracking-[-0.01em] text-[#003366]">
-                Marguel Sistema de Gestão Interna
-            </p>
-            <div className="flex flex-col items-center">
-                <span className="text-xs text-[#6B7280] mb-1">Desenvolvido por</span>
-                <div className="text-xs tracking-[0.5px]">
-                    <span className="font-extrabold text-[#E3007E]" style={{ textShadow: '0px 0px 5px rgba(227, 0, 126, 0.7)' }}>DC - Comercial</span>
-                    <span className="text-[#6B7280] font-normal mx-1">&</span>
-                    <span className="font-extrabold text-[#E3007E]" style={{ textShadow: '0px 0px 5px rgba(227, 0, 126, 0.7)' }}>Marguel CGPS (SU) Lda</span>
-                </div>
-            </div>
-        </footer>
+        <Footer />
       </div>
     </div>
   );

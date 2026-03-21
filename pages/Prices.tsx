@@ -6,7 +6,7 @@ import {
   Package, Plus, Minus, ArrowRight, FileText, Printer, ChevronUp, 
   ChevronDown, MessageSquare, Copy, ArrowLeft, Lock, Trash2, FolderOpen, 
   Calendar, Folder, Clock, User, Eye, AlertTriangle, List, ArrowLeftCircle, 
-  ClipboardCheck, ShoppingBag, Paperclip, Camera, Image as ImageIcon, Truck, Calculator
+  ClipboardCheck, ShoppingBag, Paperclip, Camera, Image as ImageIcon, Truck, Calculator, Layers
 } from 'lucide-react';
 import SoftCard from '../components/SoftCard';
 import { useProducts } from '../contexts/ProductContext';
@@ -14,9 +14,8 @@ import { useLayout } from '../contexts/LayoutContext';
 import SyncStatus from '../components/SyncStatus';
 import { useAuth } from '../contexts/AuthContext';
 import { PriceHistoryLog, SavedProposal, PurchaseRecord, UserPermissions, UserRole } from '../types';
-import { MarguelPinkLogo } from '../constants';
 import { hasPermission } from '../src/utils/permissions';
-import { formatDisplayDate, formatDateISO, cleanDate } from '../src/utils';
+import { formatDisplayDate, formatDateISO, cleanDate, safeFormatCurrency, getFileReader, generateUUID } from '../src/utils';
 
 const Prices: React.FC = () => {
   const { products, categories, updateProduct, purchases, addPurchase, isDayLocked, systemDate, getSystemDate } = useProducts();
@@ -60,6 +59,7 @@ const Prices: React.FC = () => {
 
   // --- STATES SIMULAÇÃO ---
   const [showSimulationModal, setShowSimulationModal] = useState(false);
+  const [showMixMatchModal, setShowMixMatchModal] = useState(false);
   const [simulationStep, setSimulationStep] = useState<'select' | 'summary' | 'message' | 'saved'>('select');
   const [simSearchTerm, setSimSearchTerm] = useState('');
   const [simCategory, setSimCategory] = useState('Todos');
@@ -376,7 +376,11 @@ const Prices: React.FC = () => {
       }
       triggerHaptic('impact');
       setIsUploading(true);
-      const reader = new FileReader();
+      const reader = getFileReader();
+      if (!reader) {
+        showToast('Navegador não suporta leitura de arquivos.');
+        return;
+      }
       reader.onloadend = () => {
         setPurchaseAttachments(prev => [...prev, reader.result as string]);
         setIsUploading(false);
@@ -430,7 +434,7 @@ const Prices: React.FC = () => {
       });
 
       const newProposal: SavedProposal = {
-        id: Date.now().toString(),
+        id: generateUUID(),
         name: proposalNameInput || `Proposta ${formatDisplayDate(formatDateISO(getSystemDate()))}`,
         date: getSystemDate().toLocaleString('pt-AO'),
         items: { ...simulationCart },
@@ -578,9 +582,21 @@ const Prices: React.FC = () => {
         className="flex justify-between items-center cursor-pointer group select-none" 
         onClick={toggleTable}
       >
-        <h3 className="font-bold text-[#003366] dark:text-white text-xl flex items-center gap-2">
-          <DollarSign size={24} /> Tabela de Produtos
-        </h3>
+        <div className="flex items-center gap-4">
+          <h3 className="font-bold text-[#003366] dark:text-white text-xl flex items-center gap-2">
+            <DollarSign size={24} /> Tabela de Produtos
+          </h3>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowMixMatchModal(true);
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-lg hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors text-xs font-bold"
+          >
+            <Layers size={14} />
+            Criar Mix Match
+          </button>
+        </div>
         <button className="p-2 bg-slate-100 dark:bg-slate-700 rounded-full text-slate-400 group-hover:text-[#003366] dark:group-hover:text-white transition-all">
           {isTableExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
         </button>
@@ -895,6 +911,62 @@ const Prices: React.FC = () => {
         </div>
       </div>
 
+      {/* --- MODAL: MIX MATCH --- */}
+      {showMixMatchModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white dark:bg-slate-800 rounded-3xl w-full max-w-2xl shadow-2xl relative flex flex-col max-h-[90vh] overflow-hidden">
+            <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
+              <h2 className="text-xl font-black text-[#003366] dark:text-white flex items-center gap-3">
+                <Layers size={24} className="text-purple-500" /> Criar Mix Match
+              </h2>
+              <button onClick={() => setShowMixMatchModal(false)} className="text-slate-400 hover:text-red-500 transition-colors">
+                <X size={24} />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
+              <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
+                Selecione os produtos que deseja agrupar para venda conjunta (Mix Match).
+              </p>
+              
+              <div className="space-y-2">
+                {products.map(p => (
+                  <label key={p.id} className="flex items-center gap-3 p-3 rounded-xl border border-slate-100 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer transition-colors">
+                    <input type="checkbox" className="w-4 h-4 text-purple-600 rounded border-slate-300 focus:ring-purple-500" />
+                    <div className="flex-1">
+                      <div className="font-bold text-[#003366] dark:text-white">{p.name}</div>
+                      <div className="text-xs text-slate-500">{p.category}</div>
+                    </div>
+                    <div className="font-bold text-slate-700 dark:text-slate-300">
+                      {safeFormatCurrency(p.sellPrice)}
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+            
+            <div className="p-6 border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 flex justify-end gap-3">
+              <button 
+                onClick={() => setShowMixMatchModal(false)}
+                className="px-6 py-3 rounded-xl font-bold text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={() => {
+                  triggerHaptic('success');
+                  setShowMixMatchModal(false);
+                  alert('Mix Match criado com sucesso! (Funcionalidade visual)');
+                }}
+                className="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold shadow-lg shadow-purple-200 dark:shadow-none transition-all active:scale-95 flex items-center gap-2"
+              >
+                <Save size={18} /> Salvar Grupo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* --- MODAL: SIMULADOR DE PROPOSTAS --- */}
       {showSimulationModal && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-fade-in">
@@ -1015,7 +1087,7 @@ const Prices: React.FC = () => {
                         <h3 className="text-xl font-black text-[#003366] dark:text-white">Resumo da Proposta</h3>
                         <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">{formatDisplayDate(formatDateISO(getSystemDate()))}</p>
                       </div>
-                      <MarguelPinkLogo className="h-8 w-auto opacity-20" />
+                      <img src="/logo_rosa_cintilante.png" alt="Marguel Logo" className="h-12 w-auto opacity-80 object-contain" />
                     </div>
 
                     <div className="space-y-4">
@@ -1533,6 +1605,11 @@ const Prices: React.FC = () => {
                       { (reportProposal as SavedProposal).status && (
                         <span className="text-[10px] font-bold text-blue-600 bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded-md uppercase">
                           Status: {(reportProposal as SavedProposal).status}
+                        </span>
+                      )}
+                      { (reportProposal as PurchaseRecord).supplier && (
+                        <span className="text-[10px] font-bold text-slate-600 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md uppercase">
+                          Fornecedor/Ref: {(reportProposal as PurchaseRecord).supplier}
                         </span>
                       )}
                     </div>

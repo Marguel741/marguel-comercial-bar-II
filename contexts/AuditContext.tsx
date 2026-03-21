@@ -1,6 +1,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { AuditLog, User } from '../types';
+import { generateUUID } from '../src/utils';
 
 interface AuditContextType {
   logs: AuditLog[];
@@ -76,7 +77,7 @@ export const AuditProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const timestamp = now.getTime();
 
     const newLog: AuditLog = {
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       ...params,
       performedBy: user?.name || 'Sistema',
       userRole: user?.role || 'SISTEMA',
@@ -113,7 +114,7 @@ export const AuditProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             const timestamp = now.getTime();
             
             const auditDeletionLog: AuditLog = {
-                id: crypto.randomUUID(),
+                id: generateUUID(),
                 action: 'DELETE_LOG',
                 module: 'AUDITORIA',
                 entityId: id,
@@ -146,7 +147,7 @@ export const AuditProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             const timestamp = now.getTime();
             
             const auditUpdateLog: AuditLog = {
-                id: crypto.randomUUID(),
+                id: generateUUID(),
                 action: 'UPDATE_LOG',
                 module: 'AUDITORIA',
                 entityId: id,

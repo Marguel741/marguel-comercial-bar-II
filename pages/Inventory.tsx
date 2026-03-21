@@ -1,7 +1,7 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Package, Thermometer, Edit2, Edit3, Bell, Plus, Search, ChevronUp, ChevronDown, AlertTriangle, Save, X, CheckCircle, Check, Trash2, Settings, ClipboardList, Send, ArrowRight, History, Lock, WifiOff } from 'lucide-react';
+import { Package, Thermometer, Edit2, Edit3, Bell, Plus, Search, ChevronUp, ChevronDown, AlertTriangle, Save, X, CheckCircle, Check, Trash2, Settings, ClipboardList, Send, ArrowRight, History, Lock, WifiOff, User as UserIcon, TrendingUp, TrendingDown } from 'lucide-react';
 import SoftCard from '../components/SoftCard';
 import { useProducts } from '../contexts/ProductContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -9,7 +9,7 @@ import { UserRole, InventoryLog, Equipment, UserPermissions } from '../types'; /
 import { useLayout } from '../contexts/LayoutContext';
 import SyncStatus from '../components/SyncStatus';
 import { hasPermission } from '../src/utils/permissions';
-import { formatKz, roundKz, formatDateISO, formatDisplayDate } from '../src/utils';
+import { formatKz, roundKz, formatDateISO, formatDisplayDate, generateUUID } from '../src/utils';
 
 const Inventory: React.FC = () => {
   const { 
@@ -33,7 +33,8 @@ const Inventory: React.FC = () => {
     hasPendingChanges,
     syncData,
     getSystemDate,
-    handleStockMovement
+    handleStockMovement,
+    stockOperationHistory
   } = useProducts();
   const { user } = useAuth();
   const { sidebarMode, triggerHaptic } = useLayout();
@@ -104,6 +105,7 @@ const Inventory: React.FC = () => {
   const [deleteEquipConfirmation, setDeleteEquipConfirmation] = useState<{isOpen: boolean, equipId: string | null, equipName: string | null}>({ isOpen: false, equipId: null, equipName: null });
   
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [showStockLogModal, setShowStockLogModal] = useState(false);
   const [showDateEditModal, setShowDateEditModal] = useState(false);
 
   // Counting Process States
@@ -319,7 +321,7 @@ const Inventory: React.FC = () => {
       // Add to History (Global Context)
       const hasDiscrepancy = discrepancies.length > 0;
       const newLog: InventoryLog = {
-          id: Date.now().toString(),
+          id: generateUUID(),
           date: formatDateISO(systemDate),
           performedBy: user?.name || 'Desconhecido',
           totalItems: (Object.values(countValues) as number[]).reduce((a, b) => a + b, 0),
@@ -760,9 +762,21 @@ const Inventory: React.FC = () => {
                className="flex justify-between items-center cursor-pointer group"
                onClick={() => setStockExpanded(!stockExpanded)}
              >
-                <h3 className="font-bold text-[#003366] dark:text-white flex items-center gap-2 text-xl">
-                  <Package size={24} /> Stock de Produtos
-                </h3>
+                <div className="flex items-center gap-4">
+                  <h3 className="font-bold text-[#003366] dark:text-white flex items-center gap-2 text-xl">
+                    <Package size={24} /> Stock de Produtos
+                  </h3>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowStockLogModal(true);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors text-xs font-bold"
+                  >
+                    <History size={14} />
+                    Histórico Manual
+                  </button>
+                </div>
                 <button className="p-2 bg-slate-100 dark:bg-slate-700 rounded-full text-slate-400 group-hover:text-[#003366] dark:group-hover:text-white transition-all">
                   {stockExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                 </button>
@@ -1274,6 +1288,63 @@ const Inventory: React.FC = () => {
                 </button>
               </div>
            </div>
+        </div>
+      )}
+
+      {/* --- MODAL: HISTÓRICO MANUAL --- */}
+      {showStockLogModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4 animate-fade-in">
+          <div className="bg-white dark:bg-slate-800 rounded-3xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
+              <h2 className="text-xl font-black text-[#003366] dark:text-white flex items-center gap-3">
+                <History size={24} className="text-blue-500" /> Histórico de Alterações Manuais
+              </h2>
+              <button onClick={() => setShowStockLogModal(false)} className="text-slate-400 hover:text-red-500 transition-colors">
+                <X size={24} />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto custom-scrollbar flex-1 bg-slate-50/50 dark:bg-slate-900/20">
+              {stockOperationHistory.filter(log => log.type === 'ADJUSTMENT').length === 0 ? (
+                <div className="text-center py-12 text-slate-500 dark:text-slate-400">
+                  <History size={48} className="mx-auto mb-4 opacity-20" />
+                  <p>Nenhuma alteração manual registada.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {stockOperationHistory
+                    .filter(log => log.type === 'ADJUSTMENT')
+                    .sort((a, b) => b.timestamp - a.timestamp)
+                    .map((log) => {
+                      const change = log.qtyAfter - log.qtyBefore;
+                      const isPositive = change > 0;
+                      
+                      return (
+                        <div key={log.id} className="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="font-bold text-[#003366] dark:text-white">{log.productName}</span>
+                              <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-full">
+                                {formatDisplayDate(formatDateISO(log.timestamp))}
+                              </span>
+                            </div>
+                            <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                              <span className="flex items-center gap-1">
+                                <UserIcon size={12} /> {log.performedBy}
+                              </span>
+                            </div>
+                          </div>
+                          <div className={`font-black text-lg px-4 py-2 rounded-xl flex items-center gap-2 ${isPositive ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400'}`}>
+                            {isPositive ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
+                            {isPositive ? '+' : ''}{change}
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
