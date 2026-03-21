@@ -290,7 +290,7 @@ export interface SalesReport {
   lunchExpense: number;
   notes: string;
   closedBy: string;
-  itemsSummary: { name: string, qty: number, total: number }[];
+  itemsSummary: { productId?: string, name: string, qty: number, total: number }[];
   stockSnapshot?: {
     initial: Record<string, string>;
     final: Record<string, string>;
@@ -332,6 +332,7 @@ export interface SalesReport {
   };
   processedFinancials?: boolean;
   stockUpdated?: boolean;
+  _deltaApplied?: boolean;
 }
 
 export interface AuditLog {

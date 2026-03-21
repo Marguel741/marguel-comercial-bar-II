@@ -533,6 +533,7 @@ const Sales: React.FC = () => {
       // Compatibility fields for Dashboard
       date: formatDateISO(reportTimestamp),
       itemsSummary: calculatedData.items.filter(i => i.soldQty > 0).map(i => ({
+          productId: i.id,
           name: i.name,
           qty: i.soldQty,
           total: i.revenue

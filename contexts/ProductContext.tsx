@@ -424,9 +424,9 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
         qtyBefore,
         qtyAdded: type === 'SALE' ? -quantity : quantity,
         qtyAfter,
-        timestamp: Date.now(),
-        performedBy,
-        reason,
+        timestamp: Date.now(), // Contém ms para precisão total
+        performedBy, // Registra quem alterou
+        reason: reason || 'Ajuste Manual via Sistema',
         referenceId
       };
       setStockOperationHistory(prev => [log, ...prev]);
@@ -556,77 +556,69 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   ) => {
     try {
       // Overwrite logic: if referenceId exists, reverse its effect first
-      const existingTrans = referenceId ? transactions.find(t => t.referenceId === referenceId && t.referenceType === referenceType) : null;
+      const existingTrans = referenceId ? transactions.filter(t => t.referenceId === referenceId && t.referenceType === referenceType) : [];
       
-      if (existingTrans) {
-        const oldAmount = existingTrans.amount;
-        const oldType = existingTrans.type === 'entrada' ? 'deposit' : 'withdraw';
-        const oldAccountName = existingTrans.accountName;
-        const oldCategory = existingTrans.category;
-
-        // Reverse balance based on accountName
-        if (oldAccountName === 'Conta Corrente') {
-           setCurrentBalance(prev => oldType === 'deposit' ? prev - oldAmount : prev + oldAmount);
-           setCards(prev => prev.map(c => c.id === 'main' ? { ...c, balance: oldType === 'deposit' ? c.balance - oldAmount : c.balance + oldAmount } : c));
-        } else if (oldAccountName === 'Marguel Reserve' || oldAccountName === 'Conta Poupança') {
-           setSavingsBalance(prev => oldType === 'deposit' ? prev - oldAmount : prev + oldAmount);
-           setCards(prev => prev.map(c => c.id === 'savings' ? { ...c, balance: oldType === 'deposit' ? c.balance - oldAmount : c.balance + oldAmount } : c));
-        } else if (oldAccountName === 'Caixa (Dinheiro)') {
-           setCashBalance(prev => oldType === 'deposit' ? prev - oldAmount : prev + oldAmount);
-        } else if (oldAccountName === 'TPA') {
-           setTPABalance(prev => oldType === 'deposit' ? prev - oldAmount : prev + oldAmount);
-        } else {
-           setCards(prev => prev.map(c => {
-             if (c.name === oldAccountName) {
-               return { ...c, balance: oldType === 'deposit' ? c.balance - oldAmount : c.balance + oldAmount };
-             }
-             return c;
-           }));
-        }
-
-        // Reverse TPA if it was a transfer (and not already handled by accountName === 'TPA')
-        if (oldAccountName !== 'TPA' && (oldCategory === 'Transferência' || oldCategory === 'TRANSFER')) {
-           setTPABalance(prev => oldType === 'deposit' ? prev - oldAmount : prev + oldAmount);
-        }
+      if (existingTrans.length > 0) {
+        existingTrans.forEach(t => {
+          const oldAmt = t.amount;
+          const isOldEntry = t.type === 'entrada';
+          
+          // Reversão baseada no accountName gravado na transação
+          if (t.accountName === 'Caixa (Dinheiro)') setCashBalance(p => isOldEntry ? p - oldAmt : p + oldAmt);
+          else if (t.accountName === 'TPA') setTPABalance(p => isOldEntry ? p - oldAmt : p + oldAmt);
+          else if (t.accountName === 'Conta Corrente') {
+            setCurrentBalance(p => isOldEntry ? p - oldAmt : p + oldAmt);
+            setCards(prev => prev.map(c => c.id === 'main' ? { ...c, balance: isOldEntry ? c.balance - oldAmt : c.balance + oldAmt } : c));
+          } else if (t.accountName === 'Marguel Reserve' || t.accountName === 'Conta Poupança') {
+            setSavingsBalance(p => isOldEntry ? p - oldAmt : p + oldAmt);
+            setCards(prev => prev.map(c => c.id === 'savings' ? { ...c, balance: isOldEntry ? c.balance - oldAmt : c.balance + oldAmt } : c));
+          } else {
+            setCards(prev => prev.map(c => {
+              if (c.name === t.accountName) {
+                return { ...c, balance: isOldEntry ? c.balance - oldAmt : c.balance + oldAmt };
+              }
+              return c;
+            }));
+          }
+        });
       }
 
-      // Apply new transaction
-      const isTransfer = category === 'Transferência' || category === 'TRANSFER' || description.toLowerCase().includes('transferência');
-      
+      // Fluxo Unificado: Definimos o alvo, e deixamos UM ÚNICO bloco atualizar o estado
+      let targetAccount = account;
+      if (category === 'Transferência' || category === 'TRANSFER') {
+        targetAccount = 'tpa'; 
+      }
+
       let accountName = '';
-      if (isTransfer) {
+      // Aplicação do NOVO valor (Sem IFs duplicados de TPA fora do fluxo)
+      if (targetAccount === 'main') {
+        setCurrentBalance(prev => type === 'deposit' ? prev + amount : prev - amount);
+        accountName = 'Conta Corrente';
+        setCards(prev => prev.map(c => c.id === 'main' ? { ...c, balance: type === 'deposit' ? c.balance + amount : c.balance - amount } : c));
+      } else if (targetAccount === 'savings') {
+        setSavingsBalance(prev => type === 'deposit' ? prev + amount : prev - amount);
+        accountName = 'Conta Poupança';
+        setCards(prev => prev.map(c => c.id === 'savings' ? { ...c, balance: type === 'deposit' ? c.balance + amount : c.balance - amount } : c));
+      } else if (targetAccount === 'cash') {
+        setCashBalance(prev => type === 'deposit' ? prev + amount : prev - amount);
+        accountName = 'Caixa (Dinheiro)';
+      } else if (targetAccount === 'tpa') {
         setTPABalance(prev => type === 'deposit' ? prev + amount : prev - amount);
         accountName = 'TPA';
-        // Strictly TPA balance for transfers
       } else {
-        if (account === 'main') {
-          setCurrentBalance(prev => type === 'deposit' ? prev + amount : prev - amount);
-          accountName = 'Conta Corrente';
-          setCards(prev => prev.map(c => c.id === 'main' ? { ...c, balance: type === 'deposit' ? c.balance + amount : c.balance - amount } : c));
-        } else if (account === 'savings') {
-          setSavingsBalance(prev => type === 'deposit' ? prev + amount : prev - amount);
-          accountName = 'Conta Poupança';
-          setCards(prev => prev.map(c => c.id === 'savings' ? { ...c, balance: type === 'deposit' ? c.balance + amount : c.balance - amount } : c));
-        } else if (account === 'cash') {
-          setCashBalance(prev => type === 'deposit' ? prev + amount : prev - amount);
-          accountName = 'Caixa (Dinheiro)';
-        } else if (account === 'tpa') {
-          setTPABalance(prev => type === 'deposit' ? prev + amount : prev - amount);
-          accountName = 'TPA';
-        } else {
-          setCards(prev => prev.map(c => {
-            if (c.id === account) {
-              accountName = c.name;
-              return { ...c, balance: type === 'deposit' ? c.balance + amount : c.balance - amount };
-            }
-            return c;
-          }));
-        }
+        setCards(prev => prev.map(c => {
+          if (c.id === targetAccount) {
+            accountName = c.name;
+            return { ...c, balance: type === 'deposit' ? c.balance + amount : c.balance - amount };
+          }
+          return c;
+        }));
       }
 
       const targetDate = date || formatDateISO(getSystemDate());
+      const firstExisting = existingTrans.length > 0 ? existingTrans[0] : null;
       const newTrans: Transaction = {
-        id: existingTrans ? existingTrans.id : generateUUID(),
+        id: firstExisting ? firstExisting.id : generateUUID(),
         type: type === 'deposit' ? 'entrada' : 'saida',
         category: category || accountName || 'Cartão',
         amount: amount,
@@ -640,8 +632,12 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
         operationalDay: targetDate
       };
 
-      if (existingTrans) {
-        setTransactions(prev => prev.map(t => t.id === existingTrans.id ? newTrans : t));
+      if (existingTrans.length > 0) {
+        const existingIds = existingTrans.map(t => t.id);
+        setTransactions(prev => {
+          const filtered = prev.filter(t => !existingIds.includes(t.id));
+          return [newTrans, ...filtered];
+        });
       } else {
         setTransactions(prev => [newTrans, ...prev]);
       }
@@ -687,6 +683,82 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     });
   }, [products, handleStockMovement]);
 
+  // Nova função auxiliar para processar a diferença (Delta)
+  const applyStockDelta = useCallback((report: SalesReport, newItems: any[]) => {
+    const reportId = report.id;
+    
+    // 1. CHEQUE DE PERSISTÊNCIA REAL (Idempotência Baseada em Log)
+    // Procuramos no histórico se já existe um movimento de stock para este relatório com o motivo "Delta"
+    const alreadyApplied = stockOperationHistory.some(
+      log => log.referenceId === reportId && log.reason?.includes('Delta Fecho')
+    );
+
+    if (alreadyApplied) {
+      console.warn(`[Stock] Operação Delta já persistida para o relatório: ${reportId}. Abortando para evitar duplicação.`);
+      return;
+    }
+
+    const oldItems = report.itemsSummary || [];
+
+    // 2. LOGICA DE REVERSÃO E DELTA (Agora Segura)
+    oldItems.forEach(oldItem => {
+      // Fallback to name if productId is missing (for older reports)
+      const newItem = newItems.find(i => (i.productId || i.name) === (oldItem.productId || oldItem.name));
+      
+      if (!newItem) {
+        // ITEM REMOVIDO: Devolvemos a quantidade total ao stock
+        const productId = oldItem.productId || products.find(p => p.name === oldItem.name)?.id;
+        if (productId) {
+          handleStockMovement(
+            productId, 
+            oldItem.qty, 
+            'ADJUSTMENT', 
+            user?.name || 'Sistema', 
+            `Delta Fecho (Remoção): ${reportId}`, 
+            reportId
+          );
+        }
+      } else {
+        // ITEM EXISTE: Calculamos o Delta (Novo - Antigo)
+        const delta = newItem.qty - oldItem.qty;
+        if (delta !== 0) {
+          const productId = newItem.productId || products.find(p => p.name === newItem.name)?.id;
+          if (productId) {
+            handleStockMovement(
+              productId, 
+              Math.abs(delta), 
+              delta > 0 ? 'SALE' : 'ADJUSTMENT', 
+              user?.name || 'Sistema', 
+              `Delta Fecho (Ajuste): ${reportId}`, 
+              reportId
+            );
+          }
+        }
+      }
+    });
+
+    // 3. Tratar itens NOVOS (que não existiam no fecho anterior)
+    newItems.forEach(newItem => {
+      const wasInOld = oldItems.find(i => (i.productId || i.name) === (newItem.productId || newItem.name));
+      if (!wasInOld) {
+        const productId = newItem.productId || products.find(p => p.name === newItem.name)?.id;
+        if (productId) {
+          handleStockMovement(
+            productId, 
+            newItem.qty, 
+            'SALE', 
+            user?.name || 'Sistema', 
+            `Delta Fecho (Novo Item): ${reportId}`, 
+            reportId
+          );
+        }
+      }
+    });
+
+    // 4. Marcar como aplicado (no objeto em memória, embora o histórico seja o principal agora)
+    report._deltaApplied = true;
+  }, [products, handleStockMovement, user, stockOperationHistory]);
+
   // Consolidate localStorage persistence to reduce overhead
   useEffect(() => {
     const data = {
@@ -716,39 +788,16 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   
   const lockDay = (dateStr: string, performedBy: string) => {
     const cleanTarget = cleanDate(dateStr);
-
-    // Check if there is a confirmed report for this day
-    const report = salesReports.find(r => {
-      const reportDate = r.dateISO ? r.dateISO.split('T')[0] : r.date;
-      return cleanDate(reportDate) === cleanTarget;
-    });
-
-    if (!report || (report.status !== ClosureStatus.FECHO_CONFIRMADO && report.status !== ClosureStatus.BLOQUEADO)) {
-      alert("Operação Negada: O dia só pode ser bloqueado se o fecho estiver confirmado (FECHO CONFIRMADO ou DIA CONFIRMADO).");
-      return;
-    }
-
-    setLockedDays(prev => {
-      if (prev.includes(cleanTarget)) return prev;
-      return [...prev, cleanTarget];
-    });
+    // Removemos o alerta impeditivo. O sistema agora permite bloquear qualquer dia.
+    setLockedDays(prev => prev.includes(cleanTarget) ? prev : [...prev, cleanTarget]);
 
     addAuditLog({
       action: 'BLOQUEAR_DIA',
       module: 'CALENDÁRIO',
       entityId: cleanTarget,
-      description: `Dia ${cleanTarget} confirmado (fecho finalizado)`,
+      description: `Dia ${cleanTarget} bloqueado pelo usuário.`,
       performedBy
     });
-
-    // Also update sales report status if it exists
-    setSalesReports(prevReports => prevReports.map(report => {
-      const reportDate = report.dateISO ? report.dateISO.split('T')[0] : report.date;
-      if (cleanDate(reportDate) === cleanTarget) {
-        return { ...report, status: ClosureStatus.BLOQUEADO };
-      }
-      return report;
-    }));
   };
 
   const unlockDay = (dateStr: string, reason: string) => {
@@ -1389,12 +1438,15 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
 
       // Inventory Consistency: Revert old stock before applying new count if editing
       const existingReport = salesReports.find(r => r.date === report.date);
-      if (existingReport && existingReport.stockUpdated) {
-        revertStockFromReport(existingReport);
-      }
+      let stockUpdated = false;
 
-      // Deduct stock automatically
-      const stockUpdated = deductStockFromReport(report);
+      if (existingReport && existingReport.stockUpdated) {
+        applyStockDelta(existingReport, report.itemsSummary);
+        stockUpdated = true;
+      } else {
+        // Deduct stock automatically
+        stockUpdated = deductStockFromReport(report);
+      }
 
       const finalReport = { 
         ...report, 
@@ -1479,6 +1531,11 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
           date: reportDateStr, 
           items: updates.itemsSummary || report.itemsSummary 
         });
+
+        // Stock Delta Adjustment if itemsSummary is being updated
+        if (updates.itemsSummary && report.stockUpdated) {
+          applyStockDelta(report, updates.itemsSummary);
+        }
 
         // If report is already confirmed and processed, we need to handle financial adjustments
         if (report.status === ClosureStatus.FECHO_CONFIRMADO && report.processedFinancials) {
@@ -1664,18 +1721,15 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     
     setIsSyncing(true);
     try {
-      // SUBSTITUIR PELO SEU FETCH NO FUTURO:
-      // const response = await fetch('/api/sync', { method: 'POST', body: JSON.stringify(products) });
-      // if (!response.ok) throw new Error();
-      
-      await new Promise(resolve => setTimeout(resolve, 1500)); // Simulação
+      // Lógica de fetch...
+      await new Promise(resolve => setTimeout(resolve, 1500)); 
       setHasPendingChanges(false);
     } catch (error) {
-      console.error("Erro ao sincronizar", error);
+      console.error("Erro na sincronização:", error);
     } finally {
-      setIsSyncing(false);
+      setIsSyncing(false); // GARANTE que libera o lock mesmo em erro
     }
-  }, [isOnline, isSyncing, products]);
+  }, [isOnline, isSyncing]);
 
   const addEquipment = (equipment: Omit<Equipment, 'id' | 'prevQty'>) => {
     try {
@@ -1847,30 +1901,12 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     setInventoryHistory([]);
     setStockOperationHistory([]);
     setLockedDays([]);
-    setCurrentBalance(1250000);
-    setSavingsBalance(500000);
-    setCashBalance(850000);
-    setTPABalance(400000);
-    setCards([
-      {
-        id: 'main',
-        name: 'Conta Corrente',
-        holder: 'Marguel Bar',
-        balance: 1250000,
-        color: 'bg-gradient-to-bl from-[#003366] via-[#004488] to-[#0054A6]',
-        type: 'Corrente',
-        validity: '12/28'
-      },
-      {
-        id: 'savings',
-        name: 'Marguel Reserve',
-        holder: 'Marguel Reserve',
-        balance: 500000,
-        color: 'bg-gradient-to-br from-[#F5DF4D] via-[#D4AF37] to-[#AA6C39]',
-        type: 'Poupança',
-        validity: '06/30'
-      }
-    ]);
+    // Zerar saldos conforme solicitado
+    setCurrentBalance(0);
+    setSavingsBalance(0);
+    setCashBalance(0);
+    setTPABalance(0);
+    setCards(prev => prev.map(c => ({ ...c, balance: 0 })));
     
     const now = new Date();
     now.setHours(0, 0, 0, 0);
@@ -1888,8 +1924,9 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     addAuditLog({
       action: 'RESET_SISTEMA',
       module: 'SISTEMA',
-      description: 'Todos os dados de teste foram limpos.',
-      performedBy: user?.name || 'Sistema'
+      entityId: 'ALL',
+      description: 'Sistema resetado para dados iniciais (Saldos zerados)',
+      performedBy: user?.name || 'Admin'
     });
   };
 
@@ -1930,6 +1967,17 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     addCard, updateCard, deleteCard, resetTestData,
     isSyncing, hasPendingChanges, syncData, handleStockMovement
   ]);
+
+  useEffect(() => {
+    const syncInterval = setInterval(() => {
+      if (navigator.onLine && !isSyncing) {
+        syncData();
+        console.log("Sincronização em segundo plano executada...");
+      }
+    }, 90000); // 1 minuto e 30 segundos
+
+    return () => clearInterval(syncInterval);
+  }, [syncData, isSyncing]);
 
   return (
     <ProductContext.Provider value={value}>
