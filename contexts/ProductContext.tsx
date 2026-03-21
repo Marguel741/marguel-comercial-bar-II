@@ -760,6 +760,9 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     // Removemos o alerta impeditivo. O sistema agora permite bloquear qualquer dia.
     setLockedDays(prev => prev.includes(cleanTarget) ? prev : [...prev, cleanTarget]);
 
+    // REGRA FINAL DO PONTO 3
+    ignoreLockedDayWithoutClosure(dateStr);
+
     addAuditLog({
       action: 'BLOQUEAR_DIA',
       module: 'CALENDÁRIO',
@@ -1945,18 +1948,30 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   const ignoreLockedDayWithoutClosure = useCallback((dateStr: string) => {
     const clean = cleanDate(dateStr);
     const hasValidReport = salesReports.some(r => 
-      cleanDate(r.date) === clean && 
-      r.status === ClosureStatus.FECHO_CONFIRMADO && 
-      !(r as any).unilateralAdminConfirmation // opcional
+      cleanDate(r.dateISO || r.date) === clean && 
+      r.status === ClosureStatus.FECHO_CONFIRMADO
     );
 
     if (!hasValidReport && isDayLocked(dateStr)) {
       // Anula qualquer transação pendente desse dia (sem criar ghost)
-      setTransactions(prev => prev.filter(t => cleanDate(t.operationalDay) !== clean));
-      // Zera saldos que vieram desse dia (opcional, se quiseres forçar zero)
-      // Mas o ideal é só impedir visualização no Dashboard via filtro
+      setTransactions(prev => 
+        prev.filter(t => cleanDate(t.operationalDay || t.date) !== clean)
+      );
+
+      // Remove qualquer relatório fantasma ou parcial que possa ter ficado
+      setSalesReports(prev => 
+        prev.filter(r => cleanDate(r.dateISO || r.date) !== clean)
+      );
+
+      addAuditLog({
+        action: 'IGNORAR_DIA_SEM_FECHO',
+        module: 'CALENDÁRIO',
+        entityId: clean,
+        description: `Dia ${clean} bloqueado sem fecho válido → valores ignorados automaticamente.`,
+        performedBy: user?.name || 'Sistema'
+      });
     }
-  }, [salesReports, isDayLocked]);
+  }, [salesReports, isDayLocked, setTransactions, setSalesReports, addAuditLog, user]);
 
   const value = useMemo(() => ({ 
     products, categories, purchases, currentBalance, savingsBalance, cashBalance, tpaBalance, cards, transactions, salesReports, 
@@ -1977,8 +1992,8 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     equipments, addEquipment, updateEquipment, updateEquipmentQty, removeEquipment,
     addCard, updateCard, deleteCard, resetTestData,
     runSystemDiagnostic,
-    ignoreLockedDayWithoutClosure,
-    isSyncing, hasPendingChanges, syncData, handleStockMovement
+    isSyncing, hasPendingChanges, syncData, handleStockMovement,
+    ignoreLockedDayWithoutClosure
   }), [
     products, categories, purchases, currentBalance, savingsBalance, cashBalance, tpaBalance, cards, transactions, salesReports, 
     expenses, expenseCategories, inventoryHistory, priceHistory, lockedDays, systemDate,
@@ -1998,8 +2013,8 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     equipments, addEquipment, updateEquipment, updateEquipmentQty, removeEquipment,
     addCard, updateCard, deleteCard, resetTestData,
     runSystemDiagnostic,
-    ignoreLockedDayWithoutClosure,
-    isSyncing, hasPendingChanges, syncData, handleStockMovement
+    isSyncing, hasPendingChanges, syncData, handleStockMovement,
+    ignoreLockedDayWithoutClosure
   ]);
 
   useEffect(() => {
