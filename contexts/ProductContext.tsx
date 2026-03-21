@@ -61,6 +61,8 @@ const INITIAL_EXPENSE_CATEGORIES: ExpenseCategory[] = [
   { id: '9', name: 'DESPESA_OPERACIONAL', isActive: true },
 ];
 
+const SCHEMA_VERSION = '1.0.1';
+
 interface PendingAction {
   id: string;
   type: 'ADD_SALE' | 'UPDATE_STOCK' | 'ADD_EXPENSE';
@@ -123,6 +125,7 @@ interface ProductContextType {
     usuario: string;
     data_operacional: string;
   }) => void;
+  registrarAlmocoBlindado: (report: SalesReport) => void;
   updateSalesReport: (reportId: string, updates: Partial<SalesReport>) => void;
   updateSalesReportJustification: (reportId: string, justificationData: any) => void;
   confirmSalesReport: (reportId: string, confirmedBy: string, isUnilateral?: boolean) => void;
@@ -139,6 +142,7 @@ interface ProductContextType {
   hasPendingChanges: boolean;
   syncData: () => Promise<void>;
   handleStockMovement: (productId: string, quantity: number, type: 'SALE' | 'PURCHASE' | 'ADJUSTMENT', performedBy: string, reason: string, referenceId?: string) => void;
+  runSystemDiagnostic: () => void;
 }
 
 const ProductContext = createContext<ProductContextType | undefined>(undefined);
@@ -686,78 +690,42 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   // Nova função auxiliar para processar a diferença (Delta)
   const applyStockDelta = useCallback((report: SalesReport, newItems: any[]) => {
     const reportId = report.id;
-    
-    // 1. CHEQUE DE PERSISTÊNCIA REAL (Idempotência Baseada em Log)
-    // Procuramos no histórico se já existe um movimento de stock para este relatório com o motivo "Delta"
-    const alreadyApplied = stockOperationHistory.some(
-      log => log.referenceId === reportId && log.reason?.includes('Delta Fecho')
-    );
+    const deltaTag = `DELTA_FECHO:${reportId}`; // Tag atómica
 
-    if (alreadyApplied) {
-      console.warn(`[Stock] Operação Delta já persistida para o relatório: ${reportId}. Abortando para evitar duplicação.`);
-      return;
-    }
+    // Idempotência Blindada: Verificação exata da Tag
+    const alreadyApplied = stockOperationHistory.some(
+      log => log.referenceId === reportId && log.reason === deltaTag
+    );
+    if (alreadyApplied) return;
 
     const oldItems = report.itemsSummary || [];
 
-    // 2. LOGICA DE REVERSÃO E DELTA (Agora Segura)
+    // Processamento do Delta (Usa productId como única fonte de verdade)
     oldItems.forEach(oldItem => {
-      // Fallback to name if productId is missing (for older reports)
-      const newItem = newItems.find(i => (i.productId || i.name) === (oldItem.productId || oldItem.name));
-      
+      const pId = oldItem.productId;
+      if (!pId) return;
+
+      const newItem = newItems.find(i => i.productId === pId);
       if (!newItem) {
-        // ITEM REMOVIDO: Devolvemos a quantidade total ao stock
-        const productId = oldItem.productId || products.find(p => p.name === oldItem.name)?.id;
-        if (productId) {
-          handleStockMovement(
-            productId, 
-            oldItem.qty, 
-            'ADJUSTMENT', 
-            user?.name || 'Sistema', 
-            `Delta Fecho (Remoção): ${reportId}`, 
-            reportId
-          );
-        }
+        handleStockMovement(pId, oldItem.qty, 'ADJUSTMENT', user?.name || 'Sistema', deltaTag, reportId);
       } else {
-        // ITEM EXISTE: Calculamos o Delta (Novo - Antigo)
-        const delta = newItem.qty - oldItem.qty;
-        if (delta !== 0) {
-          const productId = newItem.productId || products.find(p => p.name === newItem.name)?.id;
-          if (productId) {
-            handleStockMovement(
-              productId, 
-              Math.abs(delta), 
-              delta > 0 ? 'SALE' : 'ADJUSTMENT', 
-              user?.name || 'Sistema', 
-              `Delta Fecho (Ajuste): ${reportId}`, 
-              reportId
-            );
-          }
+        const diff = newItem.qty - oldItem.qty;
+        if (diff !== 0) {
+          handleStockMovement(pId, Math.abs(diff), diff > 0 ? 'SALE' : 'ADJUSTMENT', user?.name || 'Sistema', deltaTag, reportId);
         }
       }
     });
 
-    // 3. Tratar itens NOVOS (que não existiam no fecho anterior)
+    // Itens novos inseridos na edição
     newItems.forEach(newItem => {
-      const wasInOld = oldItems.find(i => (i.productId || i.name) === (newItem.productId || newItem.name));
-      if (!wasInOld) {
-        const productId = newItem.productId || products.find(p => p.name === newItem.name)?.id;
-        if (productId) {
-          handleStockMovement(
-            productId, 
-            newItem.qty, 
-            'SALE', 
-            user?.name || 'Sistema', 
-            `Delta Fecho (Novo Item): ${reportId}`, 
-            reportId
-          );
-        }
+      if (newItem.productId && !oldItems.find(i => i.productId === newItem.productId)) {
+        handleStockMovement(newItem.productId, newItem.qty, 'SALE', user?.name || 'Sistema', deltaTag, reportId);
       }
     });
 
-    // 4. Marcar como aplicado (no objeto em memória, embora o histórico seja o principal agora)
+    // Marcar como aplicado em memória para evitar re-processamento no mesmo ciclo
     report._deltaApplied = true;
-  }, [products, handleStockMovement, user, stockOperationHistory]);
+  }, [stockOperationHistory, handleStockMovement, user, products]);
 
   // Consolidate localStorage persistence to reduce overhead
   useEffect(() => {
@@ -1411,6 +1379,25 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   };
 
+  const registrarAlmocoBlindado = (report: SalesReport) => {
+    if (report.lunchExpense > 0 && (report.isFinalClosure || report.type === 'FINAL')) {
+      // Normalização absoluta da data para evitar "21-03" vs "21/03"
+      const dateKey = new Date(report.dateISO || report.date).toISOString().split('T')[0];
+      const lunchRefId = `LUNCH_EXPENSE_${dateKey}`;
+
+      registrarDespesaGlobal({
+        tipo: "DESPESA_OPERACIONAL",
+        origem: "CONTROLE_VENDAS",
+        descricao: `Almoço (${dateKey})`,
+        nota: `Débito automático de fecho final.`,
+        valor: report.lunchExpense,
+        usuario: report.closedBy,
+        data_operacional: report.date,
+        referenceId: lunchRefId // Chave imutável por dia
+      });
+    }
+  };
+
   const deductStockFromReport = (report: SalesReport) => {
     if (!report.itemsSummary || report.stockUpdated) return false;
     
@@ -1483,16 +1470,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       });
 
       if (finalReport.lunchExpense > 0) {
-        registrarDespesaGlobal({
-          tipo: "DESPESA_OPERACIONAL",
-          origem: "CONTROLE_VENDAS",
-          descricao: `Almoço (${finalReport.date})`,
-          nota: `Despesa de almoço registada no fecho de vendas de ${finalReport.date}`,
-          valor: finalReport.lunchExpense,
-          usuario: finalReport.closedBy,
-          data_operacional: finalReport.date,
-          referenceId: `lunch_${finalReport.id}`
-        });
+        registrarAlmocoBlindado(finalReport as SalesReport);
       }
 
       const action: PendingAction = {
@@ -1560,6 +1538,15 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
         }
       }
       setSalesReports(prev => prev.map(r => r.id === reportId ? { ...r, ...updates } : r));
+      
+      // If lunchExpense was updated or it's a final closure, re-run lunch registration
+      const updatedReport = salesReports.find(r => r.id === reportId);
+      if (updatedReport) {
+        const finalUpdatedReport = { ...updatedReport, ...updates };
+        if (finalUpdatedReport.lunchExpense > 0) {
+          registrarAlmocoBlindado(finalUpdatedReport as SalesReport);
+        }
+      }
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Erro desconhecido';
       addLog({
@@ -1930,6 +1917,30 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     });
   };
 
+  const runSystemDiagnostic = () => {
+    const currentVer = localStorage.getItem('mg_schema_version');
+    
+    if (currentVer !== SCHEMA_VERSION) {
+      // 1. Migração de Produtos (Garante IDs em tudo)
+      const fixedProducts = products.map(p => ({ ...p, id: p.id || generateUUID() }));
+      setProducts(fixedProducts);
+      localStorage.setItem('mg_products', JSON.stringify(fixedProducts));
+
+      // 2. Limpeza de metadados legados nos relatórios
+      const fixedReports = salesReports.map(r => {
+        const { _deltaApplied, ...rest } = r as any;
+        return rest;
+      });
+      setSalesReports(fixedReports);
+      localStorage.setItem('mg_sales_reports', JSON.stringify(fixedReports));
+
+      localStorage.setItem('mg_schema_version', SCHEMA_VERSION);
+      alert(`Migração Concluída: v${SCHEMA_VERSION}`);
+    } else {
+      alert("Sistema operando em versão atualizada.");
+    }
+  };
+
   const value = useMemo(() => ({ 
     products, categories, purchases, currentBalance, savingsBalance, cashBalance, tpaBalance, cards, transactions, salesReports, 
     expenses, expenseCategories, inventoryHistory, priceHistory, lockedDays, systemDate,
@@ -1940,6 +1951,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     addPurchase, getPurchasesByDate, getTodayPurchases, processTransaction, processCashTPADebit,
     addSalesReport, 
     registrarDespesaGlobal,
+    registrarAlmocoBlindado,
     updateSalesReport, 
     updateSalesReportJustification, 
     confirmSalesReport, 
@@ -1947,6 +1959,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     stockOperationHistory, 
     equipments, addEquipment, updateEquipment, updateEquipmentQty, removeEquipment,
     addCard, updateCard, deleteCard, resetTestData,
+    runSystemDiagnostic,
     isSyncing, hasPendingChanges, syncData, handleStockMovement
   }), [
     products, categories, purchases, currentBalance, savingsBalance, cashBalance, tpaBalance, cards, transactions, salesReports, 
@@ -1958,6 +1971,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     addPurchase, getPurchasesByDate, getTodayPurchases, processTransaction, processCashTPADebit,
     addSalesReport, 
     registrarDespesaGlobal,
+    registrarAlmocoBlindado,
     updateSalesReport, 
     updateSalesReportJustification, 
     confirmSalesReport, 
@@ -1965,6 +1979,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     stockOperationHistory, 
     equipments, addEquipment, updateEquipment, updateEquipmentQty, removeEquipment,
     addCard, updateCard, deleteCard, resetTestData,
+    runSystemDiagnostic,
     isSyncing, hasPendingChanges, syncData, handleStockMovement
   ]);
 

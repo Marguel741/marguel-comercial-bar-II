@@ -333,6 +333,8 @@ export interface SalesReport {
   processedFinancials?: boolean;
   stockUpdated?: boolean;
   _deltaApplied?: boolean;
+  isFinalClosure?: boolean;
+  type?: 'PARTIAL' | 'FINAL';
 }
 
 export interface AuditLog {
