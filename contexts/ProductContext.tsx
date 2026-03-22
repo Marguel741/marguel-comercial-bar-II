@@ -1652,14 +1652,22 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
 
     // 4. Update Stock (Only if not already updated)
+    // AGORA USANDO productId – 100% consistente com o resto do sistema
     if (updatedReport.itemsSummary && !updatedReport.stockUpdated) {
       setProducts(prevProducts => prevProducts.map(p => {
-        const soldItem = updatedReport.itemsSummary.find(item => item.name === p.name);
+        const soldItem = updatedReport.itemsSummary.find(item => 
+          item.productId === p.id || item.name === p.name // fallback seguro (nunca quebra)
+        );
+        
         if (soldItem && soldItem.qty > 0) {
-          return { ...p, stock: Math.max(0, p.stock - soldItem.qty) };
+          return { 
+            ...p, 
+            stock: Math.max(0, p.stock - soldItem.qty) 
+          };
         }
         return p;
       }));
+      
       updatedReport = { ...updatedReport, stockUpdated: true };
     }
 
