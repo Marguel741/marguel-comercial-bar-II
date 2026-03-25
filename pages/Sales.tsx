@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Save, Calculator, DollarSign, Calendar, TrendingDown, AlertCircle, PlusCircle, Wallet, CreditCard, ArrowRightLeft, CheckCircle, X, Send, MessageSquare, Clock, Plus, Printer, Lock, Unlock, BarChart2, ArrowUp, Filter, Eye, ChevronRight, RefreshCw, Database, Server, ShieldCheck, Smartphone, ChevronDown, ChevronUp, AlertTriangle, Check, History } from 'lucide-react';
+import { Save, Calculator, DollarSign, Calendar, TrendingDown, AlertCircle, PlusCircle, Wallet, CreditCard, ArrowRightLeft, CheckCircle, X, Send, MessageSquare, Clock, Plus, Lock, Unlock, BarChart2, ArrowUp, Filter, Eye, ChevronRight, RefreshCw, Database, Server, ShieldCheck, Smartphone, ChevronDown, ChevronUp, AlertTriangle, Check, History } from 'lucide-react';
 import SoftCard from '../components/SoftCard';
 import { useProducts } from '../contexts/ProductContext';
 import { 
@@ -262,10 +262,10 @@ const Sales: React.FC = () => {
   const MixMatchModal = () => (
     showMixMatchModal && selectedProductForMix && (
       <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
-        <div className="bg-white dark:bg-slate-800 rounded-3xl w-full max-w-md shadow-2xl relative animate-fade-in">
+        <div className="bg-white dark:bg-slate-800 rounded-3xl w-full max-w-md shadow-2xl relative">
           <div className="flex justify-between items-center p-6 border-b dark:border-slate-700">
             <h3 className="font-black text-lg dark:text-white">Mix & Match – {selectedProductForMix.name}</h3>
-            <button onClick={() => setShowMixMatchModal(false)} className="text-slate-400 hover:text-red-500 transition-colors">
+            <button onClick={() => setShowMixMatchModal(false)} className="text-slate-400 hover:text-red-500">
               <X size={24} />
             </button>
           </div>
@@ -749,13 +749,9 @@ const Sales: React.FC = () => {
       if (!reportDate) return;
       if (!canConfirm && !isUnilateralAllowed) return;
       
-      // Executar fecho definitivo (Validação)
       confirmSalesReport(reportData.id, user?.name || 'Admin', isUnilateralAllowed);
-      
       showToast("Validação final concluída com sucesso!");
       triggerHaptic('success');
-      
-      console.log("Fecho Validado:", reportDate);
     };
 
     return (
@@ -769,13 +765,16 @@ const Sales: React.FC = () => {
                 <div className="flex justify-between items-center mb-8">
                     <div className="flex items-center gap-4 ml-[2cm]">
                       <button 
-                        onClick={() => {/* abre modal ou console com stockOperationHistory */}}
+                        onClick={() => {
+                          // Abre histórico (podes melhorar com modal se quiseres)
+                          console.log('Histórico de Alterações Manuais:', stockOperationHistory.filter(log => log.referenceId === reportData.id));
+                          alert('Histórico aberto no console (podes criar um modal depois)');
+                        }}
                         className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
                       >
                         <History size={16} /> Ver Histórico de Alterações Manuais
                       </button>
                     </div>
-                    <button onClick={() => window.print()} className="pill-button px-6 py-3 bg-[#003366] text-white font-bold flex items-center gap-2 shadow-lg hover:opacity-90"><Printer size={20} /> Imprimir / PDF</button>
                 </div>
                 
                 <SoftCard className="p-8 mb-6">

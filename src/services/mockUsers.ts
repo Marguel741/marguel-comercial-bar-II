@@ -9,15 +9,15 @@ export const MOCK_USERS_DB: User[] = [
     permissions: DEFAULT_PERMISSIONS[UserRole.ADMIN_GERAL]
   },
   { 
-    id: '2', name: 'Proprietário', username: 'proprietario', email: 'dono@marguel.com', role: UserRole.PROPRIETARIO, isApproved: true, 
+    id: '2', name: 'Marguel (Dono)', username: 'proprietario', email: 'dono@marguel.com', role: UserRole.PROPRIETARIO, isApproved: true, 
     permissions: DEFAULT_PERMISSIONS[UserRole.PROPRIETARIO]
   },
   { 
-    id: '3', name: 'Gerente Loja', username: 'gerente', email: 'gerente@marguel.com', role: UserRole.GERENTE, isApproved: true, 
+    id: '3', name: 'Gerente', username: 'gerente', email: 'gerente@marguel.com', role: UserRole.GERENTE, isApproved: true, 
     permissions: DEFAULT_PERMISSIONS[UserRole.GERENTE]
   },
   { 
-    id: '4', name: 'Colab. Efetivo', username: 'efetivo', email: 'efetivo@marguel.com', role: UserRole.COLABORADOR_EFETIVO, isApproved: true, 
+    id: '4', name: 'Colaborador Efetivo', username: 'efetivo', email: 'efetivo@marguel.com', role: UserRole.COLABORADOR_EFETIVO, isApproved: true, 
     permissions: DEFAULT_PERMISSIONS[UserRole.COLABORADOR_EFETIVO]
   },
   { 

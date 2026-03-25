@@ -9,12 +9,15 @@ import {
   FlaskConical,
   Trash2,
   Package,
-  SkipForward
+  SkipForward,
+  Users
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import SoftCard from '../components/SoftCard';
 import { useProducts } from '../contexts/ProductContext';
 import { useLayout } from '../contexts/LayoutContext';
+import { useAuth } from '../contexts/AuthContext';
+import { UserRole } from '../types';
 import { formatDateISO, formatDisplayDate } from '../src/utils';
 
 const TestCycle: React.FC = () => {
@@ -30,6 +33,7 @@ const TestCycle: React.FC = () => {
     getSystemDate
   } = useProducts();
   const { triggerHaptic, sidebarMode } = useLayout();
+  const { user, switchUser } = useAuth();
 
   // Logs locais apenas para feedback visual
   const [dailyLog, setDailyLog] = useState<string[]>([]);
@@ -61,6 +65,26 @@ const TestCycle: React.FC = () => {
       setSystemDate(nextDay);
       logAction(`⏩ Avançado para o dia seguinte.`);
   };
+
+  // ====================== TROCA DE UTILIZADOR (Ponto 9) ======================
+  const testUsers = [
+    { role: UserRole.PROPRIETARIO, name: 'Marguel (Dono)', emoji: '👑' },
+    { role: UserRole.ADMIN_GERAL, name: 'Admin Geral', emoji: '🛡️' },
+    { role: UserRole.GERENTE, name: 'Gerente', emoji: '📊' },
+    { role: UserRole.COLABORADOR_EFETIVO, name: 'Colaborador Efetivo', emoji: '🔧' },
+    { role: UserRole.FUNCIONARIO, name: 'Funcionário', emoji: '🧑💼' },
+  ];
+
+  const handleSwitchUser = (role: UserRole, name: string) => {
+    if (switchUser) {
+      switchUser(role, name);
+      triggerHaptic('success');
+      logAction(`🔄 Trocado para: ${name} (${role})`);
+    } else {
+      logAction("⚠️ switchUser não encontrado no AuthContext");
+    }
+  };
+  // ============================================================================
 
   // --- SIMULAÇÃO DE AÇÕES RÁPIDAS (Usando agora a data GLOBAL via Contexto) ---
   const simulateRandomSale = () => {
@@ -141,7 +165,7 @@ const TestCycle: React.FC = () => {
             </button>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-8">
             
             {/* COLUMN 1: TIME CONTROL */}
             <SoftCard className="space-y-6 border-t-4 border-blue-500 lg:col-span-1">
@@ -205,6 +229,34 @@ const TestCycle: React.FC = () => {
                     </button>
                 </div>
             </SoftCard>
+
+            {/* === NOVA COLUNA: TROCA DE UTILIZADOR (Ponto 9) === */}
+            <SoftCard className="lg:col-span-1 border-t-4 border-purple-500 flex flex-col">
+              <h3 className="font-bold text-slate-700 dark:text-white flex items-center gap-2 mb-4">
+                <Users size={20} className="text-purple-500" /> Trocar Utilizador (Testes)
+              </h3>
+              <p className="text-xs text-slate-500 mb-6">Simule diferentes perfis sem sair da aplicação.</p>
+              
+              <div className="grid grid-cols-1 gap-3 flex-1 overflow-y-auto custom-scrollbar max-h-[400px]">
+                {testUsers.map((u) => (
+                  <button
+                    key={u.role}
+                    onClick={() => handleSwitchUser(u.role, u.name)}
+                    className="flex items-center gap-4 p-4 bg-white dark:bg-slate-800 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-2xl border border-slate-100 dark:border-slate-700 transition-all group"
+                  >
+                    <div className="w-10 h-10 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-2xl flex items-center justify-center text-2xl group-active:scale-110 transition-transform">
+                      {u.emoji}
+                    </div>
+                    <div className="flex-1 text-left">
+                      <p className="font-bold text-slate-800 dark:text-white leading-tight">{u.name}</p>
+                      <p className="text-[10px] font-medium text-purple-600 dark:text-purple-400">{u.role}</p>
+                    </div>
+                    <span className="text-[10px] bg-purple-100 dark:bg-purple-900/30 text-purple-600 px-2 py-1 rounded-xl font-bold">Trocar</span>
+                  </button>
+                ))}
+              </div>
+            </SoftCard>
+            {/* =================================================== */}
 
             {/* COLUMN 3: LOG & HISTORY */}
             <div className="space-y-6 lg:col-span-1">

@@ -9,7 +9,7 @@ interface AuthContextType {
   login: (email: string, pass: string) => Promise<boolean>;
   logout: () => void;
   isLoading: boolean;
-  switchUser: (role: UserRole) => void;
+  switchUser: (role: UserRole, name?: string) => void;
   refreshUser: () => void;
   updateUser: (updates: Partial<User>) => Promise<boolean>;
 }
@@ -90,9 +90,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setUser(null);
   }, [user, addLog]);
 
-  const switchUser = useCallback((role: UserRole) => {
+  const switchUser = useCallback((role: UserRole, name?: string) => {
     const users = getMockUsers();
-    const targetUser = users.find(u => u.role === role);
+    // Find by role and optionally name
+    const targetUser = name 
+      ? users.find(u => u.role === role && (u.name === name || u.username === name)) 
+      : users.find(u => u.role === role);
+
     if (targetUser) {
         const oldUser = user;
         setUser(targetUser);

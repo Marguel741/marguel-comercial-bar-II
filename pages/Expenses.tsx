@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { motion } from 'motion/react';
 import { 
   Plus, Wallet, FileText, Camera, Tag, X, Trash2, Calendar, 
-  User, Paperclip, Check, Eye, Printer, Search, StickyNote, 
+  User, Paperclip, Check, Eye, Search, StickyNote, 
   CheckCircle, Edit2, Save, ArrowLeft, Image as ImageIcon 
 } from 'lucide-react';
 import SoftCard from '../components/SoftCard';
@@ -711,9 +711,6 @@ const Expenses: React.FC = () => {
                 <p className="text-slate-500 text-sm">Visão geral de todas as saídas</p>
               </div>
               <div className="flex gap-2">
-                <button onClick={() => window.print()} className="p-3 bg-slate-100 text-[#003366] rounded-xl hover:bg-blue-50 font-bold text-xs flex items-center gap-2">
-                  <Printer size={16} /> Imprimir
-                </button>
                 <button 
                   onClick={() => setShowFullReport(false)}
                   className="p-3 hover:bg-red-50 rounded-full text-slate-400 hover:text-red-500 transition-colors"

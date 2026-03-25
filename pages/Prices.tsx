@@ -164,22 +164,13 @@ const Prices: React.FC = () => {
   const togglePromo = (productId: string) => {
     if (!canManagePrices) return;
     const product = products.find(p => p.id === productId);
-    if (product?.category !== 'Cervejas') {
-      triggerHaptic('error');
-      showToast("Apenas produtos da categoria Cervejas podem ter promoções Mix & Match.");
-      return;
-    }
-    
+    if (!product) return;
+
     setEditingPrices(prev => {
-      const currentEdit = prev[productId]?.isPromoActive;
-      const currentVal = currentEdit !== undefined ? currentEdit : !!product?.isPromoActive;
-      
+      const current = prev[productId]?.isPromoActive !== undefined ? prev[productId].isPromoActive : !!product.isPromoActive;
       return {
         ...prev,
-        [productId]: {
-          ...prev[productId],
-          isPromoActive: !currentVal
-        }
+        [productId]: { ...prev[productId], isPromoActive: !current }
       };
     });
   };
@@ -187,33 +178,23 @@ const Prices: React.FC = () => {
   const handlePackPriceChange = (productId: string, packSize: number, packPriceStr: string) => {
     if (!canManagePrices) return;
     const packPrice = parseFloat(packPriceStr);
-    if (isNaN(packPrice)) {
-      handleInputChange(productId, 'buy', '0');
-      return;
-    }
+    if (isNaN(packPrice)) return;
     const unitPrice = packPrice / packSize;
     handleInputChange(productId, 'buy', unitPrice.toString());
   };
 
   const handleSave = (productId: string, productName: string) => {
-    triggerHaptic('success');
-    if (!canManagePrices) {
-      showToast("Permissão negada.");
-      return;
-    }
+    if (!canManagePrices) return;
     const updates = editingPrices[productId];
     const currentProduct = products.find(p => p.id === productId);
-    if (!updates || !currentProduct) {
-      triggerHaptic('error');
-      return;
-    }
+    if (!updates || !currentProduct) return;
+
     const finalUpdates: Partial<Product> = {
       buyPrice: updates.buy !== undefined ? updates.buy : undefined,
       sellPrice: updates.sell !== undefined ? updates.sell : undefined,
       promoQty: updates.promoQty,
       promoPrice: updates.promoPrice,
       isPromoActive: updates.isPromoActive,
-      
       isMixMatch: updates.isPromoActive,
       mixMatchQty: updates.promoQty,
       mixMatchPrice: updates.promoPrice,
@@ -222,22 +203,7 @@ const Prices: React.FC = () => {
         : 0
     };
 
-    // Remove undefined to avoid overwriting existing data
     Object.keys(finalUpdates).forEach(key => (finalUpdates as any)[key] === undefined && delete (finalUpdates as any)[key]);
-
-    // Validation: Promo Price < Unit Price * Qty
-    const valIsPromoActive = finalUpdates.isPromoActive ?? currentProduct.isPromoActive;
-    if (valIsPromoActive) {
-        const qty = finalUpdates.promoQty ?? currentProduct.promoQty ?? 0;
-        const price = finalUpdates.promoPrice ?? currentProduct.promoPrice ?? 0;
-        const unitPrice = finalUpdates.sellPrice ?? currentProduct.sellPrice ?? 0;
-        
-        if (qty > 1 && price >= (unitPrice * qty)) {
-            triggerHaptic('error');
-            showToast("Erro: O preço promocional deve ser menor que o preço normal multiplicado pela quantidade.");
-            return;
-        }
-    }
 
     updateProduct(productId, finalUpdates);
     showToast(`Preços de ${productName} atualizados!`);
@@ -599,10 +565,7 @@ const Prices: React.FC = () => {
             <DollarSign size={24} /> Tabela de Produtos
           </h3>
           <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowMixMatchModal(true);
-            }}
+            onClick={() => { triggerHaptic('impact'); setShowMixMatchModal(true); }}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-lg hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors text-xs font-bold"
           >
             <Layers size={14} />
@@ -753,7 +716,7 @@ const Prices: React.FC = () => {
                           {expandedRows[p.id] && p.category === 'Cervejas' && (
                             <tr className="bg-slate-50 dark:bg-slate-800/50 animate-fade-in">
                               <td colSpan={5} className="p-4">
-                                <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6 shadow-inner max-w-2xl relative">
+                                <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-4 shadow-inner max-w-md relative">
                                   <button 
                                     onClick={() => toggleRow(p.id)}
                                     className="absolute top-4 right-4 p-2 text-slate-400 hover:text-red-500 transition-colors"
