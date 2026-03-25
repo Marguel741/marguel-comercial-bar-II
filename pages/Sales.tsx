@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Save, Calculator, DollarSign, Calendar, TrendingDown, AlertCircle, PlusCircle, Wallet, CreditCard, ArrowRightLeft, CheckCircle, X, Send, MessageSquare, Clock, Plus, Printer, Lock, Unlock, BarChart2, ArrowUp, Filter, Eye, ChevronRight, RefreshCw, Database, Server, ShieldCheck, Smartphone, ChevronDown, ChevronUp, AlertTriangle, Check } from 'lucide-react';
+import { Save, Calculator, DollarSign, Calendar, TrendingDown, AlertCircle, PlusCircle, Wallet, CreditCard, ArrowRightLeft, CheckCircle, X, Send, MessageSquare, Clock, Plus, Printer, Lock, Unlock, BarChart2, ArrowUp, Filter, Eye, ChevronRight, RefreshCw, Database, Server, ShieldCheck, Smartphone, ChevronDown, ChevronUp, AlertTriangle, Check, History } from 'lucide-react';
 import SoftCard from '../components/SoftCard';
 import { useProducts } from '../contexts/ProductContext';
 import { 
@@ -82,7 +82,8 @@ const Sales: React.FC = () => {
     confirmSalesReport, 
     isDayLocked, 
     unlockDay,
-    getSystemDate
+    getSystemDate,
+    stockOperationHistory
   } = useProducts();
   const { sidebarMode, triggerHaptic } = useLayout();
   const { user } = useAuth();
@@ -248,6 +249,85 @@ const Sales: React.FC = () => {
 
   const [toast, setToast] = useState<{show: boolean, message: string}>({ show: false, message: '' });
   
+  // NOVO: Modal Mix & Match compacto
+  const [showMixMatchModal, setShowMixMatchModal] = useState(false);
+  const [selectedProductForMix, setSelectedProductForMix] = useState<any>(null);
+
+  // ==================== POPUP MIX MATCH COMPACTO ====================
+  const openMixMatchModal = (product: any) => {
+    setSelectedProductForMix(product);
+    setShowMixMatchModal(true);
+  };
+
+  const MixMatchModal = () => (
+    showMixMatchModal && selectedProductForMix && (
+      <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+        <div className="bg-white dark:bg-slate-800 rounded-3xl w-full max-w-md shadow-2xl relative animate-fade-in">
+          <div className="flex justify-between items-center p-6 border-b dark:border-slate-700">
+            <h3 className="font-black text-lg dark:text-white">Mix & Match – {selectedProductForMix.name}</h3>
+            <button onClick={() => setShowMixMatchModal(false)} className="text-slate-400 hover:text-red-500 transition-colors">
+              <X size={24} />
+            </button>
+          </div>
+          <div className="p-6 space-y-6">
+            <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-2xl border border-blue-100 dark:border-blue-800">
+              <div className="flex justify-between items-center mb-2">
+                <label className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase">Packs de {selectedProductForMix.promoQty}</label>
+                <span className="text-xs font-bold text-blue-500">{selectedProductForMix.promoPrice.toLocaleString()} Kz</span>
+              </div>
+              <input 
+                type="number" 
+                value={breakdowns[selectedProductForMix.id]?.packs || 0}
+                onChange={(e) => handleBreakdownChange(selectedProductForMix.id, 'packs', e.target.value, selectedProductForMix.breakdown)}
+                className="w-full p-3 text-center font-black text-xl rounded-xl border-none outline-none focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:text-white"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-2xl border border-slate-100 dark:border-slate-700">
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Avulsas</label>
+                  <span className="text-xs font-bold text-slate-400">{selectedProductForMix.sellPrice.toLocaleString()} Kz</span>
+                </div>
+                <input 
+                  type="number" 
+                  value={breakdowns[selectedProductForMix.id]?.singles || 0}
+                  onChange={(e) => handleBreakdownChange(selectedProductForMix.id, 'singles', e.target.value, selectedProductForMix.breakdown)}
+                  className="w-full p-3 text-center font-black text-xl rounded-xl border-none outline-none focus:ring-2 focus:ring-slate-500 dark:bg-slate-600 dark:text-white"
+                />
+              </div>
+              <div className="bg-red-50 dark:bg-red-900/10 p-4 rounded-2xl border border-red-100 dark:border-red-800">
+                <label className="text-xs font-bold text-red-500 dark:text-red-400 uppercase mb-2 block">Quebras</label>
+                <input 
+                  type="number" 
+                  value={breakdowns[selectedProductForMix.id]?.waste || 0}
+                  onChange={(e) => handleBreakdownChange(selectedProductForMix.id, 'waste', e.target.value, selectedProductForMix.breakdown)}
+                  className="w-full p-3 text-center font-black text-xl rounded-xl border-none outline-none focus:ring-2 focus:ring-red-500 text-red-600 dark:bg-slate-700 dark:text-red-400"
+                />
+              </div>
+            </div>
+
+            <div className="pt-4 border-t dark:border-slate-700">
+              <div className="flex justify-between items-center text-sm font-bold mb-4">
+                <span className="text-slate-500">Total Unidades:</span>
+                <span className={`${selectedProductForMix.isBalanced ? 'text-green-600' : 'text-red-600'}`}>
+                  {((breakdowns[selectedProductForMix.id]?.packs || 0) * selectedProductForMix.promoQty + (breakdowns[selectedProductForMix.id]?.singles || 0) + (breakdowns[selectedProductForMix.id]?.waste || 0))} / {selectedProductForMix.soldQty}
+                </span>
+              </div>
+              <button 
+                onClick={() => setShowMixMatchModal(false)}
+                className="w-full py-4 bg-[#003366] text-white font-black rounded-2xl shadow-lg hover:opacity-90 transition-all"
+              >
+                Confirmar Ajuste
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  );
+  // =================================================================
+
   // States for Breakdown (Mix & Match)
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
   const [breakdowns, setBreakdowns] = useState<Record<string, { packs: number, singles: number, waste: number }>>({});
@@ -661,6 +741,11 @@ const Sales: React.FC = () => {
     const isUnilateralAllowed = !isConfirmed && hoursSinceClosure > INACTIVITY_THRESHOLD_HOURS && (user?.role === UserRole.ADMIN_GERAL || user?.role === UserRole.PROPRIETARIO);
 
     const handleConfirmClose = () => {
+      if (isDayLocked(reportDate)) {
+        triggerHaptic('error');
+        showToast('Dia bloqueado. Desbloqueie primeiro para confirmar o fecho.');
+        return;
+      }
       if (!reportDate) return;
       if (!canConfirm && !isUnilateralAllowed) return;
       
@@ -682,19 +767,14 @@ const Sales: React.FC = () => {
             )}
             <div className="max-w-5xl mx-auto print:max-w-none">
                 <div className="flex justify-between items-center mb-8">
-                    <button 
-                      onClick={() => { 
-                        setForceEditMode(false);
-                        if (viewHistoryReport) {
-                          setViewHistoryReport(null);
-                        } else {
-                          setReportDate(todayISO);
-                        }
-                      }} 
-                      className="text-slate-500 dark:text-slate-400 font-bold hover:text-[#003366] dark:hover:text-blue-400 ml-[2cm]"
-                    >
-                      ← Voltar
-                    </button>
+                    <div className="flex items-center gap-4 ml-[2cm]">
+                      <button 
+                        onClick={() => {/* abre modal ou console com stockOperationHistory */}}
+                        className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                      >
+                        <History size={16} /> Ver Histórico de Alterações Manuais
+                      </button>
+                    </div>
                     <button onClick={() => window.print()} className="pill-button px-6 py-3 bg-[#003366] text-white font-bold flex items-center gap-2 shadow-lg hover:opacity-90"><Printer size={20} /> Imprimir / PDF</button>
                 </div>
                 
@@ -1092,10 +1172,10 @@ const Sales: React.FC = () => {
                           {item.name}
                           {item.isPromo && item.soldQty > 0 && (
                               <button 
-                                onClick={() => toggleRow(item.id)}
-                                className={`p-1 rounded-full transition-all ${expandedRows[item.id] ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-400'}`}
+                                onClick={() => openMixMatchModal(item)}
+                                className={`p-1 rounded-full transition-all ${breakdowns[item.id] ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-400'}`}
                               >
-                                  {expandedRows[item.id] ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                  <Calculator size={14} />
                               </button>
                           )}
                           {!item.isBalanced && <AlertTriangle size={16} className="text-red-500 animate-pulse" />}
@@ -1331,6 +1411,9 @@ const Sales: React.FC = () => {
               </div>
           </div>
       </footer>
+
+      {/* Modal Mix Match */}
+      <MixMatchModal />
     </div>
   );
 };

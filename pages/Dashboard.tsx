@@ -57,6 +57,26 @@ const Dashboard: React.FC = () => {
     return salesReports.find(r => r.date === yesterdayStr);
   }, [salesReports, systemDate]);
 
+  // ==================== TOTAL VENDIDO ONTEM (corrigido) ====================
+  const yesterdayTotal = yesterdayReport 
+    ? (yesterdayReport.totalLifted || yesterdayReport.totals?.lifted || 0) 
+    : 0;
+
+  const yesterdayCash = yesterdayReport 
+    ? (yesterdayReport.cash || yesterdayReport.financials?.cash || 0) 
+    : 0;
+
+  const yesterdayTPA = yesterdayReport 
+    ? (yesterdayReport.tpa || yesterdayReport.financials?.ticket || 0) 
+    : 0;
+  // =====================================================================
+
+  // ==================== CLIQUE NAS INICIAIS ABRE DEFINIÇÕES ====================
+  const handleUserClick = () => {
+    navigate('/settings'); // ou a rota que usas para Definições
+  };
+  // =====================================================================
+
   const topProducts = React.useMemo(() => {
     const productSales: Record<string, number> = {};
     
@@ -378,79 +398,11 @@ const Dashboard: React.FC = () => {
 
             <div className="relative">
                 <button 
-                    onClick={() => {
-                        setShowUserMenu(!showUserMenu);
-                        setShowNotifications(false);
-                    }}
-                    className={`w-10 h-10 bg-[#003366] rounded-full flex items-center justify-center text-white font-bold text-sm hover:ring-4 ring-blue-100 transition-all relative ${showUserMenu ? 'z-50' : ''}`}
+                    onClick={handleUserClick}
+                    className={`w-10 h-10 bg-[#003366] rounded-full flex items-center justify-center text-white font-bold text-sm hover:ring-4 ring-blue-100 transition-all relative`}
                 >
                     {getInitials(user?.name)}
                 </button>
-
-                {/* User Menu Dropdown */}
-                {showUserMenu && (
-                    <>
-                        <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm" onClick={() => setShowUserMenu(false)}></div>
-                        <div className="absolute right-0 top-12 w-64 bg-white dark:bg-[#0a192f] rounded-2xl shadow-2xl border border-slate-100 dark:border-white/10 p-2 z-[70] animate-fade-in origin-top-right">
-                            <div className="p-3 border-b border-slate-100 dark:border-slate-700 mb-2">
-                                <p className="font-bold text-slate-800 dark:text-white">{user?.name}</p>
-                                <p className="text-xs text-slate-500 dark:text-slate-400">{user?.role}</p>
-                            </div>
-                            
-                            <div className="space-y-1">
-                                <button className="w-full flex items-center gap-3 p-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl text-sm text-slate-600 dark:text-slate-300">
-                                    <Settings size={16} /> Configurações
-                                </button>
-                                
-                                <div className="p-2">
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Tema</p>
-                                    <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
-                                        <button 
-                                            onClick={() => setTheme('light')}
-                                            className={`flex-1 flex justify-center p-1 rounded-md transition-all ${theme === 'light' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-400'}`}
-                                        >
-                                            <Sun size={14} />
-                                        </button>
-                                        <button 
-                                            onClick={() => setTheme('dark')}
-                                            className={`flex-1 flex justify-center p-1 rounded-md transition-all ${theme === 'dark' ? 'bg-white dark:bg-slate-700 shadow-sm text-blue-600' : 'text-slate-400'}`}
-                                        >
-                                            <Moon size={14} />
-                                        </button>
-                                        <button 
-                                            onClick={() => setTheme('system')}
-                                            className={`flex-1 flex justify-center p-1 rounded-md transition-all ${theme === 'system' ? 'bg-white dark:bg-slate-700 shadow-sm text-blue-600' : 'text-slate-400'}`}
-                                        >
-                                            <Monitor size={14} />
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <div className="p-2 border-t border-slate-100 dark:border-slate-700 mt-2">
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Mudar Usuário (Teste)</p>
-                                    <div className="space-y-1 max-h-32 overflow-y-auto custom-scrollbar">
-                                        {Object.values(UserRole).map(role => (
-                                            <button 
-                                                key={role}
-                                                onClick={() => switchUser(role)}
-                                                className={`w-full text-left text-xs p-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 ${user?.role === role ? 'bg-blue-50 text-blue-600 font-bold dark:bg-blue-900/30 dark:text-blue-400' : 'text-slate-600 dark:text-slate-300'}`}
-                                            >
-                                                {role}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                <button 
-                                    onClick={logout}
-                                    className="w-full flex items-center gap-3 p-2 hover:bg-red-50 text-red-600 rounded-xl text-sm mt-2"
-                                >
-                                    <LogOut size={16} /> Sair
-                                </button>
-                            </div>
-                        </div>
-                    </>
-                )}
             </div>
         </div>
       </header>
@@ -459,15 +411,15 @@ const Dashboard: React.FC = () => {
         <p className="text-slate-500 dark:text-slate-400 text-sm mb-1">Bem-vindo de volta,</p>
         <h2 className="text-3xl font-bold text-[#0f172a] dark:text-white mb-6">{user?.name || 'Admin'}</h2>
 
-        {/* Main Card */}
+        {/* Main Card – Total Vendido Ontem */}
         <div className="bg-[#003366] rounded-[2rem] p-6 text-white shadow-xl mb-8 relative overflow-hidden">
             <div className="relative z-10">
                 <p className="text-blue-200 text-sm mb-1">Total Vendido Ontem</p>
                 <h3 className="text-4xl font-bold mb-2">
-                    {yesterdayReport ? `${(yesterdayReport.totalLifted || yesterdayReport.totals?.lifted || 0).toLocaleString('pt-AO')} Kz` : '0 Kz'}
+                    {yesterdayTotal.toLocaleString('pt-AO')} Kz
                 </h3>
                 <p className="text-blue-200 text-sm">
-                    {yesterdayReport ? 'Valor confirmado' : 'Aguardando fecho'}
+                    Cash: {yesterdayCash.toLocaleString('pt-AO')} Kz • TPA: {yesterdayTPA.toLocaleString('pt-AO')} Kz
                 </p>
             </div>
             {/* Abstract Background Shapes */}

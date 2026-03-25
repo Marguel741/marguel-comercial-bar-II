@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { 
   DollarSign, History, Save, Info, Search, CheckCircle, X, ShoppingCart, 
-  Package, Plus, Minus, ArrowRight, FileText, Printer, ChevronUp, 
+  Package, Plus, Minus, ArrowRight, FileText, ChevronUp, 
   ChevronDown, MessageSquare, Copy, ArrowLeft, Lock, Trash2, FolderOpen, 
   Calendar, Folder, Clock, User, Eye, AlertTriangle, List, ArrowLeftCircle, 
   ClipboardCheck, ShoppingBag, Paperclip, Camera, Image as ImageIcon, Truck, Calculator, Layers
@@ -214,13 +214,12 @@ const Prices: React.FC = () => {
       promoPrice: updates.promoPrice,
       isPromoActive: updates.isPromoActive,
       
-      // MIX MATCH REAL
       isMixMatch: updates.isPromoActive,
       mixMatchQty: updates.promoQty,
       mixMatchPrice: updates.promoPrice,
       discountAmount: updates.promoPrice 
         ? (currentProduct.sellPrice * (updates.promoQty || 1) - updates.promoPrice) 
-        : (currentProduct.promoPrice && updates.promoPrice === undefined ? (currentProduct.sellPrice * (currentProduct.promoQty || 1) - currentProduct.promoPrice) : 0)
+        : 0
     };
 
     // Remove undefined to avoid overwriting existing data
@@ -1591,14 +1590,9 @@ const Prices: React.FC = () => {
                   {reportProposal.date} • {(reportProposal as any).completedBy || (reportProposal as any).createdBy || 'Sistema'}
                 </p>
               </div>
-              <div className="flex gap-2">
-                <button onClick={() => window.print()} className="p-3 bg-slate-100 dark:bg-slate-700 text-slate-500 hover:text-[#003366] rounded-2xl transition-all">
-                  <Printer size={20} />
-                </button>
-                <button onClick={() => setReportProposal(null)} className="p-3 bg-slate-100 dark:bg-slate-700 text-slate-400 hover:text-red-500 rounded-2xl transition-all">
-                  <X size={24} />
-                </button>
-              </div>
+              <button onClick={() => setReportProposal(null)} className="p-3 bg-slate-100 dark:bg-slate-700 text-slate-400 hover:text-red-500 rounded-2xl transition-all">
+                <X size={24} />
+              </button>
             </div>
 
             {/* Content */}
