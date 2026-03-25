@@ -56,12 +56,7 @@ const Dashboard: React.FC = () => {
     if (success) {
       setShowUserSwitchModal(false);
       setToastMessage(`Utilizador alterado para: ${name}`);
-      
-      // Forçar recarregamento após um curto delay para garantir que todos os contextos 
-      // (permissões, produtos, etc) sejam reinicializados com o novo utilizador
-      setTimeout(() => {
-        window.location.reload();
-      }, 800);
+      // A atualização é agora instantânea via contexto, sem reload.
     } else {
       setToastMessage(`Erro: Utilizador ${name} não encontrado.`);
       setTimeout(() => setToastMessage(null), 3000);

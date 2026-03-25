@@ -43,6 +43,7 @@ const DirectService: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Todos');
   const [cart, setCart] = useState<Record<string, number>>({});
+  const [isBeerMixMatchActive, setIsBeerMixMatchActive] = useState(false);
   const [showCheckout, setShowCheckout] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'tpa' | 'transfer'>('cash');
   
@@ -240,6 +241,18 @@ const DirectService: React.FC = () => {
     const groups: Record<string, { qty: number, promoQty: number, promoPrice: number, totalNormal: number }> = {};
     let otherTotal = 0;
 
+    // Beer Mix Match
+    let beerDiscount = 0;
+    if (isBeerMixMatchActive) {
+      const beerItems = Object.entries(currentCart).filter(([id, qty]) => productMap.get(id)?.category === 'Cerveja');
+      const sortedBeers = beerItems.flatMap(([id, qty]) => Array(qty).fill(productMap.get(id))).sort((a, b) => (b?.sellPrice || 0) - (a?.sellPrice || 0));
+      
+      for (let i = 0; i < Math.floor(sortedBeers.length / 3) * 3; i += 3) {
+          const groupPrice = (sortedBeers[i]?.sellPrice || 0) + (sortedBeers[i+1]?.sellPrice || 0) + (sortedBeers[i+2]?.sellPrice || 0);
+          beerDiscount += Math.max(0, groupPrice - 1000);
+      }
+    }
+
     Object.entries(currentCart).forEach(([id, qty]) => {
       const p = productMap.get(id);
       if (!p) return;
@@ -276,11 +289,11 @@ const DirectService: React.FC = () => {
       promoTotal = roundKz(promoTotal + (g.totalNormal - groupDiscount));
     });
 
-    const finalTotal = roundKz(otherTotal + promoTotal);
+    const finalTotal = roundKz(otherTotal + promoTotal - beerDiscount);
     const discount = roundKz(standardTotal - finalTotal);
 
     return { total: finalTotal, discount: Math.max(0, discount) };
-  }, [productMap]);
+  }, [productMap, isBeerMixMatchActive]);
 
   const cartCalculations = useMemo(() => {
     return calculateTransaction(cart);
@@ -479,6 +492,15 @@ const DirectService: React.FC = () => {
                           <h2 className="text-xl font-bold text-[#003366] dark:text-white flex items-center gap-2">
                               <History size={24} /> Histórico de Vendas Diretas
                           </h2>
+             {Object.entries(cart).filter(([id, qty]) => productMap.get(id)?.category === 'Cerveja').reduce((sum, [id, qty]) => sum + qty, 0) >= 3 && (
+                    <button 
+                        onClick={() => setIsBeerMixMatchActive(!isBeerMixMatchActive)}
+                        className={`p-2 rounded-full transition-all ${isBeerMixMatchActive ? 'bg-amber-500 text-white' : 'bg-slate-200 text-slate-600'}`}
+                        title="Mix Match Cervejas (3 por 1000 Kz)"
+                    >
+                        🍺
+                    </button>
+                )}
                           <button onClick={() => setShowHistory(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors">
                               <X size={20} className="text-slate-500" />
                           </button>

@@ -852,12 +852,12 @@ const Sales: React.FC = () => {
 
   // Modal de Confirmação de Edição Final
   const ConfirmEditModal = () => {
-    const lastActor = editConfirmationData?.editedBy || editConfirmationData?.closedBy || 'Desconhecido';
+    const lastActor = editConfirmationData?.editedBy || editConfirmationData?.closedBy || editConfirmationData?.initiatedBy || 'Desconhecido';
     const isAdminOrOwner = user?.role === UserRole.PROPRIETARIO || user?.role === UserRole.ADMIN_GERAL;
-    const isDifferentUser = user?.name !== lastActor;
-    const hoursSinceClosure = editConfirmationData?.timestamp ? (Date.now() - editConfirmationData.timestamp) / (1000 * 60 * 60) : 0;
-    const canConfirm = isAdminOrOwner || isDifferentUser || hoursSinceClosure >= INACTIVITY_THRESHOLD_HOURS;
-    const isUnilateralAllowed = isAdminOrOwner || hoursSinceClosure >= INACTIVITY_THRESHOLD_HOURS;
+    const isDifferentUser = user?.name && lastActor !== user.name;
+    
+    const canConfirm = isAdminOrOwner || isDifferentUser;
+    const isUnilateralAllowed = isAdminOrOwner;
 
     return (
       showConfirmEditModal && (
@@ -900,22 +900,25 @@ const Sales: React.FC = () => {
             <div className="flex flex-col gap-3">
               <button 
                 disabled={!canConfirm}
-                onClick={() => {
+                onClick={async () => {
+                  if (!editConfirmationData?.id) return;
+
+                  const finalReport = {
+                    ...editConfirmationData,
+                    status: ClosureStatus.FECHO_CONFIRMADO,
+                    confirmedBy: user?.name || 'Sistema',
+                    confirmationTimestamp: new Date().toISOString(),
+                    unilateralAdminConfirmation: isUnilateralAllowed,
+                    stockUpdated: false, // será marcado como true dentro do confirmSalesReport
+                    editedBy: user?.name || 'Admin',
+                  };
+
+                  updateSalesReport(editConfirmationData.id, finalReport);
+                  await confirmSalesReport(finalReport.id, finalReport);
+
                   setShowConfirmEditModal(false);
-                  if (editConfirmationData.id) {
-                    // Forçar o status de confirmado e propagar dados finais para Dashboard/Calendário
-                    const finalReport = {
-                      ...editConfirmationData,
-                      status: ClosureStatus.FECHO_CONFIRMADO,
-                      confirmedBy: user?.name || 'Admin',
-                      confirmationTimestamp: Date.now(),
-                      unilateralAdminConfirmation: isUnilateralAllowed,
-                      stockUpdated: true
-                    };
-                    
-                    updateSalesReport(editConfirmationData.id, finalReport);
-                    confirmSalesReport(editConfirmationData.id, user?.name || 'Admin', isUnilateralAllowed);
-                  }
+                  setIsEditing(false);
+                  console.log("✅ Fecho confirmado com sucesso e propagado para o sistema.");
                 }}
                 className={`w-full py-5 font-black rounded-2xl shadow-xl transition-all uppercase tracking-widest ${
                   canConfirm 
@@ -994,14 +997,9 @@ const Sales: React.FC = () => {
     const isConfirmed = reportData.status === ClosureStatus.FECHO_CONFIRMADO || reportData.status === ClosureStatus.CAIXA_FECHADA || reportData.status === ClosureStatus.BLOQUEADO;
     
     // Regra definitiva: Admin/Proprietário confirmam sempre. Outros apenas se forem utilizadores diferentes do autor ou após 24h.
-    const lastActor = reportData.editedBy || reportData.closedBy || 'Desconhecido';
-    const hoursSinceClosure = reportData.timestamp ? (Date.now() - reportData.timestamp) / (1000 * 60 * 60) : 0;
-    const canConfirm = !isConfirmed && (
-      isAdminOrOwner || (user?.name && lastActor !== user.name) || hoursSinceClosure >= INACTIVITY_THRESHOLD_HOURS
-    );
-
-    // Administradores e Proprietários podem sempre realizar confirmação unilateral imediata, outros após 24h
-    const isUnilateralAllowed = !isConfirmed && (isAdminOrOwner || hoursSinceClosure >= INACTIVITY_THRESHOLD_HOURS);
+    const lastActor = reportData.editedBy || reportData.closedBy || reportData.initiatedBy || 'Desconhecido';
+    const canConfirm = !isConfirmed && (isAdminOrOwner || (user?.name && lastActor !== user.name));
+    const isUnilateralAllowed = isAdminOrOwner;
 
     const handleConfirmClose = () => {
       if (isDayLocked(reportDate)) {
