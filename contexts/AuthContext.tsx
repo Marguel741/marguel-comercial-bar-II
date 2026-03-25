@@ -9,7 +9,7 @@ interface AuthContextType {
   login: (email: string, pass: string) => Promise<boolean>;
   logout: () => void;
   isLoading: boolean;
-  switchUser: (role: UserRole, name?: string) => void;
+  switchUser: (role: UserRole, name?: string) => boolean;
   refreshUser: () => void;
   updateUser: (updates: Partial<User>) => Promise<boolean>;
 }
@@ -28,10 +28,29 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Initialize user from mock DB
+    // Initialize user from mock DB or localStorage
     const users = getMockUsers();
-    setUser(users[0]); // Default to first user (Admin)
-    setIsLoading(false);
+    const savedUser = localStorage.getItem('mg_user');
+    
+    if (savedUser) {
+      try {
+        const parsed = JSON.parse(savedUser);
+        const found = users.find(u => u.id === parsed.id);
+        if (found) {
+          setUser(found);
+          setIsLoading(false);
+        } else {
+          setUser(users[0]);
+          setIsLoading(false);
+        }
+      } catch (e) {
+        setUser(users[0]);
+        setIsLoading(false);
+      }
+    } else {
+      setUser(users[0]); // Default to first user (Admin)
+      setIsLoading(false);
+    }
     
     // Listen for user updates to refresh current session
     const handleUsersUpdated = () => {
@@ -88,18 +107,31 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }, user);
     }
     setUser(null);
+    localStorage.removeItem('mg_user');
   }, [user, addLog]);
 
   const switchUser = useCallback((role: UserRole, name?: string) => {
     const users = getMockUsers();
-    // Find by role and optionally name
-    const targetUser = name 
-      ? users.find(u => u.role === role && (u.name === name || u.username === name)) 
+    // Find by role and optionally name (case-insensitive and trimmed)
+    let targetUser = name 
+      ? users.find(u => 
+          u.role === role && 
+          (u.name?.trim().toLowerCase() === name.trim().toLowerCase() || 
+           u.username?.trim().toLowerCase() === name.trim().toLowerCase())
+        ) 
       : users.find(u => u.role === role);
+
+    // Fallback: if name search failed, just find the first user with that role
+    if (!targetUser && name) {
+      targetUser = users.find(u => u.role === role);
+    }
 
     if (targetUser) {
         const oldUser = user;
-        setUser(targetUser);
+        const newUser = { ...targetUser };
+        setUser(newUser); // Use a new object reference to ensure state update
+        localStorage.setItem('mg_user', JSON.stringify(newUser));
+        
         addLog({
           action: 'SWITCH_USER',
           module: 'SISTEMA',
@@ -108,7 +140,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           previousValue: oldUser?.name,
           newValue: targetUser.name
         }, targetUser);
+        return true;
     }
+    return false;
   }, [user, addLog]);
 
   const updateUser = useCallback(async (updates: Partial<User>) => {

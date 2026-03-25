@@ -113,6 +113,8 @@ export interface Product {
   
   // MIX MATCH COMPLETO (obrigatório)
   isMixMatch?: boolean;
+  hasMixMatch?: boolean;       // Bug #13
+  isMixMatchActive?: boolean;  // Bug #13
   mixMatchQty?: number;        // ex: 3
   mixMatchPrice?: number;      // preço do pack promocional
   discountAmount?: number;     // desconto unitário
@@ -221,7 +223,7 @@ export interface StockOperationLog {
   id: string;
   productId: string;
   productName: string;
-  type: 'PURCHASE' | 'SALE' | 'ADJUSTMENT';
+  type: 'PURCHASE' | 'SALE' | 'ADJUSTMENT' | 'MANUAL_ADJUSTMENT';
   qtyBefore: number;
   qtyAdded: number;
   qtyAfter: number;
@@ -229,6 +231,11 @@ export interface StockOperationLog {
   performedBy: string;
   referenceId: string;
   reason?: string;
+  // Novos campos para compatibilidade com o pedido do utilizador
+  previousStock?: number;
+  newStock?: number;
+  qtyChanged?: number;
+  responsible?: string;
 }
 
 export interface InventoryLog {
@@ -275,6 +282,7 @@ export enum ClosureStatus {
   FECHO_PARCIAL_GERENTE = 'FECHO_PARCIAL_GERENTE',
   FECHO_PARCIAL_FUNCIONARIO = 'FECHO_PARCIAL_FUNCIONARIO',
   FECHO_PARCIAL_ADMIN = 'FECHO_PARCIAL_ADMIN',
+  FECHO_PARCIAL = 'FECHO_PARCIAL',
   FECHO_CONFIRMADO = 'FECHO_CONFIRMADO',
   CAIXA_FECHADA = 'CAIXA_FECHADA',
   BLOQUEADO = 'BLOQUEADO',
@@ -304,6 +312,7 @@ export interface SalesReport {
     isMixMatch?: boolean;
     discountAmount?: number;
     mixMatchQtyUsed?: number;
+    avulsaQty?: number;
   }[];
   stockSnapshot?: {
     initial: Record<string, string>;

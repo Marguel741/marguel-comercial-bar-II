@@ -18,6 +18,7 @@ const GlobalCalendar: React.FC = () => {
   const { 
     products,
     salesReports, 
+    getConfirmedSalesReports,
     purchases, 
     expenses, 
     inventoryHistory, 
@@ -103,7 +104,7 @@ const GlobalCalendar: React.FC = () => {
     setSelectedDayDetail(null);
   };
 
-  const salesMap = useMemo(() => new Map(salesReports.map(r => [cleanDate(r.date), r])), [salesReports]);
+  const salesMap = useMemo(() => new Map(getConfirmedSalesReports().map(r => [cleanDate(r.date), r])), [getConfirmedSalesReports]);
   const inventoryMap = useMemo(() => new Map(inventoryHistory.map(h => [cleanDate(h.date), h])), [inventoryHistory]);
 
   const monthStats = useMemo(() => {
@@ -112,7 +113,7 @@ const GlobalCalendar: React.FC = () => {
     for (let i = 1; i <= daysInMonth; i++) {
       const dateStr = formatDateISO(new Date(viewDate.getFullYear(), viewDate.getMonth(), i));
       const r = salesMap.get(cleanDate(dateStr));
-      if (r && (r.status === ClosureStatus.FECHO_CONFIRMADO || r.status === ClosureStatus.BLOQUEADO)) {
+      if (r && r.status === ClosureStatus.FECHO_CONFIRMADO) {
         total = roundKz(total + r.totalLifted);
         count++;
       }
@@ -160,7 +161,7 @@ const GlobalCalendar: React.FC = () => {
         return cleanDate(logDate) === cleanSelected;
     }) || [];
 
-    const isConfirmed = report?.status === ClosureStatus.FECHO_CONFIRMADO || report?.status === ClosureStatus.BLOQUEADO;
+    const isConfirmed = report?.status === ClosureStatus.FECHO_CONFIRMADO;
     const totalPurchased = roundKz(dayPurchases.reduce((acc, p) => acc + p.total, 0));
     const totalExpenses = roundKz(dayExpenses.reduce((acc, e) => acc + e.amount, 0));
     const netBalance = roundKz((isConfirmed ? (report?.totalLifted || 0) : 0) - totalPurchased - totalExpenses);
@@ -268,7 +269,7 @@ const GlobalCalendar: React.FC = () => {
                          
                          {report && (
                             <div className="overflow-hidden">
-                               {report.status === ClosureStatus.FECHO_CONFIRMADO || report.status === ClosureStatus.BLOQUEADO ? (
+                               {report.status === ClosureStatus.FECHO_CONFIRMADO ? (
                                   <p className="text-[9px] font-black text-[#003366] dark:text-blue-400 truncate">
                                      {roundKz(report.totalLifted / 1000)}k
                                   </p>
@@ -340,8 +341,8 @@ const GlobalCalendar: React.FC = () => {
                                     DIA ABERTO PARA EDIÇÃO
                                 </span>
                                 {dayData.report && (
-                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${dayData.report.status === ClosureStatus.BLOQUEADO ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
-                                    {dayData.report.status === ClosureStatus.BLOQUEADO ? 'Gestão Bloqueada' : 'Caixa Fechado'}
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase bg-blue-100 text-blue-700">
+                                    Caixa Fechado
                                   </span>
                                 )}
                               </div>
@@ -572,11 +573,10 @@ const GlobalCalendar: React.FC = () => {
                      <div className="space-y-8 animate-slide-up">
                         {dayData.report ? (
                            <>
-                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                  {[
                                      { label: 'Dinheiro (Cash)', value: dayData.report.cash, color: 'text-green-600', bg: 'bg-green-50' },
-                                     { label: 'Multicaixa (TPA)', value: dayData.report.tpa, color: 'text-blue-600', bg: 'bg-blue-50' },
-                                     { label: 'Transferências', value: dayData.report.transfer, color: 'text-purple-600', bg: 'bg-purple-50' }
+                                     { label: 'Multicaixa (TPA)', value: (dayData.report.tpa || 0) + (dayData.report.transfer || 0), color: 'text-blue-600', bg: 'bg-blue-50' }
                                  ].map(m => (
                                     <div key={m.label} className={`${m.bg} dark:bg-opacity-10 p-5 rounded-3xl border border-white/50 shadow-sm`}>
                                         <p className="text-[10px] font-black uppercase opacity-60 mb-1">{m.label}</p>

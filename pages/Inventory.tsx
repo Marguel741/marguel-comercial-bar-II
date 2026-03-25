@@ -1,7 +1,7 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Package, Thermometer, Edit2, Edit3, Bell, Plus, Search, ChevronUp, ChevronDown, AlertTriangle, Save, X, CheckCircle, Check, Trash2, Settings, ClipboardList, Send, ArrowRight, History, Lock, WifiOff, User as UserIcon, TrendingUp, TrendingDown } from 'lucide-react';
+import { Package, Thermometer, Edit2, Edit3, Bell, Plus, Search, ChevronUp, ChevronDown, AlertTriangle, Save, X, CheckCircle, Check, Trash2, Settings, ClipboardList, Send, ArrowRight, History, Lock, WifiOff, User as UserIcon, TrendingUp, TrendingDown, Database, Clock, ShieldCheck, ChevronRight, MessageSquare } from 'lucide-react';
 import SoftCard from '../components/SoftCard';
 import { useProducts } from '../contexts/ProductContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -38,6 +38,12 @@ const Inventory: React.FC = () => {
   } = useProducts();
   const { user } = useAuth();
   const { sidebarMode, triggerHaptic } = useLayout();
+
+  const manualHistory = useMemo(() => {
+    return stockOperationHistory
+      .filter(log => log.type === 'MANUAL_ADJUSTMENT')
+      .sort((a, b) => b.timestamp - a.timestamp);
+  }, [stockOperationHistory]);
 
   // Permission Checks
   const canCreateProduct = hasPermission(user, 'inventory_product_create');
@@ -427,8 +433,8 @@ const Inventory: React.FC = () => {
           }
           handleStockMovement(
             data.id, 
-            Math.abs(stockDiff), 
-            stockDiff > 0 ? 'PURCHASE' : 'SALE', 
+            stockDiff, // Pass signed diff
+            'MANUAL_ADJUSTMENT', // Use explicit manual adjustment type
             user?.name || 'Sistema', 
             data.reason || 'Ajuste Manual (Inventário)'
           );
@@ -717,10 +723,11 @@ const Inventory: React.FC = () => {
                                  {isAdmin ? (
                                    <>
                                      <input 
-                                       type="number" 
+                                       type="text" 
+                                       inputMode="decimal"
                                        disabled={isLocked}
                                        className="w-16 px-2 py-0.5 rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white text-center text-sm font-bold focus:ring-2 focus:ring-[#003366] outline-none disabled:opacity-50"
-                                       value={alert.minStock}
+                                       value={alert.minStock ?? ''}
                                        onChange={(e) => handleUpdateMinStock(alert.id, e.target.value)}
                                        onKeyDown={(e) => handleMinStockBlurOrEnter(e, alert.id)}
                                        onBlur={(e) => handleMinStockBlurOrEnter(e, alert.id)}
@@ -1048,9 +1055,10 @@ const Inventory: React.FC = () => {
                    <div>
                      <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Quantidade</label>
                      <input 
-                       type="number" 
+                       type="text" 
+                       inputMode="decimal"
                        placeholder="0"
-                       value={newEquipQty}
+                       value={newEquipQty ?? ''}
                        onChange={(e) => setNewEquipQty(e.target.value)}
                        className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border-none soft-ui-inset dark:text-white"
                      />
@@ -1118,9 +1126,10 @@ const Inventory: React.FC = () => {
                    <div>
                      <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Quantidade</label>
                      <input 
-                       type="number" 
-                       value={editEquipModal.data.qty}
-                       onChange={(e) => setEditEquipModal({ ...editEquipModal, data: { ...editEquipModal.data!, qty: parseInt(e.target.value) || 0 } })}
+                       type="text" 
+                       inputMode="decimal"
+                       value={editEquipModal.data.qty ?? ''}
+                       onChange={(e) => setEditEquipModal({ ...editEquipModal, data: { ...editEquipModal.data!, qty: Number(e.target.value) || 0 } })}
                        className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border-none soft-ui-inset dark:text-white"
                      />
                    </div>
@@ -1218,7 +1227,8 @@ const Inventory: React.FC = () => {
                            <ArrowRight size={16} className="text-slate-300" />
                            <div className="w-20">
                               <input 
-                                type="number" 
+                                type="text" 
+                                inputMode="decimal"
                                 value={countValues[eq.id] ?? ''}
                                 onChange={(e) => handleCountChange(eq.id, e.target.value)}
                                 className="w-full p-2 text-center font-bold text-[#003366] bg-white dark:bg-slate-700 dark:text-white border border-blue-100 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
@@ -1293,56 +1303,91 @@ const Inventory: React.FC = () => {
 
       {/* --- MODAL: HISTÓRICO MANUAL --- */}
       {showStockLogModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4 animate-fade-in">
-          <div className="bg-white dark:bg-slate-800 rounded-3xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
-            <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
-              <h2 className="text-xl font-black text-[#003366] dark:text-white flex items-center gap-3">
-                <History size={24} className="text-blue-500" /> Histórico de Alterações Manuais
-              </h2>
-              <button onClick={() => setShowStockLogModal(false)} className="text-slate-400 hover:text-red-500 transition-colors">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[250] flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white dark:bg-slate-800 rounded-3xl w-full max-w-4xl max-h-[85vh] shadow-2xl flex flex-col overflow-hidden">
+            <div className="flex justify-between items-center p-6 border-b dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl">
+                  <History size={24} />
+                </div>
+                <div>
+                  <h3 className="font-black text-xl dark:text-white uppercase">Histórico de Alterações Manuais</h3>
+                  <p className="text-xs font-bold text-slate-500 uppercase">Rastreabilidade total de ajustes de stock</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowStockLogModal(false)} 
+                className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all"
+              >
                 <X size={24} />
               </button>
             </div>
-            
-            <div className="p-6 overflow-y-auto custom-scrollbar flex-1 bg-slate-50/50 dark:bg-slate-900/20">
-              {stockOperationHistory.filter(log => log.type === 'ADJUSTMENT').length === 0 ? (
-                <div className="text-center py-12 text-slate-500 dark:text-slate-400">
-                  <History size={48} className="mx-auto mb-4 opacity-20" />
-                  <p>Nenhuma alteração manual registada.</p>
+
+            <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+              {manualHistory.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+                  <Database size={48} className="mb-4 opacity-20" />
+                  <p className="font-bold uppercase tracking-widest text-xs">Nenhum ajuste manual registado até ao momento.</p>
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {stockOperationHistory
-                    .filter(log => log.type === 'ADJUSTMENT')
-                    .sort((a, b) => b.timestamp - a.timestamp)
-                    .map((log) => {
-                      const change = log.qtyAfter - log.qtyBefore;
-                      const isPositive = change > 0;
-                      
-                      return (
-                        <div key={log.id} className="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                          <div>
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="font-bold text-[#003366] dark:text-white">{log.productName}</span>
-                              <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-full">
-                                {formatDisplayDate(formatDateISO(log.timestamp))}
-                              </span>
-                            </div>
-                            <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2">
-                              <span className="flex items-center gap-1">
-                                <UserIcon size={12} /> {log.performedBy}
-                              </span>
-                            </div>
+                  {manualHistory.map((log) => (
+                    <div key={log.id} className="p-5 bg-slate-50 dark:bg-slate-700/30 rounded-2xl border border-slate-100 dark:border-slate-700 hover:border-blue-200 dark:hover:border-blue-900/50 transition-all group">
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-black text-[#003366] dark:text-white uppercase">{log.productName}</span>
+                            <span className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 text-[10px] font-black rounded-md uppercase">Ajuste Manual</span>
                           </div>
-                          <div className={`font-black text-lg px-4 py-2 rounded-xl flex items-center gap-2 ${isPositive ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400'}`}>
-                            {isPositive ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
-                            {isPositive ? '+' : ''}{change}
+                          <div className="flex items-center gap-4 text-xs font-bold text-slate-500">
+                            <div className="flex items-center gap-1">
+                              <Clock size={14} />
+                              {new Date(log.timestamp).toLocaleString('pt-AO')}
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <ShieldCheck size={14} />
+                              Resp: {log.responsible || log.performedBy || 'Sistema'}
+                            </div>
                           </div>
                         </div>
-                      );
-                    })}
+
+                        <div className="flex items-center gap-6">
+                          <div className="text-center">
+                            <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Anterior</p>
+                            <p className="font-black text-slate-600 dark:text-slate-300">{log.previousStock ?? log.qtyBefore}</p>
+                          </div>
+                          <div className="flex items-center text-blue-400">
+                            <ChevronRight size={20} />
+                          </div>
+                          <div className="text-center">
+                            <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Atual</p>
+                            <p className="font-black text-[#003366] dark:text-white">{log.newStock ?? log.qtyAfter}</p>
+                          </div>
+                          <div className={`px-4 py-2 rounded-xl font-black text-sm min-w-[80px] text-center ${
+                            (log.qtyChanged ?? log.qtyAdded) > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                          }`}>
+                            {(log.qtyChanged ?? log.qtyAdded) > 0 ? '+' : ''}{log.qtyChanged ?? log.qtyAdded}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="mt-4 p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 text-sm italic text-slate-600 dark:text-slate-400 flex items-start gap-2">
+                        <MessageSquare size={16} className="mt-0.5 shrink-0 text-slate-400" />
+                        <span>Motivo: {log.reason || 'Não especificado'}</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
+            </div>
+
+            <div className="p-6 border-t dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 flex justify-end">
+              <button 
+                onClick={() => setShowStockLogModal(false)}
+                className="px-8 py-3 bg-[#003366] text-white font-black rounded-2xl shadow-lg hover:opacity-90 transition-all uppercase text-sm"
+              >
+                Fechar Histórico
+              </button>
             </div>
           </div>
         </div>
@@ -1466,9 +1511,10 @@ const Inventory: React.FC = () => {
                 <div>
                    <label className="text-xs font-bold text-slate-400 uppercase">Tam. Pack</label>
                    <input 
-                     type="number"
-                     value={productModal.data.packSize}
-                     onChange={e => setProductModal({ ...productModal, data: { ...productModal.data, packSize: parseInt(e.target.value) } })}
+                     type="text" 
+                     inputMode="decimal"
+                     value={productModal.data.packSize ?? ''}
+                     onChange={e => setProductModal({ ...productModal, data: { ...productModal.data, packSize: Number(e.target.value) || 0 } })}
                      className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border-none soft-ui-inset dark:text-white"
                    />
                 </div>
@@ -1477,8 +1523,9 @@ const Inventory: React.FC = () => {
                 <div>
                   <label className="text-xs font-bold text-slate-400 uppercase">Stock Atual (Físico)</label>
                   <input 
-                    type="number"
-                    value={productModal.data.stock}
+                    type="text" 
+                    inputMode="decimal"
+                    value={productModal.data.stock ?? ''}
                     onChange={e => setProductModal({ ...productModal, data: { ...productModal.data, stock: e.target.value } })}
                     className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border-none soft-ui-inset font-bold dark:text-white"
                   />
@@ -1486,8 +1533,9 @@ const Inventory: React.FC = () => {
                 <div>
                   <label className="text-xs font-bold text-slate-400 uppercase">Mínimo</label>
                   <input 
-                    type="number"
-                    value={productModal.data.minStock}
+                    type="text" 
+                    inputMode="decimal"
+                    value={productModal.data.minStock ?? ''}
                     onChange={e => setProductModal({ ...productModal, data: { ...productModal.data, minStock: e.target.value } })}
                     className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border-none soft-ui-inset dark:text-white"
                   />

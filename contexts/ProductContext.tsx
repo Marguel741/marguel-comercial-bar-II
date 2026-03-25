@@ -116,6 +116,7 @@ interface ProductContextType {
   processTransaction: (type: 'deposit' | 'withdraw', account: 'main' | 'savings' | string, amount: number, description: string, category?: string, referenceId?: string, referenceType?: Transaction['referenceType'], performedBy?: string) => void;
   processCashTPADebit: (origin: 'Cash' | 'TPA', amount: number, note: string, referenceId?: string, referenceType?: Transaction['referenceType'], performedBy?: string) => void;
   addSalesReport: (report: SalesReport) => void;
+  getConfirmedSalesReports: () => SalesReport[];
   registrarDespesaGlobal: (data: {
     tipo: string;
     origem: string;
@@ -387,60 +388,65 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     return true;
   }, [products, isDayLocked, getSystemDate]);
 
-  const handleStockMovement = useCallback((productId: string, quantity: number, type: 'SALE' | 'PURCHASE' | 'ADJUSTMENT', performedBy: string, reason: string, referenceId?: string) => {
+  const handleStockMovement = useCallback((productId: string, quantity: number, type: 'SALE' | 'PURCHASE' | 'ADJUSTMENT' | 'MANUAL_ADJUSTMENT', performedBy: string, reason: string, referenceId?: string) => {
     try {
-      if (type === 'ADJUSTMENT' && !reason) {
+      if ((type === 'ADJUSTMENT' || type === 'MANUAL_ADJUSTMENT') && !reason) {
         throw new Error('Um motivo é obrigatório para ajustes manuais de stock.');
       }
 
       // Active Protection: Validate before processing
       validateAction('UPDATE_STOCK', { productId, qty: type === 'SALE' ? -quantity : quantity });
 
-      let qtyBefore = 0;
-      let qtyAfter = 0;
-      let productName = '';
+      // FIND PRODUCT BEFORE UPDATING TO GET CURRENT VALUES
+      // This ensures qtyBefore, qtyAfter, and productName are correctly populated for the log
+      const product = products.find(p => p.id === productId);
+      if (!product) return;
+
+      const productName = product.name;
+      const qtyBefore = product.stock;
+      
+      let qtyAdded = 0;
+      if (type === 'SALE') qtyAdded = -quantity;
+      else if (type === 'PURCHASE') qtyAdded = quantity;
+      else if (type === 'ADJUSTMENT' || type === 'MANUAL_ADJUSTMENT') qtyAdded = quantity;
+
+      const qtyAfter = Math.max(0, qtyBefore + qtyAdded);
 
       setProducts(prevProducts => {
-        const productIndex = prevProducts.findIndex(p => p.id === productId);
-        if (productIndex === -1) return prevProducts;
-
-        const product = prevProducts[productIndex];
-        productName = product.name;
-        qtyBefore = product.stock;
-        
-        let qtyAdded = 0;
-        if (type === 'SALE') qtyAdded = -quantity;
-        else if (type === 'PURCHASE') qtyAdded = quantity;
-        else if (type === 'ADJUSTMENT') qtyAdded = quantity;
-
-        qtyAfter = Math.max(0, qtyBefore + qtyAdded);
-
-        const updatedProducts = [...prevProducts];
-        updatedProducts[productIndex] = { ...product, stock: qtyAfter };
-        return updatedProducts;
+        return prevProducts.map(p => p.id === productId ? { ...p, stock: qtyAfter } : p);
       });
 
-      // Update Audit Log (StockOperationLog) - Move outside setProducts
+      // Determinar se é um ajuste manual para o histórico
+      // Se for ADJUSTMENT ou MANUAL_ADJUSTMENT, ou se não houver referenceId (vindo do Inventário)
+      const isManual = type === 'ADJUSTMENT' || type === 'MANUAL_ADJUSTMENT' || (!referenceId && (type === 'SALE' || type === 'PURCHASE'));
+      const logType = isManual ? 'MANUAL_ADJUSTMENT' : type;
+
+      // Update Audit Log (StockOperationLog)
       const log: StockOperationLog = {
         id: generateUUID(),
         productId,
         productName,
-        type: type as any,
+        type: logType as any,
         qtyBefore,
-        qtyAdded: type === 'SALE' ? -quantity : quantity,
+        qtyAdded: qtyAdded,
         qtyAfter,
-        timestamp: Date.now(), // Contém ms para precisão total
-        performedBy, // Registra quem alterou
-        reason: reason || 'Ajuste Manual via Sistema',
+        // Novos campos solicitados para o histórico detalhado
+        previousStock: qtyBefore,
+        newStock: qtyAfter,
+        qtyChanged: qtyAdded,
+        responsible: performedBy,
+        timestamp: Date.now(),
+        performedBy,
+        reason: reason || (isManual ? 'Ajuste Manual via Sistema' : 'Movimentação de Stock'),
         referenceId
       };
       setStockOperationHistory(prev => [log, ...prev]);
 
-      // Update Audit Context - Move outside setProducts
+      // Update Audit Context
       addLog({
-        action: type === 'SALE' ? 'VENDA_STOCK' : (type === 'PURCHASE' ? 'COMPRA_STOCK' : 'AJUSTE_STOCK'),
+        action: isManual ? 'AJUSTE_MANUAL_STOCK' : (type === 'SALE' ? 'VENDA_STOCK' : (type === 'PURCHASE' ? 'COMPRA_STOCK' : 'AJUSTE_STOCK')),
         module: 'STOCK',
-        description: `${type === 'SALE' ? 'Venda' : (type === 'PURCHASE' ? 'Compra' : 'Ajuste')} de ${Math.abs(quantity)} unidades de ${productName}. Stock: ${qtyBefore} -> ${qtyAfter}. Motivo: ${reason || 'Ajuste Manual'}`,
+        description: `${isManual ? 'Ajuste Manual' : (type === 'SALE' ? 'Venda' : (type === 'PURCHASE' ? 'Compra' : 'Ajuste'))} de ${Math.abs(quantity)} unidades de ${productName}. Stock: ${qtyBefore} -> ${qtyAfter}. Motivo: ${reason || 'Ajuste Manual'}`,
         entityId: productId,
         previousValue: qtyBefore,
         newValue: qtyAfter
@@ -456,7 +462,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       }, user);
       throw error;
     }
-  }, [user, addLog, validateAction]);
+  }, [user, addLog, validateAction, products]);
 
   const [priceHistory, setPriceHistory] = useState<PriceHistoryLog[]>(() => {
       try {
@@ -547,6 +553,10 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       return unique;
     } catch { return []; }
   });
+
+  const getConfirmedSalesReports = useCallback(() => {
+    return salesReports.filter(r => r.status === ClosureStatus.FECHO_CONFIRMADO);
+  }, [salesReports]);
 
   const processTransaction = useCallback((
     type: 'deposit' | 'withdraw', 
@@ -789,15 +799,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       description: `Dia ${cleanTarget} desbloqueado. Motivo: ${reason}`,
       performedBy: user?.name || 'Sistema'
     });
-
-    // Revert sales report status to FECHO_CONFIRMADO
-    setSalesReports(prevReports => prevReports.map(report => {
-      const reportDate = report.dateISO ? report.dateISO.split('T')[0] : report.date;
-      if (cleanDate(reportDate) === cleanTarget) {
-        return { ...report, status: ClosureStatus.FECHO_CONFIRMADO };
-      }
-      return report;
-    }));
   };
 
   const checkDayLock = useCallback((date: Date | string) => {
@@ -1013,13 +1014,26 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       validateAction('UPDATE_PRODUCT', { price: updates.sellPrice });
       
       const product = products.find(p => p.id === id);
-      setProducts(prevProducts => prevProducts.map(p => p.id === id ? { ...p, ...updates } : p));
+      if (!product) return;
+
+      // Se o stock estiver a ser alterado diretamente via updateProduct (raro, mas possível)
+      if (updates.stock !== undefined && updates.stock !== product.stock) {
+        const diff = updates.stock - product.stock;
+        handleStockMovement(id, diff, 'MANUAL_ADJUSTMENT', user?.name || 'Sistema', 'Ajuste via Edição de Produto');
+        // Não precisamos atualizar o stock aqui pois o handleStockMovement já o fará via setProducts
+        const { stock, ...otherUpdates } = updates;
+        if (Object.keys(otherUpdates).length > 0) {
+          setProducts(prevProducts => prevProducts.map(p => p.id === id ? { ...p, ...otherUpdates } : p));
+        }
+      } else {
+        setProducts(prevProducts => prevProducts.map(p => p.id === id ? { ...p, ...updates } : p));
+      }
       
       addAuditLog({
         action: 'EDITAR_PRODUTO',
         module: 'INVENTARIO',
         entityId: id,
-        description: `Produto ${product?.name || id} atualizado.`,
+        description: `Produto ${product.name} atualizado.`,
         performedBy: user?.name || 'Sistema'
       });
     } catch (error) {
@@ -1427,23 +1441,12 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       if (!checkPermission('sales_execute')) return;
       validateAction('SALES_REPORT', { date: report.date, items: report.itemsSummary });
 
-      // Inventory Consistency: Revert old stock before applying new count if editing
-      const existingReport = salesReports.find(r => r.date === report.date);
-      let stockUpdated = false;
-
-      if (existingReport && existingReport.stockUpdated) {
-        applyStockDelta(existingReport, report.itemsSummary);
-        stockUpdated = true;
-      } else {
-        // Deduct stock automatically
-        stockUpdated = deductStockFromReport(report);
-      }
-
+      // Inventory Consistency: Stock deduction moved to confirmSalesReport
       const finalReport = { 
         ...report, 
         id: report.id || generateUUID(),
         synced: false,
-        stockUpdated
+        stockUpdated: false // Stock only updated on confirmation
       };
 
       setSalesReports(prev => {
@@ -1514,11 +1517,8 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
           items: updates.itemsSummary || report.itemsSummary 
         });
 
-        // Stock Delta Adjustment if itemsSummary is being updated
-        if (updates.itemsSummary && report.stockUpdated) {
-          applyStockDelta(report, updates.itemsSummary);
-        }
-
+        // Stock deduction moved to confirmSalesReport
+        
         // If report is already confirmed and processed, we need to handle financial adjustments
         if (report.status === ClosureStatus.FECHO_CONFIRMADO && report.processedFinancials) {
           const hasFinancialChanges = 
@@ -1599,20 +1599,21 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       confirmedBy,
       confirmationTimestamp: getSystemDate().getTime(),
       unilateralAdminConfirmation: isUnilateral,
-      processedFinancials: true
+      processedFinancials: true,
+      tpa: (report.tpa || 0) + (report.transfer || 0), // Soma Transferência ao TPA automaticamente
+      transfer: 0 // Zera o campo transferência no relatório final
     };
 
     // 2. Financial Integration (Estado de Conta)
     // Only process if not already processed to prevent duplication
     if (!report.processedFinancials) {
       const cash = updatedReport.cash || 0;
-      const tpa = updatedReport.tpa || 0;
-      const transfer = updatedReport.transfer || 0;
+      const tpa = updatedReport.tpa || 0; // Já contém o transfer somado acima
       const totalLifted = updatedReport.totalLifted || 0;
 
       // Update accumulators
       setCashBalance(prev => prev + cash);
-      setTPABalance(prev => prev + tpa + transfer); // Transfer added to TPA balance
+      setTPABalance(prev => prev + tpa); // TPA já inclui transfer
 
       // Total Lifted goes to main account (Conta Corrente)
       if (totalLifted > 0) {
@@ -1632,7 +1633,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
         action: 'INTEGRAÇÃO_FINANCEIRA_FECHO',
         entity: 'SalesReport',
         entityId: reportId,
-        details: `Valores de fecho integrados: Total Levantado(+${totalLifted}), Cash(+${cash}), TPA(+${tpa}), Transferência(+${transfer})`,
+        details: `Valores de fecho integrados: Total Levantado(+${totalLifted}), Cash(+${cash}), TPA(+${tpa}) (Transferência somada ao TPA)`,
         performedBy: confirmedBy
       });
     }
@@ -1955,33 +1956,42 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   const ignoreLockedDayWithoutClosure = useCallback((dateStr: string) => {
     const clean = cleanDate(dateStr);
-    const hasValidReport = salesReports.some(r => 
-      cleanDate(r.dateISO || r.date) === clean && 
-      r.status === ClosureStatus.FECHO_CONFIRMADO
-    );
-
-    if (!hasValidReport && isDayLocked(dateStr)) {
-      // Anula qualquer transação pendente desse dia (sem criar ghost)
-      setTransactions(prev => 
-        prev.filter(t => cleanDate(t.operationalDay || t.date) !== clean)
+    
+    if (isDayLocked(dateStr)) {
+      const hasConfirmedReport = salesReports.some(r => 
+        cleanDate(r.dateISO || r.date) === clean && 
+        r.status === ClosureStatus.FECHO_CONFIRMADO
       );
 
-      // Remove qualquer relatório fantasma ou parcial que possa ter ficado
+      // Se NÃO houver fecho confirmado, removemos as transações financeiras desse dia
+      if (!hasConfirmedReport) {
+        setTransactions(prev => 
+          prev.filter(t => cleanDate(t.operationalDay || t.date) !== clean)
+        );
+      }
+
+      // Remove apenas relatórios que não sejam fecho confirmado nem fecho parcial
       setSalesReports(prev => 
-        prev.filter(r => cleanDate(r.dateISO || r.date) !== clean)
+        prev.filter(r => {
+          const isSameDay = cleanDate(r.dateISO || r.date) === clean;
+          if (!isSameDay) return true;
+          
+          const isConfirmedOrPartial = r.status === ClosureStatus.FECHO_CONFIRMADO || r.status === ClosureStatus.FECHO_PARCIAL;
+          return isConfirmedOrPartial;
+        })
       );
 
       addAuditLog({
-        action: 'IGNORAR_DIA_SEM_FECHO',
-        module: 'CALENDÁRIO',
+        action: 'LIMPEZA_DIA_BLOQUEADO',
+        module: 'VENDAS',
         entityId: clean,
-        description: `Dia ${clean} bloqueado sem fecho válido → valores ignorados automaticamente.`,
-        performedBy: user?.name || 'Sistema'
+        description: `Limpeza de segurança no dia ${clean} (bloqueado sem fecho confirmado). Resumos parciais mantidos.`,
+        performedBy: 'Sistema'
       });
     }
-  }, [salesReports, isDayLocked, setTransactions, setSalesReports, addAuditLog, user]);
+  }, [isDayLocked, salesReports, addAuditLog]);
 
-  const value = useMemo(() => ({ 
+  const value = useMemo(() => ({
     products, categories, purchases, currentBalance, savingsBalance, cashBalance, tpaBalance, cards, transactions, salesReports, 
     expenses, expenseCategories, inventoryHistory, priceHistory, lockedDays, systemDate,
     getSystemDate, setSystemDate, unlockDay, lockDay, isDayLocked, checkDayLock,
@@ -1990,6 +2000,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     addInventoryLog, addProduct, updateProduct, deleteProduct, addCategory, editCategory, removeCategory,
     addPurchase, getPurchasesByDate, getTodayPurchases, processTransaction, processCashTPADebit,
     addSalesReport, 
+    getConfirmedSalesReports,
     registrarDespesaGlobal,
     registrarAlmocoBlindado,
     updateSalesReport, 
@@ -2011,6 +2022,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     addInventoryLog, addProduct, updateProduct, deleteProduct, addCategory, editCategory, removeCategory,
     addPurchase, getPurchasesByDate, getTodayPurchases, processTransaction, processCashTPADebit,
     addSalesReport, 
+    getConfirmedSalesReports,
     registrarDespesaGlobal,
     registrarAlmocoBlindado,
     updateSalesReport, 

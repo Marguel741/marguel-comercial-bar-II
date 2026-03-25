@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback, memo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { 
   DollarSign, History, Save, Info, Search, CheckCircle, X, ShoppingCart, 
@@ -17,6 +17,32 @@ import { PriceHistoryLog, SavedProposal, PurchaseRecord, UserPermissions, UserRo
 import { hasPermission } from '../src/utils/permissions';
 import { formatDisplayDate, formatDateISO, cleanDate, safeFormatCurrency, getFileReader, generateUUID } from '../src/utils';
 
+const CartItem = memo(({ id, qty, product, variant = 'default' }: { id: string, qty: number, product: any, variant?: 'default' | 'blue' }) => {
+  if (!product) return null;
+  const packSize = product.packSize || 1;
+  const packCost = product.buyPrice * packSize;
+  const qtyBg = variant === 'blue' ? 'bg-blue-50 dark:bg-blue-900/30 text-[#0054A6] dark:text-blue-400' : 'bg-slate-100 dark:bg-slate-700 text-[#003366] dark:text-white';
+  const qtySize = variant === 'blue' ? 'w-12 h-12' : 'w-10 h-10';
+  
+  return (
+    <div className="flex justify-between items-center py-3 border-b border-slate-50 dark:border-slate-700 last:border-0">
+      <div className="flex items-center gap-4">
+        <div className={`${qtySize} ${qtyBg} rounded-xl flex items-center justify-center font-black`}>
+          {qty}
+        </div>
+        <div>
+          <p className="font-bold text-slate-800 dark:text-white text-sm">{product.name}</p>
+          <p className="text-[10px] text-slate-400 font-bold uppercase">{product.packType || 'Pack'} x {packSize}un</p>
+        </div>
+      </div>
+      <div className="text-right">
+        <p className="font-black text-slate-800 dark:text-white text-sm">{((packCost || 0) * Number(qty)).toLocaleString()} Kz</p>
+        <p className="text-[10px] text-slate-400 font-medium">{(packCost || 0).toLocaleString()} Kz / {product.packType || 'un'}</p>
+      </div>
+    </div>
+  );
+});
+
 const Prices: React.FC = () => {
   const { products, categories, updateProduct, purchases, addPurchase, isDayLocked, systemDate, getSystemDate } = useProducts();
   const { sidebarMode, triggerHaptic } = useLayout(); 
@@ -33,7 +59,7 @@ const Prices: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState('Todos');
   const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null);
   const [toast, setToast] = useState<{ show: boolean, message: string }>({ show: false, message: '' });
-  const [editingPrices, setEditingPrices] = useState<Record<string, { buy?: number, sell?: number, promoQty?: number, promoPrice?: number, isPromoActive?: boolean }>>({});
+  const [editingPrices, setEditingPrices] = useState<Record<string, { buy?: string, sell?: string, packBuy?: string, promoQty?: string, promoPrice?: string, isPromoActive?: boolean }>>({});
   
   const [priceHistory, setPriceHistory] = useState<PriceHistoryLog[]>(() => {
     try {
@@ -60,6 +86,9 @@ const Prices: React.FC = () => {
   // --- STATES SIMULAÇÃO ---
   const [showSimulationModal, setShowSimulationModal] = useState(false);
   const [showMixMatchModal, setShowMixMatchModal] = useState(false);
+  const [selectedMixMatchProducts, setSelectedMixMatchProducts] = useState<Record<string, boolean>>({});
+  const [mixMatchQty, setMixMatchQty] = useState<number>(3);
+  const [mixMatchPrice, setMixMatchPrice] = useState<number>(0);
   const [simulationStep, setSimulationStep] = useState<'select' | 'summary' | 'message' | 'saved'>('select');
   const [simSearchTerm, setSimSearchTerm] = useState('');
   const [simCategory, setSimCategory] = useState('Todos');
@@ -121,7 +150,7 @@ const Prices: React.FC = () => {
     return products.filter(p => {
       const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesCategory = selectedCategory === 'Todos' || p.category === selectedCategory;
-      const matchesSubcategory = !selectedSubcategory || (selectedSubcategory === 'Mix & Match' && p.isPromoActive && p.category === 'Cervejas');
+      const matchesSubcategory = !selectedSubcategory || (selectedSubcategory === 'Mix & Match' && (p.isPromoActive || p.hasMixMatch || p.isMixMatchActive));
       return matchesSearch && matchesCategory && matchesSubcategory;
     });
   }, [products, searchTerm, selectedCategory, selectedSubcategory]);
@@ -145,18 +174,32 @@ const Prices: React.FC = () => {
   // --- LOGIC: PRICES & SIMULATION ---
   const handleInputChange = (productId: string, field: 'buy' | 'sell', value: string) => {
     if (!canManagePrices) return;
-    const numValue = parseFloat(value);
-    setEditingPrices(prev => ({ ...prev, [productId]: { ...prev[productId], [field]: isNaN(numValue) ? 0 : numValue } }));
+    setEditingPrices(prev => {
+      const current = prev[productId] || {};
+      const newEdit = { ...current, [field]: value };
+      
+      // Se alterou o preço unitário de compra, atualiza o preço da grade correspondente para manter sincronia visual
+      if (field === 'buy') {
+        const product = products.find(p => p.id === productId);
+        const packSize = product?.packSize || 1;
+        const numValue = parseFloat(value.replace(',', '.'));
+        if (!isNaN(numValue)) {
+          newEdit.packBuy = (numValue * packSize).toString();
+        } else {
+          newEdit.packBuy = '';
+        }
+      }
+      return { ...prev, [productId]: newEdit };
+    });
   };
 
   const handlePromoChange = (productId: string, field: 'qty' | 'price', value: string) => {
     if (!canManagePrices) return;
-    const numValue = parseFloat(value);
     setEditingPrices(prev => ({ 
       ...prev, 
       [productId]: { 
         ...prev[productId], 
-        [field === 'qty' ? 'promoQty' : 'promoPrice']: isNaN(numValue) ? 0 : numValue 
+        [field === 'qty' ? 'promoQty' : 'promoPrice']: value 
       } 
     }));
   };
@@ -177,10 +220,12 @@ const Prices: React.FC = () => {
 
   const handlePackPriceChange = (productId: string, packSize: number, packPriceStr: string) => {
     if (!canManagePrices) return;
-    const packPrice = parseFloat(packPriceStr);
-    if (isNaN(packPrice)) return;
-    const unitPrice = packPrice / packSize;
-    handleInputChange(productId, 'buy', unitPrice.toString());
+    const packPrice = parseFloat(packPriceStr.replace(',', '.'));
+    const unitPrice = !isNaN(packPrice) ? (packPrice / packSize).toString() : '';
+    setEditingPrices(prev => ({ 
+      ...prev, 
+      [productId]: { ...prev[productId], buy: unitPrice, packBuy: packPriceStr } 
+    }));
   };
 
   const handleSave = (productId: string, productName: string) => {
@@ -190,16 +235,19 @@ const Prices: React.FC = () => {
     if (!updates || !currentProduct) return;
 
     const finalUpdates: Partial<Product> = {
-      buyPrice: updates.buy !== undefined ? updates.buy : undefined,
-      sellPrice: updates.sell !== undefined ? updates.sell : undefined,
-      promoQty: updates.promoQty,
-      promoPrice: updates.promoPrice,
+      buyPrice: updates.buy !== undefined ? parseFloat(updates.buy.replace(',', '.')) : undefined,
+      sellPrice: updates.sell !== undefined ? parseFloat(updates.sell.replace(',', '.')) : undefined,
+      promoQty: updates.promoQty !== undefined ? parseFloat(updates.promoQty.replace(',', '.')) : undefined,
+      promoPrice: updates.promoPrice !== undefined ? parseFloat(updates.promoPrice.replace(',', '.')) : undefined,
       isPromoActive: updates.isPromoActive,
-      isMixMatch: updates.isPromoActive,
-      mixMatchQty: updates.promoQty,
-      mixMatchPrice: updates.promoPrice,
+      // Novos campos solicitados para Bug #13
+      hasMixMatch: updates.isPromoActive !== undefined ? updates.isPromoActive : currentProduct.hasMixMatch,
+      mixMatchQty: updates.promoQty !== undefined ? parseFloat(updates.promoQty.replace(',', '.')) : currentProduct.mixMatchQty,
+      mixMatchPrice: updates.promoPrice !== undefined ? parseFloat(updates.promoPrice.replace(',', '.')) : currentProduct.mixMatchPrice,
+      isMixMatchActive: updates.isPromoActive !== undefined ? updates.isPromoActive : currentProduct.isMixMatchActive,
+      isMixMatch: updates.isPromoActive !== undefined ? updates.isPromoActive : currentProduct.isMixMatch,
       discountAmount: updates.promoPrice 
-        ? (currentProduct.sellPrice * (updates.promoQty || 1) - updates.promoPrice) 
+        ? (currentProduct.sellPrice * (currentProduct.promoQty || 1) - parseFloat(updates.promoPrice.replace(',', '.'))) 
         : 0
     };
 
@@ -214,7 +262,7 @@ const Prices: React.FC = () => {
     });
   };
 
-  const updateSimulationCart = (productId: string, delta: number) => {
+  const updateSimulationCart = useCallback((productId: string, delta: number) => {
     triggerHaptic('impact');
     setIsCurrentSimulationSaved(false);
     setSimulationCart(prev => {
@@ -224,9 +272,9 @@ const Prices: React.FC = () => {
       if (newQty === 0) delete newCart[productId];
       return newCart;
     });
-  };
+  }, [triggerHaptic]);
 
-  const calculateSimulationTotal = () => {
+  const simulationTotal = useMemo(() => {
     let total = 0;
     Object.entries(simulationCart).forEach(([id, qty]) => {
       const product = products.find(p => p.id === id);
@@ -237,7 +285,14 @@ const Prices: React.FC = () => {
       }
     });
     return total;
-  };
+  }, [simulationCart, products]);
+
+  const simulationCartItems = useMemo(() => {
+    return Object.entries(simulationCart).map(([id, qty]) => {
+      const p = products.find(prod => prod.id === id);
+      return { id, qty, p };
+    });
+  }, [simulationCart, products]);
 
   const getPackCost = (product: any): number => {
     const price = typeof product.buyPrice === 'number' ? product.buyPrice : 0;
@@ -265,7 +320,7 @@ const Prices: React.FC = () => {
     return Object.entries(groups).sort(([, a], [, b]) => (b[0].timestamp || 0) - (a[0].timestamp || 0));
   }, [purchases]);
 
-  const updatePurchaseCart = (productId: string, delta: number) => {
+  const updatePurchaseCart = useCallback((productId: string, delta: number) => {
     triggerHaptic('impact');
     setPurchaseCart(prev => {
       const currentQty = prev[productId] || 0;
@@ -274,9 +329,9 @@ const Prices: React.FC = () => {
       if (newQty === 0) delete newCart[productId];
       return newCart;
     });
-  };
+  }, [triggerHaptic]);
 
-  const calculatePurchaseTotal = () => {
+  const purchaseTotal = useMemo(() => {
     let total = 0;
     Object.entries(purchaseCart).forEach(([id, qty]) => {
       const product = products.find(p => p.id === id);
@@ -287,7 +342,14 @@ const Prices: React.FC = () => {
       }
     });
     return total;
-  };
+  }, [purchaseCart, products]);
+
+  const purchaseCartItems = useMemo(() => {
+    return Object.entries(purchaseCart).map(([id, qty]) => {
+      const p = products.find(prod => prod.id === id);
+      return { id, qty, p };
+    });
+  }, [purchaseCart, products]);
 
   const [showConfirmPurchase, setShowConfirmPurchase] = useState(false);
 
@@ -416,7 +478,7 @@ const Prices: React.FC = () => {
         name: proposalNameInput || `Proposta ${formatDisplayDate(formatDateISO(getSystemDate()))}`,
         date: getSystemDate().toLocaleString('pt-AO'),
         items: { ...simulationCart },
-        total: calculateSimulationTotal(),
+        total: simulationTotal,
         createdBy: user?.name || 'Desconhecido',
         snapshotPrices: pricesSnapshot,
         status: 'Proposta'
@@ -442,10 +504,14 @@ const Prices: React.FC = () => {
 
   const handleDeleteProposal = (id: string) => {
     triggerHaptic('warning');
-    if (window.confirm("Eliminar proposta?")) {
-      setSavedProposals(prev => prev.filter(p => p.id !== id));
-      showToast("Eliminada.");
-    }
+    // Removido window.confirm para evitar bloqueios em iframes e garantir execução
+    setSavedProposals(prev => {
+      const updated = prev.filter(p => p.id !== id);
+      // Persistência imediata no localStorage para garantir sincronia
+      localStorage.setItem('mg_saved_proposals', JSON.stringify(updated));
+      return updated;
+    });
+    showToast("Proposta eliminada com sucesso.");
   };
 
   const handleOpenReport = (data: SavedProposal | PurchaseRecord) => {
@@ -598,12 +664,20 @@ const Prices: React.FC = () => {
                   {filteredProducts.length > 0 ? (
                     filteredProducts.map((p) => {
                       const currentEdit = editingPrices[p.id] || {};
-                      const displayBuy = currentEdit.buy !== undefined ? currentEdit.buy : p.buyPrice;
-                      const displaySell = currentEdit.sell !== undefined ? currentEdit.sell : p.sellPrice;
-                      const profit = displaySell - displayBuy;
+                      const displayBuy = currentEdit.buy !== undefined ? currentEdit.buy : p.buyPrice.toString();
+                      const displaySell = currentEdit.sell !== undefined ? currentEdit.sell : p.sellPrice.toString();
+                      
+                      const numBuy = parseFloat(displayBuy.replace(',', '.')) || 0;
+                      const numSell = parseFloat(displaySell.replace(',', '.')) || 0;
+                      const profit = numSell - numBuy;
+                      
                       const hasChanged = currentEdit.buy !== undefined || currentEdit.sell !== undefined || currentEdit.promoQty !== undefined || currentEdit.promoPrice !== undefined || currentEdit.isPromoActive !== undefined;
                       const packSize = p.packSize && p.packSize > 1 ? p.packSize : 1;
-                      const displayPackBuy = displayBuy * packSize;
+                      
+                      // Preço da grade (pack)
+                      const displayPackBuy = currentEdit.packBuy !== undefined 
+                        ? currentEdit.packBuy 
+                        : (p.buyPrice * packSize).toString();
 
                       return (
                         <React.Fragment key={p.id}>
@@ -611,7 +685,7 @@ const Prices: React.FC = () => {
                             <td className="p-6">
                               <div className="flex items-center gap-2">
                                 <p className="font-bold text-slate-800 dark:text-white text-base">{p.name}</p>
-                                {p.category === 'Cervejas' && (
+                                {(p.isMixMatchActive || p.isPromoActive || p.hasMixMatch) && (
                                   <button 
                                     onClick={() => toggleRow(p.id)}
                                     className={`p-1 rounded-full transition-all ${expandedRows[p.id] ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-400'}`}
@@ -638,9 +712,10 @@ const Prices: React.FC = () => {
                                   </label>
                                   <div className={`flex items-center gap-2 p-2 bg-white dark:bg-slate-800 rounded-xl soft-ui-inset border border-slate-200 dark:border-slate-600 shadow-inner ${!canManagePrices || isLocked ? 'opacity-60 grayscale' : ''}`}>
                                     <input 
-                                      type="number" 
+                                      type="text" 
+                                      inputMode="decimal"
                                       disabled={!canManagePrices || isLocked}
-                                      value={displayPackBuy === 0 ? '' : (Number.isInteger(displayPackBuy) ? displayPackBuy : displayPackBuy.toFixed(2))}
+                                      value={displayPackBuy ?? ''}
                                       onChange={(e) => handlePackPriceChange(p.id, packSize, e.target.value)}
                                       className="bg-transparent border-none w-full text-lg font-bold text-[#003366] dark:text-white focus:ring-0 outline-none p-0 disabled:cursor-not-allowed"
                                       placeholder="0"
@@ -648,16 +723,17 @@ const Prices: React.FC = () => {
                                     <span className="text-xs font-black text-slate-400">KZ</span>
                                   </div>
                                   <div className="text-[10px] text-slate-500 dark:text-slate-400 px-1 font-medium">
-                                    = <span className="font-bold text-[#003366] dark:text-white">{(displayBuy || 0).toLocaleString('pt-AO', {maximumFractionDigits: 2})} Kz</span> /unidade
+                                    = <span className="font-bold text-[#003366] dark:text-white">{(numBuy || 0).toLocaleString('pt-AO', {maximumFractionDigits: 2})} Kz</span> /unidade
                                   </div>
                                 </div>
                               ) : (
                                 <div className={`flex items-center gap-3 p-3 bg-white dark:bg-slate-800 rounded-2xl soft-ui-inset border border-slate-200 dark:border-slate-600 w-full min-w-[180px] shadow-inner ${!canManagePrices || isLocked ? 'opacity-60 grayscale' : ''}`}>
                                   <span className="text-xs font-black text-slate-400">KZ</span>
                                   <input 
-                                    type="number" 
+                                    type="text" 
+                                    inputMode="decimal"
                                     disabled={!canManagePrices || isLocked}
-                                    value={displayBuy === 0 ? '' : displayBuy}
+                                    value={displayBuy ?? ''}
                                     onChange={(e) => handleInputChange(p.id, 'buy', e.target.value)}
                                     className="bg-transparent border-none w-full text-lg font-bold text-[#003366] dark:text-white focus:ring-0 outline-none p-0 disabled:cursor-not-allowed"
                                     placeholder="0"
@@ -672,9 +748,10 @@ const Prices: React.FC = () => {
                                 <div className={`flex items-center gap-3 p-2 bg-white dark:bg-slate-800 rounded-xl soft-ui-inset border border-slate-200 dark:border-slate-600 shadow-inner h-[46px] ${!canManagePrices || isLocked ? 'opacity-60 grayscale' : ''}`}>
                                   <span className="text-xs font-black text-slate-400">KZ</span>
                                   <input 
-                                    type="number" 
+                                    type="text" 
+                                    inputMode="decimal"
                                     disabled={!canManagePrices || isLocked}
-                                    value={displaySell === 0 ? '' : displaySell}
+                                    value={displaySell ?? ''}
                                     onChange={(e) => handleInputChange(p.id, 'sell', e.target.value)}
                                     className="bg-transparent border-none w-full text-lg font-bold text-[#003366] dark:text-white focus:ring-0 outline-none p-0 disabled:cursor-not-allowed"
                                     placeholder="0"
@@ -713,7 +790,7 @@ const Prices: React.FC = () => {
                               </div>
                             </td>
                           </tr>
-                          {expandedRows[p.id] && p.category === 'Cervejas' && (
+                          {expandedRows[p.id] && (p.isMixMatchActive || p.isPromoActive || p.hasMixMatch) && (
                             <tr className="bg-slate-50 dark:bg-slate-800/50 animate-fade-in">
                               <td colSpan={5} className="p-4">
                                 <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-4 shadow-inner max-w-md relative">
@@ -753,9 +830,10 @@ const Prices: React.FC = () => {
                                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Quantidade Mínima</label>
                                       <div className="relative">
                                         <input 
-                                          type="number"
+                                          type="text"
+                                          inputMode="decimal"
                                           disabled={!canManagePrices || isLocked}
-                                          value={currentEdit.promoQty !== undefined ? currentEdit.promoQty : (p.promoQty || '')}
+                                          value={currentEdit.promoQty ?? (p.promoQty?.toString() || '')}
                                           onChange={(e) => handlePromoChange(p.id, 'qty', e.target.value)}
                                           className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-lg font-black text-[#003366] dark:text-white outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                                           placeholder="3"
@@ -767,9 +845,10 @@ const Prices: React.FC = () => {
                                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Preço Promocional (Pack)</label>
                                       <div className="relative">
                                         <input 
-                                          type="number"
+                                          type="text"
+                                          inputMode="decimal"
                                           disabled={!canManagePrices || isLocked}
-                                          value={currentEdit.promoPrice !== undefined ? currentEdit.promoPrice : (p.promoPrice || '')}
+                                          value={currentEdit.promoPrice ?? (p.promoPrice?.toString() || '')}
                                           onChange={(e) => handlePromoChange(p.id, 'price', e.target.value)}
                                           className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-lg font-black text-green-600 dark:text-green-400 outline-none focus:ring-2 focus:ring-green-500 transition-all"
                                           placeholder="1000"
@@ -782,7 +861,7 @@ const Prices: React.FC = () => {
                                   <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-800/50">
                                     <p className="text-[10px] text-blue-600 dark:text-blue-400 font-medium leading-relaxed">
                                       <Info size={12} className="inline mr-1 mb-0.5" />
-                                      O Mix & Match permite que o cliente combine diferentes cervejas para atingir a quantidade mínima e obter o preço promocional.
+                                      O Mix & Match permite que o cliente combine diferentes produtos para atingir a quantidade mínima e obter o preço promocional.
                                     </p>
                                   </div>
 
@@ -904,10 +983,40 @@ const Prices: React.FC = () => {
                 Selecione os produtos que deseja agrupar para venda conjunta (Mix Match).
               </p>
               
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Quantidade do Grupo</label>
+                  <input 
+                    type="text"
+                    inputMode="decimal"
+                    value={mixMatchQty ?? ''}
+                    onChange={(e) => setMixMatchQty(Number(e.target.value) || 0)}
+                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-lg font-black text-[#003366] dark:text-white outline-none focus:ring-2 focus:ring-purple-500 transition-all"
+                    placeholder="3"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Preço do Grupo (KZ)</label>
+                  <input 
+                    type="text"
+                    inputMode="decimal"
+                    value={mixMatchPrice ?? ''}
+                    onChange={(e) => setMixMatchPrice(Number(e.target.value) || 0)}
+                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-lg font-black text-green-600 dark:text-green-400 outline-none focus:ring-2 focus:ring-green-500 transition-all"
+                    placeholder="1000"
+                  />
+                </div>
+              </div>
+
               <div className="space-y-2">
                 {products.map(p => (
                   <label key={p.id} className="flex items-center gap-3 p-3 rounded-xl border border-slate-100 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer transition-colors">
-                    <input type="checkbox" className="w-4 h-4 text-purple-600 rounded border-slate-300 focus:ring-purple-500" />
+                    <input 
+                      type="checkbox" 
+                      checked={!!selectedMixMatchProducts[p.id]}
+                      onChange={() => setSelectedMixMatchProducts(prev => ({ ...prev, [p.id]: !prev[p.id] }))}
+                      className="w-4 h-4 text-purple-600 rounded border-slate-300 focus:ring-purple-500" 
+                    />
                     <div className="flex-1">
                       <div className="font-bold text-[#003366] dark:text-white">{p.name}</div>
                       <div className="text-xs text-slate-500">{p.category}</div>
@@ -922,16 +1031,38 @@ const Prices: React.FC = () => {
             
             <div className="p-6 border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 flex justify-end gap-3">
               <button 
-                onClick={() => setShowMixMatchModal(false)}
+                onClick={() => {
+                  setShowMixMatchModal(false);
+                  setSelectedMixMatchProducts({});
+                }}
                 className="px-6 py-3 rounded-xl font-bold text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
               >
                 Cancelar
               </button>
               <button 
                 onClick={() => {
+                  const selectedIds = Object.keys(selectedMixMatchProducts).filter(id => selectedMixMatchProducts[id]);
+                  if (selectedIds.length === 0) {
+                    showToast('Selecione pelo menos um produto!');
+                    return;
+                  }
+                  
                   triggerHaptic('success');
+                  selectedIds.forEach(id => {
+                    updateProduct(id, {
+                      hasMixMatch: true,
+                      mixMatchQty: mixMatchQty,
+                      mixMatchPrice: mixMatchPrice,
+                      isMixMatchActive: true,
+                      isPromoActive: true,
+                      promoQty: mixMatchQty,
+                      promoPrice: mixMatchPrice
+                    });
+                  });
+                  
                   setShowMixMatchModal(false);
-                  alert('Mix Match criado com sucesso! (Funcionalidade visual)');
+                  setSelectedMixMatchProducts({});
+                  showToast(`${selectedIds.length} produtos atualizados com Mix Match!`);
                 }}
                 className="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold shadow-lg shadow-purple-200 dark:shadow-none transition-all active:scale-95 flex items-center gap-2"
               >
@@ -1070,35 +1201,15 @@ const Prices: React.FC = () => {
                     </div>
 
                     <div className="space-y-4">
-                      {Object.entries(simulationCart).map(([id, qty]) => {
-                        const p = products.find(prod => prod.id === id);
-                        if (!p) return null;
-                        const packSize = p.packSize || 1;
-                        const packCost = p.buyPrice * packSize;
-                        return (
-                          <div key={id} className="flex justify-between items-center py-3 border-b border-slate-50 dark:border-slate-700 last:border-0">
-                            <div className="flex items-center gap-4">
-                              <div className="w-10 h-10 bg-slate-100 dark:bg-slate-700 rounded-xl flex items-center justify-center font-black text-[#003366] dark:text-white">
-                                {qty}
-                              </div>
-                              <div>
-                                <p className="font-bold text-slate-800 dark:text-white text-sm">{p.name}</p>
-                                <p className="text-[10px] text-slate-400 font-bold uppercase">{p.packType || 'Pack'} x {packSize}un</p>
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <p className="font-black text-[#003366] dark:text-white text-sm">{((packCost || 0) * Number(qty)).toLocaleString()} Kz</p>
-                              <p className="text-[10px] text-slate-400 font-medium">{(packCost || 0).toLocaleString()} Kz / {p.packType || 'un'}</p>
-                            </div>
-                          </div>
-                        );
-                      })}
+                      {simulationCartItems.map(({ id, qty, p }) => (
+                        <CartItem key={id} id={id} qty={qty} product={p} />
+                      ))}
                     </div>
 
                     <div className="mt-8 pt-6 border-t-2 border-dashed border-slate-100 dark:border-slate-700 flex justify-between items-end">
                       <div>
                         <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Total Estimado</p>
-                        <p className="text-4xl font-black text-[#003366] dark:text-blue-400">{(calculateSimulationTotal() || 0).toLocaleString()} <span className="text-lg">Kz</span></p>
+                        <p className="text-4xl font-black text-[#003366] dark:text-blue-400">{(simulationTotal || 0).toLocaleString()} <span className="text-lg">Kz</span></p>
                       </div>
                       <div className="text-right text-[10px] text-slate-400 font-medium">
                         *Valores baseados no último preço de compra registrado.
@@ -1110,7 +1221,7 @@ const Prices: React.FC = () => {
                     <div className="grid grid-cols-2 gap-4">
                       <button 
                         onClick={checkSaveProposal}
-                        disabled={isSavingProposal || calculateSimulationTotal() === 0}
+                        disabled={isSavingProposal || simulationTotal === 0}
                         className={`flex items-center justify-center gap-2 p-4 bg-white dark:bg-slate-800 text-[#003366] dark:text-white rounded-2xl font-bold border border-slate-200 dark:border-slate-700 hover:bg-slate-50 transition-all ${isSavingProposal ? 'opacity-50 cursor-not-allowed' : ''}`}
                       >
                         {isSavingProposal ? (
@@ -1183,8 +1294,12 @@ const Prices: React.FC = () => {
                               </p>
                             </div>
                             <button 
-                              onClick={() => handleDeleteProposal(prop.id)}
-                              className="p-2 text-slate-300 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteProposal(prop.id);
+                              }}
+                              className="p-2 text-slate-400 hover:text-red-500 transition-all"
+                              title="Eliminar proposta"
                             >
                               <Trash2 size={18} />
                             </button>
@@ -1210,7 +1325,7 @@ const Prices: React.FC = () => {
             <div className="bg-white dark:bg-slate-800 p-6 border-t border-slate-200 dark:border-slate-700 flex justify-between items-center shrink-0">
               <div className="flex flex-col">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total da Proposta</span>
-                <span className="text-2xl font-black text-[#003366] dark:text-blue-400">{(calculateSimulationTotal() || 0).toLocaleString()} Kz</span>
+                <span className="text-2xl font-black text-[#003366] dark:text-blue-400">{(simulationTotal || 0).toLocaleString()} Kz</span>
               </div>
               <div className="flex gap-3">
                 {simulationStep === 'summary' && (
@@ -1221,7 +1336,7 @@ const Prices: React.FC = () => {
                 {simulationStep === 'select' && (
                   <button 
                     onClick={() => { triggerHaptic('impact'); setSimulationStep('summary'); }} 
-                    disabled={calculateSimulationTotal() === 0}
+                    disabled={simulationTotal === 0}
                     className="px-8 py-3 bg-[#003366] text-white rounded-2xl font-black shadow-xl shadow-blue-200 dark:shadow-none hover:scale-105 active:scale-95 disabled:opacity-50 disabled:scale-100 transition-all flex items-center gap-2"
                   >
                     Revisar Proposta <ArrowRight size={20} />
@@ -1345,29 +1460,9 @@ const Prices: React.FC = () => {
                         <List size={20} /> Itens da Compra
                       </h3>
                       <div className="space-y-4">
-                        {Object.entries(purchaseCart).map(([id, qty]) => {
-                          const p = products.find(prod => prod.id === id);
-                          if (!p) return null;
-                          const packSize = p.packSize || 1;
-                          const packCost = p.buyPrice * packSize;
-                          return (
-                            <div key={id} className="flex justify-between items-center py-3 border-b border-slate-50 dark:border-slate-700 last:border-0">
-                              <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 bg-blue-50 dark:bg-blue-900/30 rounded-2xl flex items-center justify-center font-black text-[#0054A6] dark:text-blue-400">
-                                  {qty}
-                                </div>
-                                <div>
-                                  <p className="font-bold text-slate-800 dark:text-white text-sm">{p.name}</p>
-                                  <p className="text-[10px] text-slate-400 font-bold uppercase">{p.packType || 'Pack'} x {packSize}un</p>
-                                </div>
-                              </div>
-                              <div className="text-right">
-                                <p className="font-black text-slate-800 dark:text-white text-sm">{((packCost || 0) * Number(qty)).toLocaleString()} Kz</p>
-                                <p className="text-[10px] text-slate-400 font-medium">{(packCost || 0).toLocaleString()} Kz / {p.packType || 'un'}</p>
-                              </div>
-                            </div>
-                          );
-                        })}
+                        {purchaseCartItems.map(({ id, qty, p }) => (
+                          <CartItem key={id} id={id} qty={qty} product={p} variant="blue" />
+                        ))}
                       </div>
                     </div>
                   </div>
@@ -1423,7 +1518,7 @@ const Prices: React.FC = () => {
                     <div className="bg-[#0054A6] text-white rounded-[32px] p-6 shadow-xl relative overflow-hidden">
                       <div className="absolute -right-10 -bottom-10 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
                       <p className="text-xs font-bold text-blue-100 uppercase tracking-widest mb-1">Total a Pagar</p>
-                      <p className="text-3xl font-black mb-6">{(calculatePurchaseTotal() || 0).toLocaleString()} <span className="text-sm">Kz</span></p>
+                      <p className="text-3xl font-black mb-6">{(purchaseTotal || 0).toLocaleString()} <span className="text-sm">Kz</span></p>
                       
                       <div className="grid grid-cols-2 gap-3 relative z-10">
                         <button 
@@ -1515,7 +1610,7 @@ const Prices: React.FC = () => {
             <div className="bg-white dark:bg-slate-800 p-6 border-t border-slate-200 dark:border-slate-700 flex justify-between items-center shrink-0">
               <div className="flex flex-col">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total do Carrinho</span>
-                <span className="text-2xl font-black text-[#0054A6] dark:text-blue-400">{(calculatePurchaseTotal() || 0).toLocaleString()} Kz</span>
+                <span className="text-2xl font-black text-[#0054A6] dark:text-blue-400">{(purchaseTotal || 0).toLocaleString()} Kz</span>
               </div>
               <div className="flex gap-3">
                 {purchaseStep === 'summary' && (
@@ -1527,7 +1622,7 @@ const Prices: React.FC = () => {
                 {purchaseStep === 'select' && (
                   <button 
                     onClick={() => { triggerHaptic('impact'); setPurchaseStep('summary'); }} 
-                    disabled={calculatePurchaseTotal() === 0}
+                    disabled={purchaseTotal === 0}
                     className="px-8 py-3 bg-[#0054A6] text-white rounded-2xl font-black shadow-xl shadow-blue-200 dark:shadow-none hover:scale-105 active:scale-95 disabled:opacity-50 disabled:scale-100 transition-all flex items-center gap-2"
                   >
                     Revisar Compra <ArrowRight size={20} />
@@ -1789,7 +1884,7 @@ const Prices: React.FC = () => {
               <div className="space-y-2">
                 <h3 className="text-xl font-black text-[#003366] dark:text-white uppercase tracking-tight">Finalizar Aquisição</h3>
                 <p className="text-slate-400 text-sm font-medium leading-relaxed">
-                  Esta ação irá debitar <span className="font-bold text-slate-600 dark:text-slate-200">{(calculatePurchaseTotal() || 0).toLocaleString()} Kz</span> da Conta Corrente e atualizar o estoque. Deseja continuar?
+                  Esta ação irá debitar <span className="font-bold text-slate-600 dark:text-slate-200">{(purchaseTotal || 0).toLocaleString()} Kz</span> da Conta Corrente e atualizar o estoque. Deseja continuar?
                 </p>
               </div>
               <div className="grid grid-cols-2 gap-3 pt-4">

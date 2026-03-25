@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Menu, Plus, ArrowUpDown, FileText, Calculator, Wallet, CreditCard, Package, TrendingDown, Clock, Box, TrendingUp, ChevronDown, ChevronUp, X, AlertTriangle, CheckCircle, LogOut, Settings, Moon, Sun, Monitor, User as UserIcon, Maximize2, Minimize2 } from 'lucide-react';
+import { Bell, Menu, Plus, ArrowUpDown, FileText, Calculator, Wallet, CreditCard, Package, TrendingDown, Clock, Box, TrendingUp, ChevronDown, ChevronUp, X, AlertTriangle, CheckCircle, LogOut, Settings, Moon, Sun, Monitor, User as UserIcon, Maximize2, Minimize2, Users } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useAuth } from '../contexts/AuthContext';
 import { useProducts } from '../contexts/ProductContext';
@@ -15,7 +15,7 @@ import Footer from '../components/Footer';
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user, logout, switchUser } = useAuth();
-  const { salesReports, systemDate, products, expenses } = useProducts();
+  const { salesReports, systemDate, products, expenses, getConfirmedSalesReports } = useProducts();
   const { theme, setTheme } = useTheme();
   const { toggleSidebar } = useLayout();
   
@@ -40,6 +40,33 @@ const Dashboard: React.FC = () => {
   const [newAlertMsg, setNewAlertMsg] = useState('');
   const [newAlertType, setNewAlertType] = useState<'CRITICO' | 'SUAVE' | 'INFO' | 'SUCCESS'>('INFO');
   const [expandedNotificationIds, setExpandedNotificationIds] = useState<string[]>([]);
+  const [showUserSwitchModal, setShowUserSwitchModal] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const testUsers = [
+    { role: UserRole.PROPRIETARIO, name: 'Marguel (Dono)', emoji: '👑' },
+    { role: UserRole.ADMIN_GERAL, name: 'Admin Geral', emoji: '🛡️' },
+    { role: UserRole.GERENTE, name: 'Gerente', emoji: '💼' },
+    { role: UserRole.COLABORADOR_EFETIVO, name: 'Colaborador Efetivo', emoji: '🤝' },
+    { role: UserRole.FUNCIONARIO, name: 'Funcionário', emoji: '👤' },
+  ];
+
+  const handleSwitchUser = (role: UserRole, name: string) => {
+    const success = switchUser(role, name);
+    if (success) {
+      setShowUserSwitchModal(false);
+      setToastMessage(`Utilizador alterado para: ${name}`);
+      
+      // Forçar recarregamento após um curto delay para garantir que todos os contextos 
+      // (permissões, produtos, etc) sejam reinicializados com o novo utilizador
+      setTimeout(() => {
+        window.location.reload();
+      }, 800);
+    } else {
+      setToastMessage(`Erro: Utilizador ${name} não encontrado.`);
+      setTimeout(() => setToastMessage(null), 3000);
+    }
+  };
 
   const isAdmin = user?.role === UserRole.ADMIN_GERAL || user?.role === UserRole.PROPRIETARIO;
 
@@ -54,8 +81,8 @@ const Dashboard: React.FC = () => {
     const yesterday = new Date(systemDate);
     yesterday.setDate(yesterday.getDate() - 1);
     const yesterdayStr = formatDateISO(yesterday);
-    return salesReports.find(r => r.date === yesterdayStr);
-  }, [salesReports, systemDate]);
+    return getConfirmedSalesReports().find(r => r.date === yesterdayStr);
+  }, [getConfirmedSalesReports, systemDate]);
 
   // ==================== TOTAL VENDIDO ONTEM (corrigido) ====================
   const yesterdayTotal = yesterdayReport 
@@ -67,7 +94,7 @@ const Dashboard: React.FC = () => {
     : 0;
 
   const yesterdayTPA = yesterdayReport 
-    ? (yesterdayReport.tpa || yesterdayReport.financials?.ticket || 0) 
+    ? (yesterdayReport.tpa || 0) + (yesterdayReport.transfer || 0) || (yesterdayReport.financials ? (yesterdayReport.financials.ticket || 0) + (yesterdayReport.financials.transfer || 0) : 0)
     : 0;
   // =====================================================================
 
@@ -80,7 +107,7 @@ const Dashboard: React.FC = () => {
   const topProducts = React.useMemo(() => {
     const productSales: Record<string, number> = {};
     
-    salesReports.forEach(report => {
+    getConfirmedSalesReports().forEach(report => {
       if (report.itemsSummary) {
         report.itemsSummary.forEach(item => {
           productSales[item.name] = (productSales[item.name] || 0) + item.qty;
@@ -92,7 +119,7 @@ const Dashboard: React.FC = () => {
       .map(([name, qty]) => ({ name, qty }))
       .sort((a, b) => b.qty - a.qty)
       .slice(0, 3);
-  }, [salesReports]);
+  }, [getConfirmedSalesReports]);
 
   const chartData = useMemo(() => {
     const dataPoints = [];
@@ -127,7 +154,7 @@ const Dashboard: React.FC = () => {
             d.setDate(monday.getDate() + i);
             const dateStr = formatDateISO(d);
             
-            const report = salesReports.find(r => r.date === dateStr);
+            const report = getConfirmedSalesReports().find(r => r.date === dateStr);
             const dayExpenses = expenses
                 .filter(e => e.date === dateStr)
                 .reduce((sum, e) => sum + e.amount, 0);
@@ -150,7 +177,7 @@ const Dashboard: React.FC = () => {
             d.setDate(d.getDate() - i);
             const dateStr = formatDateISO(d);
             
-            const report = salesReports.find(r => r.date === dateStr);
+            const report = getConfirmedSalesReports().find(r => r.date === dateStr);
             const dayExpenses = expenses
                 .filter(e => e.date === dateStr)
                 .reduce((sum, e) => sum + e.amount, 0);
@@ -175,7 +202,7 @@ const Dashboard: React.FC = () => {
             const month = d.getMonth();
             const year = d.getFullYear();
             
-            const monthSales = salesReports.reduce((acc, r) => {
+            const monthSales = getConfirmedSalesReports().reduce((acc, r) => {
                 const pd = parseDateStr(r.date || r.displayDate || '');
                 return (pd.m === month && pd.y === year) ? acc + (r.totalLifted || r.totals?.lifted || 0) : acc;
             }, 0);
@@ -195,7 +222,7 @@ const Dashboard: React.FC = () => {
         }
     }
     return dataPoints;
-  }, [salesReports, expenses, systemDate, timeRange]);
+  }, [getConfirmedSalesReports, expenses, systemDate, timeRange]);
 
   const alerts = useMemo(() => {
     const list: any[] = [];
@@ -229,7 +256,7 @@ const Dashboard: React.FC = () => {
     }
 
     // Financial Alerts
-    const recentDiscrepancy = salesReports.find(r => (r.discrepancy || r.totals?.discrepancy || 0) !== 0);
+    const recentDiscrepancy = getConfirmedSalesReports().find(r => (r.discrepancy || r.totals?.discrepancy || 0) !== 0);
     if (recentDiscrepancy) {
          const discrepancyVal = recentDiscrepancy.discrepancy || recentDiscrepancy.totals?.discrepancy || 0;
          list.push({
@@ -244,7 +271,7 @@ const Dashboard: React.FC = () => {
 
     // Closing Alert
     const todayStr = formatDateISO(systemDate);
-    const hasReportToday = salesReports.some(r => (r.date || r.displayDate) === todayStr);
+    const hasReportToday = getConfirmedSalesReports().some(r => (r.date || r.displayDate) === todayStr);
     if (!hasReportToday) {
          list.push({
             id: 'no-close',
@@ -271,7 +298,7 @@ const Dashboard: React.FC = () => {
     });
 
     return uniqueList;
-  }, [products, salesReports, systemDate, customAlerts]);
+  }, [products, getConfirmedSalesReports, systemDate, customAlerts]);
 
   const toggleNotificationExpand = (id: string) => {
     setExpandedNotificationIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
@@ -319,6 +346,26 @@ const Dashboard: React.FC = () => {
         </div>
         <div className="flex items-center gap-4">
             <SyncStatus />
+            
+            {/* Botão de Tema (Sol/Lua) */}
+            <button 
+                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                className="p-2 bg-slate-100 dark:bg-slate-800 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                title="Trocar Tema"
+            >
+                {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
+            </button>
+
+            {/* Botão de Troca de Utilizador (Testes) */}
+            <button 
+                onClick={() => setShowUserSwitchModal(true)}
+                className="p-2 bg-[#003366] rounded-xl text-white hover:bg-[#004080] transition-colors active:scale-95 flex items-center gap-2"
+                title="Trocar Utilizador (Testes)"
+            >
+                <Users size={20} />
+                <span className="hidden md:inline text-xs font-bold">Testes</span>
+            </button>
+
             <div className="relative">
                 <button 
                     className={`relative ${showNotifications ? 'z-50' : ''}`}
@@ -612,8 +659,7 @@ const Dashboard: React.FC = () => {
                             {selectedChartDay.details?.report ? (
                                 <div className="text-sm space-y-1 text-slate-500 dark:text-slate-400">
                                     <p>Cash: <span className="font-medium">{(selectedChartDay.details.report.cash || selectedChartDay.details.report.financials?.cash || 0).toLocaleString('pt-AO')} Kz</span></p>
-                                    <p>TPA: <span className="font-medium">{(selectedChartDay.details.report.tpa || selectedChartDay.details.report.financials?.ticket || 0).toLocaleString('pt-AO')} Kz</span></p>
-                                    <p>Transferência: <span className="font-medium">{(selectedChartDay.details.report.transfer || selectedChartDay.details.report.financials?.transfer || 0).toLocaleString('pt-AO')} Kz</span></p>
+                                    <p>TPA: <span className="font-medium">{((selectedChartDay.details.report.tpa || 0) + (selectedChartDay.details.report.transfer || 0) || (selectedChartDay.details.report.financials ? (selectedChartDay.details.report.financials.ticket || 0) + (selectedChartDay.details.report.financials.transfer || 0) : 0)).toLocaleString('pt-AO')} Kz</span></p>
                                 </div>
                             ) : (
                                 <p className="text-sm text-slate-400 italic">Sem fecho registrado.</p>
@@ -664,7 +710,7 @@ const Dashboard: React.FC = () => {
                     </div>
                 </div>
                 <h4 className="text-lg font-bold text-slate-800 dark:text-white pl-2">
-                    {yesterdayReport ? `${(yesterdayReport.tpa || yesterdayReport.financials?.ticket || 0).toLocaleString('pt-AO')} Kz` : '0 Kz'}
+                    {yesterdayReport ? `${((yesterdayReport.tpa || 0) + (yesterdayReport.transfer || 0) || (yesterdayReport.financials ? (yesterdayReport.financials.ticket || 0) + (yesterdayReport.financials.transfer || 0) : 0)).toLocaleString('pt-AO')} Kz` : '0 Kz'}
                 </h4>
             </div>
         </div>
@@ -800,6 +846,71 @@ const Dashboard: React.FC = () => {
                 })}
             </div>
         </div>
+
+        {/* Modal de Troca de Utilizador (Testes) */}
+        {showUserSwitchModal && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+                <div className="bg-white dark:bg-[#0a192f] w-full max-w-md rounded-[2.5rem] shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden animate-scale-in">
+                    <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-900/50">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-[#003366] rounded-xl text-white">
+                                <Users size={20} />
+                            </div>
+                            <h3 className="text-xl font-bold text-slate-800 dark:text-white">Trocar Utilizador</h3>
+                        </div>
+                        <button 
+                            onClick={() => setShowUserSwitchModal(false)}
+                            className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-full text-slate-500 dark:text-slate-400 transition-colors"
+                        >
+                            <X size={24} />
+                        </button>
+                    </div>
+                    
+                    <div className="p-6 space-y-3 max-h-[60vh] overflow-y-auto custom-scrollbar">
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">Selecione um perfil para simular o acesso:</p>
+                        {testUsers.map((testUser) => (
+                            <button
+                                key={testUser.role}
+                                onClick={() => handleSwitchUser(testUser.role, testUser.name)}
+                                className="w-full flex items-center justify-between p-4 rounded-2xl border border-slate-100 dark:border-slate-800 hover:border-[#E3007E] dark:hover:border-[#E3007E] hover:bg-pink-50 dark:hover:bg-pink-900/10 transition-all group text-left"
+                            >
+                                <div className="flex items-center gap-4">
+                                    <span className="text-2xl">{testUser.emoji}</span>
+                                    <div>
+                                        <h4 className="font-bold text-slate-800 dark:text-white group-hover:text-[#E3007E] transition-colors">{testUser.name}</h4>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wider font-medium">{testUser.role}</p>
+                                    </div>
+                                </div>
+                                <div className="w-8 h-8 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-400 group-hover:bg-[#E3007E] group-hover:text-white transition-all">
+                                    <CheckCircle size={16} />
+                                </div>
+                            </button>
+                        ))}
+                    </div>
+                    
+                    <div className="p-6 bg-slate-50 dark:bg-slate-900/50 text-center">
+                        <button 
+                            onClick={() => setShowUserSwitchModal(false)}
+                            className="text-sm font-bold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white transition-colors"
+                        >
+                            Cancelar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* Toast Notification */}
+        {toastMessage && (
+            <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[110] animate-bounce-in">
+                <div className="bg-[#003366] text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 border-2 border-white/10 backdrop-blur-md">
+                    <div className="bg-green-500 rounded-full p-1">
+                        <CheckCircle size={16} />
+                    </div>
+                    <span className="text-sm font-bold">{toastMessage}</span>
+                </div>
+            </div>
+        )}
 
         {/* Footer */}
         <Footer />

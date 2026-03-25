@@ -479,8 +479,9 @@ const UserManagement: React.FC = () => {
                       <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-2xl border border-blue-100 dark:border-blue-800/50">
                         <label className="text-xs font-bold text-blue-700 dark:text-blue-300 block mb-2">Limite Máximo por Compra (Kz)</label>
                         <input 
-                          type="number" 
-                          value={tempPermissions.purchases_limit}
+                          type="text" 
+                          inputMode="decimal"
+                          value={tempPermissions.purchases_limit || ''}
                           onChange={(e) => handleTempLimitChange('purchases_limit', e.target.value)}
                           className="w-full bg-white dark:bg-slate-800 border-none rounded-xl py-2 px-4 text-sm soft-ui-inset"
                         />
@@ -490,8 +491,9 @@ const UserManagement: React.FC = () => {
                       <div className="mt-4 p-4 bg-red-50 dark:bg-red-900/20 rounded-2xl border border-red-100 dark:border-red-800/50">
                         <label className="text-xs font-bold text-red-700 dark:text-red-300 block mb-2">Limite Máximo por Despesa (Kz)</label>
                         <input 
-                          type="number" 
-                          value={tempPermissions.expenses_limit}
+                          type="text" 
+                          inputMode="decimal"
+                          value={tempPermissions.expenses_limit || ''}
                           onChange={(e) => handleTempLimitChange('expenses_limit', e.target.value)}
                           className="w-full bg-white dark:bg-slate-800 border-none rounded-xl py-2 px-4 text-sm soft-ui-inset"
                         />

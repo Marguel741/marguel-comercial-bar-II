@@ -236,8 +236,9 @@ const DirectService: React.FC = () => {
   // Price Calculation Engine
   const calculateTransaction = useCallback((currentCart: Record<string, number>) => {
     let standardTotal = 0;
-    let beerQty = 0;
-    let nonBeerTotal = 0;
+
+    const groups: Record<string, { qty: number, promoQty: number, promoPrice: number, totalNormal: number }> = {};
+    let otherTotal = 0;
 
     Object.entries(currentCart).forEach(([id, qty]) => {
       const p = productMap.get(id);
@@ -247,23 +248,35 @@ const DirectService: React.FC = () => {
       const itemTotal = roundKz(quantity * p.sellPrice);
       standardTotal = roundKz(standardTotal + itemTotal);
 
-      if (p.category === 'Cervejas') {
-        beerQty += quantity;
+      const isPromo = p.isMixMatchActive || p.isPromoActive;
+      if (isPromo) {
+        const mq = p.mixMatchQty || p.promoQty || 3;
+        const mp = p.mixMatchPrice || p.promoPrice || 1000;
+        const key = `${mq}-${mp}`;
+        if (!groups[key]) {
+          groups[key] = { qty: 0, promoQty: mq, promoPrice: mp, totalNormal: 0 };
+        }
+        groups[key].qty += quantity;
+        groups[key].totalNormal = roundKz(groups[key].totalNormal + itemTotal);
       } else {
-        nonBeerTotal = roundKz(nonBeerTotal + itemTotal);
+        otherTotal = roundKz(otherTotal + itemTotal);
       }
     });
 
-    // Mix & Match Logic: 3 for 1000, 1 for 350
-    const packs = Math.floor(beerQty / 3);
-    const singles = beerQty % 3;
-    
-    const packsValue = roundKz(packs * 1000);
-    const singlesValue = roundKz(singles * 350);
-    
-    const beerPromoTotal = roundKz(packsValue + singlesValue);
-    
-    const finalTotal = roundKz(nonBeerTotal + beerPromoTotal);
+    let promoTotal = 0;
+    Object.values(groups).forEach(g => {
+      const packs = Math.floor(g.qty / g.promoQty);
+      const singles = g.qty % g.promoQty;
+      
+      const avgPrice = g.qty > 0 ? g.totalNormal / g.qty : 0;
+      const packNormalValue = avgPrice * g.promoQty;
+      const discountPerPack = Math.max(0, packNormalValue - g.promoPrice);
+      const groupDiscount = packs * discountPerPack;
+      
+      promoTotal = roundKz(promoTotal + (g.totalNormal - groupDiscount));
+    });
+
+    const finalTotal = roundKz(otherTotal + promoTotal);
     const discount = roundKz(standardTotal - finalTotal);
 
     return { total: finalTotal, discount: Math.max(0, discount) };

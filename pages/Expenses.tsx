@@ -302,8 +302,9 @@ const Expenses: React.FC = () => {
                   <div className="relative">
                     <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">Kz</div>
                     <input 
-                      type="number" 
-                      value={formData.amount} 
+                      type="text" 
+                      inputMode="decimal"
+                      value={formData.amount || ''} 
                       onChange={(e) => handleInputChange('amount', e.target.value)}
                       placeholder="0" 
                       className="w-full p-4 bg-slate-50 rounded-2xl border-none soft-ui-inset pl-12 font-bold text-red-500 focus:ring-2 focus:ring-red-200 outline-none transition-all" 
@@ -520,9 +521,10 @@ const Expenses: React.FC = () => {
                   <div className="bg-white/10 rounded-xl p-2">
                     <label className="text-[10px] font-bold text-red-100 uppercase block mb-1">Valor (Kz)</label>
                     <input 
-                      type="number" 
-                      value={editData.amount} 
-                      onChange={(e) => setEditData({...editData, amount: parseFloat(e.target.value)})}
+                      type="text" 
+                      inputMode="decimal"
+                      value={editData.amount || ''} 
+                      onChange={(e) => setEditData({...editData, amount: parseFloat(e.target.value) || 0})}
                       className="w-full bg-transparent border-b border-white/50 text-white font-black text-3xl outline-none placeholder-white/50"
                     />
                   </div>

@@ -15,7 +15,7 @@ import {
 } from 'recharts';
 import { useLayout } from '../contexts/LayoutContext';
 import { useAuth } from '../contexts/AuthContext';
-import { UserRole, ClosureStatus } from '../types';
+import { UserRole, ClosureStatus, StockOperationLog } from '../types';
 import { hasPermission } from '../src/utils/permissions';
 import { formatDisplayDate, formatDateISO, generateUUID } from '../src/utils';
 import { useFinance } from '../contexts/FinanceContext';
@@ -54,6 +54,7 @@ interface DailyReport {
   confirmationTimestamp?: number;
   unilateralAdminConfirmation?: boolean;
   timestamp?: number;
+  editedBy?: string;
   
   // Compatibility fields for Dashboard
   date?: string;
@@ -81,7 +82,6 @@ const Sales: React.FC = () => {
     updateSalesReportJustification,
     confirmSalesReport, 
     isDayLocked, 
-    unlockDay,
     getSystemDate,
     stockOperationHistory
   } = useProducts();
@@ -133,6 +133,9 @@ const Sales: React.FC = () => {
   useEffect(() => {
     if (hasManuallyOpened) return;
 
+    const dateChanged = prevDateRef.current !== reportDate;
+    prevDateRef.current = reportDate;
+
     // 1. Check if a finalized report exists for this date in the context
     const existingReport = salesReports.find(r => {
       const reportDateISO = r.dateISO ? r.dateISO.split('T')[0] : r.date;
@@ -162,30 +165,36 @@ const Sales: React.FC = () => {
       setCurrentReportId(existingReport.id);
       setIsFinancialsConfirmed(true);
       
-      const fin = existingReport.financials || {
-        cash: existingReport.cash || 0,
-        transfer: existingReport.transfer || 0,
-        ticket: 0,
-        lunch: existingReport.lunchExpense || 0,
-        justification: existingReport.notes || ''
-      };
+      // Só atualiza financials se a data mudou ou se estiverem vazios
+      // Isso evita apagar o que o utilizador está a digitar na UI principal
+      if (dateChanged || (financials.cash === '' && financials.transfer === '')) {
+        const fin = existingReport.financials || {
+          cash: existingReport.cash || 0,
+          transfer: existingReport.transfer || 0,
+          ticket: existingReport.tpa || 0,
+          lunch: existingReport.lunchExpense || 0,
+          justification: existingReport.notes || ''
+        };
 
-      setFinancials({
-        cash: fin.cash.toString(),
-        transfer: fin.transfer.toString(),
-        ticket: (fin as any).ticket?.toString() || '0',
-        lunch: fin.lunch.toString(),
-        discrepancyJustification: fin.justification || ''
-      });
+        setFinancials({
+          cash: fin.cash.toString(),
+          transfer: fin.transfer.toString(),
+          ticket: fin.ticket.toString(),
+          lunch: fin.lunch.toString(),
+          discrepancyJustification: fin.justification || ''
+        });
+      }
       return;
     }
 
     // 2. If no finalized report, handle snapshot logic
-    setCurrentReportId(null);
-    setIsFinancialsConfirmed(false);
-    setEndingStock({});
-    setBreakdowns({});
-    setFinancials({ cash: '', transfer: '', ticket: '', lunch: '', discrepancyJustification: '' });
+    if (dateChanged) {
+      setCurrentReportId(null);
+      setIsFinancialsConfirmed(false);
+      setEndingStock({});
+      setBreakdowns({});
+      setFinancials({ cash: '', transfer: '', ticket: '', lunch: '', discrepancyJustification: '' });
+    }
 
     const isToday = reportDate === todayISO;
     const snapshotKey = `mg_initial_stock_v2_${reportDate}`;
@@ -206,7 +215,7 @@ const Sales: React.FC = () => {
       localStorage.setItem(snapshotKey, JSON.stringify(dynamicInitial));
     } else if (savedSnapshot) {
       setInitialStock(JSON.parse(savedSnapshot));
-    } else {
+    } else if (dateChanged) {
       // Fallback for past days without snapshot
       const newSnapshot: Record<string, string> = {};
       products.forEach(p => {
@@ -232,6 +241,17 @@ const Sales: React.FC = () => {
     discrepancyJustification: ''
   });
 
+  // Estado para o formulário de fecho no modal
+  const [formValues, setFormValues] = useState({
+    cash: 0,
+    tpa: 0,
+    transfer: 0,
+    lunch: 0,
+    justification: ''
+  });
+
+  const prevDateRef = useRef(reportDate);
+
   const [isFinancialsConfirmed, setIsFinancialsConfirmed] = useState(false);
   const [syncState, setSyncState] = useState<{
     status: 'idle' | 'syncing' | 'success' | 'error';
@@ -252,80 +272,216 @@ const Sales: React.FC = () => {
   // NOVO: Modal Mix & Match compacto
   const [showMixMatchModal, setShowMixMatchModal] = useState(false);
   const [selectedProductForMix, setSelectedProductForMix] = useState<any>(null);
+  const [showManualHistoryModal, setShowManualHistoryModal] = useState(false);
+  
+  // NOVO: Estados para confirmação de edição
+  const INACTIVITY_THRESHOLD_HOURS = 24;
+  const [showConfirmEditModal, setShowConfirmEditModal] = useState(false);
+  const [editConfirmationData, setEditConfirmationData] = useState<any>(null);
 
-  // ==================== POPUP MIX MATCH COMPACTO ====================
+  // ==================== MODAL HISTÓRICO DE ALTERAÇÕES MANUAIS ====================
+  const ManualHistoryModal = () => {
+    const manualHistory = useMemo(() => {
+      return stockOperationHistory
+        .filter(log => log.type === 'MANUAL_ADJUSTMENT')
+        .sort((a, b) => b.timestamp - a.timestamp);
+    }, [stockOperationHistory]);
+
+    if (!showManualHistoryModal) return null;
+
+    return (
+      <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[250] flex items-center justify-center p-4">
+        <div className="bg-white dark:bg-slate-800 rounded-3xl w-full max-w-4xl max-h-[85vh] shadow-2xl flex flex-col overflow-hidden">
+          <div className="flex justify-between items-center p-6 border-b dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl">
+                <History size={24} />
+              </div>
+              <div>
+                <h3 className="font-black text-xl dark:text-white uppercase">Histórico de Alterações Manuais</h3>
+                <p className="text-xs font-bold text-slate-500 uppercase">Rastreabilidade total de ajustes de stock</p>
+              </div>
+            </div>
+            <button 
+              onClick={() => setShowManualHistoryModal(false)} 
+              className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all"
+            >
+              <X size={24} />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-6">
+            {manualHistory.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+                <Database size={48} className="mb-4 opacity-20" />
+                <p className="font-bold">Nenhum ajuste manual registado até ao momento.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {manualHistory.map((log) => (
+                  <div key={log.id} className="p-5 bg-slate-50 dark:bg-slate-700/30 rounded-2xl border border-slate-100 dark:border-slate-700 hover:border-blue-200 dark:hover:border-blue-900/50 transition-all group">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-black text-[#003366] dark:text-white uppercase">{log.productName}</span>
+                          <span className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 text-[10px] font-black rounded-md uppercase">Ajuste Manual</span>
+                        </div>
+                        <div className="flex items-center gap-4 text-xs font-bold text-slate-500">
+                          <div className="flex items-center gap-1">
+                            <Clock size={14} />
+                            {new Date(log.timestamp).toLocaleString('pt-AO')}
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <ShieldCheck size={14} />
+                            Resp: {log.responsible || log.performedBy || 'Sistema'}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-6">
+                        <div className="text-center">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Anterior</p>
+                          <p className="font-black text-slate-600 dark:text-slate-300">{log.previousStock ?? log.qtyBefore}</p>
+                        </div>
+                        <div className="flex items-center text-blue-400">
+                          <ChevronRight size={20} />
+                        </div>
+                        <div className="text-center">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Atual</p>
+                          <p className="font-black text-[#003366] dark:text-white">{log.newStock ?? log.qtyAfter}</p>
+                        </div>
+                        <div className={`px-4 py-2 rounded-xl font-black text-sm min-w-[80px] text-center ${
+                          (log.qtyChanged ?? log.qtyAdded) > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                        }`}>
+                          {(log.qtyChanged ?? log.qtyAdded) > 0 ? '+' : ''}{log.qtyChanged ?? log.qtyAdded}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="mt-4 p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 text-sm italic text-slate-600 dark:text-slate-400 flex items-start gap-2">
+                      <MessageSquare size={16} className="mt-0.5 shrink-0 text-slate-400" />
+                      <span>Motivo: {log.reason || 'Não especificado'}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="p-6 border-t dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 flex justify-end">
+            <button 
+              onClick={() => setShowManualHistoryModal(false)}
+              className="px-8 py-3 bg-[#003366] text-white font-black rounded-2xl shadow-lg hover:opacity-90 transition-all uppercase text-sm"
+            >
+              Fechar Histórico
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ==================== POPUP MIX MATCH REDESENHADO ====================
   const openMixMatchModal = (product: any) => {
     setSelectedProductForMix(product);
     setShowMixMatchModal(true);
   };
 
-  const MixMatchModal = () => (
-    showMixMatchModal && selectedProductForMix && (
+  const MixMatchModal = () => {
+    if (!showMixMatchModal || !selectedProductForMix) return null;
+
+    const soldQty = selectedProductForMix.soldQty;
+    const promoQty = selectedProductForMix.promoQty;
+    const currentSingles = breakdowns[selectedProductForMix.id]?.singles ?? (soldQty % promoQty);
+    const remainingForMix = soldQty - currentSingles;
+    const isValid = currentSingles >= 0 && remainingForMix >= 0 && remainingForMix % promoQty === 0;
+    const packs = Math.floor(remainingForMix / promoQty);
+
+    return (
       <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
-        <div className="bg-white dark:bg-slate-800 rounded-3xl w-full max-w-md shadow-2xl relative">
-          <div className="flex justify-between items-center p-6 border-b dark:border-slate-700">
-            <h3 className="font-black text-lg dark:text-white">Mix & Match – {selectedProductForMix.name}</h3>
-            <button onClick={() => setShowMixMatchModal(false)} className="text-slate-400 hover:text-red-500">
+        <div className="bg-white dark:bg-slate-800 rounded-3xl w-full max-w-md shadow-2xl relative overflow-hidden">
+          <div className="flex justify-between items-center p-6 border-b dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+            <div>
+              <h3 className="font-black text-lg dark:text-white uppercase">Mix & Match</h3>
+              <p className="text-[10px] font-bold text-slate-500 uppercase">{selectedProductForMix.name}</p>
+            </div>
+            <button onClick={() => setShowMixMatchModal(false)} className="p-2 text-slate-400 hover:text-red-500 transition-colors">
               <X size={24} />
             </button>
           </div>
+          
           <div className="p-6 space-y-6">
-            <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-2xl border border-blue-100 dark:border-blue-800">
-              <div className="flex justify-between items-center mb-2">
-                <label className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase">Packs de {selectedProductForMix.promoQty}</label>
-                <span className="text-xs font-bold text-blue-500">{selectedProductForMix.promoPrice.toLocaleString()} Kz</span>
-              </div>
-              <input 
-                type="number" 
-                value={breakdowns[selectedProductForMix.id]?.packs || 0}
-                onChange={(e) => handleBreakdownChange(selectedProductForMix.id, 'packs', e.target.value, selectedProductForMix.breakdown)}
-                className="w-full p-3 text-center font-black text-xl rounded-xl border-none outline-none focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:text-white"
-              />
+            {/* Total Vendido (Visualização) */}
+            <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700/30 rounded-2xl border border-slate-100 dark:border-slate-700">
+              <span className="text-xs font-black text-slate-500 uppercase">Total Vendido</span>
+              <span className="text-xl font-black text-[#003366] dark:text-white">{soldQty} un</span>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-2xl border border-slate-100 dark:border-slate-700">
-                <div className="flex justify-between items-center mb-2">
-                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Avulsas</label>
-                  <span className="text-xs font-bold text-slate-400">{selectedProductForMix.sellPrice.toLocaleString()} Kz</span>
+            <div className="grid grid-cols-1 gap-6">
+              {/* Avulsas (Editável) */}
+              <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl border-2 border-blue-100 dark:border-blue-900/30 shadow-sm">
+                <div className="flex justify-between items-center mb-3">
+                  <label className="text-xs font-black text-blue-600 dark:text-blue-400 uppercase">Unidades Avulsas</label>
+                  <span className="text-[10px] font-bold text-slate-400">{selectedProductForMix.sellPrice.toLocaleString()} Kz/un</span>
                 </div>
                 <input 
-                  type="number" 
-                  value={breakdowns[selectedProductForMix.id]?.singles || 0}
-                  onChange={(e) => handleBreakdownChange(selectedProductForMix.id, 'singles', e.target.value, selectedProductForMix.breakdown)}
-                  className="w-full p-3 text-center font-black text-xl rounded-xl border-none outline-none focus:ring-2 focus:ring-slate-500 dark:bg-slate-600 dark:text-white"
+                  type="text" 
+                  inputMode="decimal"
+                  value={currentSingles || ''}
+                  onChange={(e) => handleBreakdownChange(selectedProductForMix.id, 'singles', e.target.value, soldQty, promoQty)}
+                  className="w-full p-4 text-center font-black text-3xl rounded-2xl bg-slate-50 dark:bg-slate-700 border-none outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all"
+                  autoFocus
                 />
               </div>
-              <div className="bg-red-50 dark:bg-red-900/10 p-4 rounded-2xl border border-red-100 dark:border-red-800">
-                <label className="text-xs font-bold text-red-500 dark:text-red-400 uppercase mb-2 block">Quebras</label>
+
+              {/* Grupos de Mix Match (Editável) */}
+              <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl border-2 border-purple-100 dark:border-purple-900/30 shadow-sm">
+                <div className="flex justify-between items-center mb-3">
+                  <label className="text-xs font-black text-purple-600 dark:text-purple-400 uppercase">Grupos de Mix Match</label>
+                  <span className="text-[10px] font-bold text-slate-400">{selectedProductForMix.promoPrice.toLocaleString()} Kz/grupo</span>
+                </div>
                 <input 
-                  type="number" 
-                  value={breakdowns[selectedProductForMix.id]?.waste || 0}
-                  onChange={(e) => handleBreakdownChange(selectedProductForMix.id, 'waste', e.target.value, selectedProductForMix.breakdown)}
-                  className="w-full p-3 text-center font-black text-xl rounded-xl border-none outline-none focus:ring-2 focus:ring-red-500 text-red-600 dark:bg-slate-700 dark:text-red-400"
+                  type="text" 
+                  inputMode="decimal"
+                  value={packs || ''}
+                  onChange={(e) => handleBreakdownChange(selectedProductForMix.id, 'packs', e.target.value, soldQty, promoQty)}
+                  className="w-full p-4 text-center font-black text-3xl rounded-2xl bg-slate-50 dark:bg-slate-700 border-none outline-none focus:ring-2 focus:ring-purple-500 dark:text-white transition-all"
                 />
               </div>
             </div>
 
-            <div className="pt-4 border-t dark:border-slate-700">
-              <div className="flex justify-between items-center text-sm font-bold mb-4">
-                <span className="text-slate-500">Total Unidades:</span>
-                <span className={`${selectedProductForMix.isBalanced ? 'text-green-600' : 'text-red-600'}`}>
-                  {((breakdowns[selectedProductForMix.id]?.packs || 0) * selectedProductForMix.promoQty + (breakdowns[selectedProductForMix.id]?.singles || 0) + (breakdowns[selectedProductForMix.id]?.waste || 0))} / {selectedProductForMix.soldQty}
-                </span>
-              </div>
-              <button 
-                onClick={() => setShowMixMatchModal(false)}
-                className="w-full py-4 bg-[#003366] text-white font-black rounded-2xl shadow-lg hover:opacity-90 transition-all"
-              >
-                Confirmar Ajuste
-              </button>
+            {/* Mensagens Dinâmicas */}
+            <div className={`p-4 rounded-2xl flex items-center gap-3 border ${
+              isValid 
+                ? 'bg-green-100/50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-400' 
+                : 'bg-red-100/50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-700 dark:text-red-400'
+            }`}>
+              {isValid ? <CheckCircle size={20} /> : <AlertTriangle size={20} />}
+              <span className="text-xs font-black uppercase tracking-tight">
+                {isValid 
+                  ? `Definido ${packs} grupos de Mix Match (${packs * promoQty} un)` 
+                  : remainingForMix < 0 
+                    ? `Quantidade de avulsas excede o total vendido`
+                    : `Faltam ${promoQty - (remainingForMix % promoQty)} unidades para completar Mix Match`}
+              </span>
             </div>
+
+            <button 
+              onClick={() => setShowMixMatchModal(false)}
+              disabled={!isValid}
+              className={`w-full py-5 font-black rounded-2xl shadow-xl transition-all uppercase tracking-widest ${
+                isValid 
+                  ? 'bg-[#003366] text-white hover:opacity-90 active:scale-95' 
+                  : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+              }`}
+            >
+              Confirmar Ajuste
+            </button>
           </div>
         </div>
       </div>
-    )
-  );
+    );
+  };
   // =================================================================
 
   // States for Breakdown (Mix & Match)
@@ -336,7 +492,6 @@ const Sales: React.FC = () => {
   const canEditInitialStock = hasPermission(user, 'sales_edit') && (!isDayLocked(reportDate) || isAdminOrOwner);
   const canExecuteSales = hasPermission(user, 'sales_execute');
   const canCloseDay = true; // Any user can perform a partial or final closure as requested
-  const canReopenDay = user?.role === UserRole.PROPRIETARIO; // Owner always has reopen button
   const canViewMargins = hasPermission(user, 'sales_view_margins');
   
   const isLocked = isDayLocked(reportDate);
@@ -388,19 +543,29 @@ const Sales: React.FC = () => {
     setExpandedRows(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const handleBreakdownChange = (id: string, field: 'packs' | 'singles' | 'waste', value: string, currentBreakdown: any) => {
+  const handleBreakdownChange = (id: string, field: 'packs' | 'singles', value: string, soldQty: number, promoQty: number) => {
     if (isReadOnly) return;
     const num = parseInt(value) || 0;
     setBreakdowns(prev => {
-        // If no manual entry yet, start with the current (default) breakdown
-        const base = prev[id] || { packs: currentBreakdown.packs, singles: currentBreakdown.singles, waste: currentBreakdown.waste };
-        return { ...prev, [id]: { ...base, [field]: num } };
+        let newPacks = 0;
+        let newSingles = 0;
+        
+        if (field === 'singles') {
+            newSingles = num;
+            newPacks = Math.floor((soldQty - newSingles) / promoQty);
+        } else if (field === 'packs') {
+            newPacks = num;
+            newSingles = soldQty - (newPacks * promoQty);
+        }
+        
+        return { ...prev, [id]: { packs: newPacks, singles: newSingles, waste: 0 } };
     });
   };
 
   const calculatedData = useMemo(() => {
     let totalTheoreticalRevenue = 0;
     let hasStockError = false;
+    let allMixMatchValid = true;
 
     const items = products.map(product => {
       const init = parseInt(initialStock[product.id] || '0') || 0;
@@ -411,10 +576,10 @@ const Sales: React.FC = () => {
       
       if (soldQty < 0) hasStockError = true;
 
-      // Mix & Match / Breakdown Logic
-      const isPromo = product.category === 'Cervejas' || (product as any).isPromoActive;
-      const promoQty = (product as any).promoQty || 3;
-      const promoPrice = (product as any).promoPrice || 1000;
+      // Mix & Match / Breakdown Logic Redesenhada
+      const isPromo = !!(product.isMixMatchActive || (product as any).isPromoActive);
+      const promoQty = product.mixMatchQty || (product as any).promoQty || 3;
+      const promoPrice = product.mixMatchPrice || (product as any).promoPrice || 1000;
       
       let revenue = 0;
       let breakdown = { packs: 0, singles: 0, waste: 0 };
@@ -422,19 +587,17 @@ const Sales: React.FC = () => {
 
       if (isPromo && soldQty > 0) {
           const manual = breakdowns[product.id];
-          if (manual) {
-              // Use manual breakdown
-              const totalUnits = (manual.packs * promoQty) + manual.singles + manual.waste;
-              isBalanced = totalUnits === soldQty;
-              revenue = (manual.packs * promoPrice) + (manual.singles * product.sellPrice);
-              breakdown = manual;
-          } else {
-              // Default breakdown (Auto-suggest)
-              const packs = Math.floor(soldQty / promoQty);
-              const singles = soldQty % promoQty;
-              revenue = (packs * promoPrice) + (singles * product.sellPrice);
-              breakdown = { packs, singles, waste: 0 };
-          }
+          // Se manual, usa o valor de singles definido. Se não, usa o resto da divisão.
+          const singles = manual ? manual.singles : (soldQty % promoQty);
+          const remainingForMix = soldQty - singles;
+          
+          isBalanced = singles >= 0 && remainingForMix >= 0 && remainingForMix % promoQty === 0;
+          const packs = Math.floor(remainingForMix / promoQty);
+          
+          if (!isBalanced) allMixMatchValid = false;
+
+          revenue = (packs * promoPrice) + (singles * product.sellPrice);
+          breakdown = { packs, singles, waste: 0 };
       } else {
           // Standard calculation
           revenue = soldQty * product.sellPrice;
@@ -444,7 +607,15 @@ const Sales: React.FC = () => {
       const profit = revenue - (soldQty * product.buyPrice);
       const discountAmount = isPromo ? ((product.sellPrice * soldQty) - revenue) : 0;
 
-      return { ...product, init, buy, end, soldQty, revenue, profit, isPromo, breakdown, isBalanced, promoQty, promoPrice, discountAmount };
+      const mixMatchQtyUsed = isPromo && breakdown.packs ? (breakdown.packs * promoQty) : 0;
+      const avulsaQty = isPromo ? (breakdown.singles || 0) : soldQty;
+
+      return { 
+        ...product, 
+        init, buy, end, soldQty, revenue, profit, 
+        isPromo, breakdown, isBalanced, promoQty, promoPrice, discountAmount,
+        mixMatchQtyUsed, avulsaQty
+      };
     });
 
     const totalTheoreticalProfit = items.reduce((acc, item) => acc + (item.profit || 0), 0);
@@ -459,7 +630,7 @@ const Sales: React.FC = () => {
         category: item.category
       }));
 
-    return { items, totalTheoreticalRevenue, totalTheoreticalProfit, salesChartData, hasStockError };
+    return { items, totalTheoreticalRevenue, totalTheoreticalProfit, salesChartData, hasStockError, allMixMatchValid };
   }, [initialStock, purchasedStock, endingStock, products, breakdowns]);
 
   const declaredCash = parseFloat(financials.cash) || 0;
@@ -521,11 +692,26 @@ const Sales: React.FC = () => {
         alert("⛔ IMPEDIMENTO DE FECHO\n\nExistem produtos com Stock Negativo.");
         return;
     }
+    if (!calculatedData.allMixMatchValid) {
+        triggerHaptic('error');
+        alert("⛔ IMPEDIMENTO DE FECHO\n\nExistem produtos com Mix Match inválido. Ajuste as unidades avulsas.");
+        return;
+    }
     if (totalLifted === 0 || !isFinancialsConfirmed) {
         triggerHaptic('warning');
         alert("⚠️ Por favor, confirme os valores levantados antes de fechar.");
         return;
     }
+
+    // Inicializar formValues com os valores atuais da UI principal
+    setFormValues({
+      cash: Number(financials.cash) || 0,
+      tpa: Number(financials.ticket) || 0,
+      transfer: Number(financials.transfer) || 0,
+      lunch: Number(financials.lunch) || 0,
+      justification: financials.discrepancyJustification || ''
+    });
+
     triggerHaptic('selection');
     setShowCloseModal(true);
   };
@@ -536,13 +722,79 @@ const Sales: React.FC = () => {
       showToast('Este dia está bloqueado.');
       return;
     }
-    if (hasDiscrepancy && !financials.discrepancyJustification) {
+
+    const modalTotalLifted = formValues.cash + formValues.tpa + formValues.transfer;
+    const modalTotalExpected = calculatedData.totalTheoreticalRevenue - formValues.lunch;
+    const modalDiscrepancy = modalTotalLifted - modalTotalExpected;
+
+    if (modalDiscrepancy !== 0 && !formValues.justification) {
       triggerHaptic('error');
       showToast("Justifique a divergência.");
       return;
     }
     
+    if (!calculatedData.allMixMatchValid) {
+        showToast("Existem produtos com Mix Match inválido. Por favor, ajuste antes de fechar.");
+        triggerHaptic('error');
+        return;
+    }
+
+    const newReport: DailyReport = {
+      id: existingReport?.id || generateUUID(),
+      dateISO: reportDate,
+      displayDate: formatDisplayDate(reportDate),
+      weekday: new Date(reportDate + 'T12:00:00').toLocaleDateString('pt-AO', { weekday: 'long' }),
+      generatedAt: new Date().toLocaleTimeString('pt-AO'),
+      totals: {
+        expected: calculatedData.totalTheoreticalRevenue,
+        lifted: modalTotalLifted,
+        discrepancy: modalDiscrepancy,
+        soldStock: calculatedData.totalTheoreticalRevenue,
+        profit: calculatedData.totalTheoreticalProfit
+      },
+      financials: {
+        cash: formValues.cash,
+        transfer: formValues.transfer,
+        ticket: formValues.tpa,
+        lunch: formValues.lunch,
+        justification: formValues.justification
+      },
+      topProducts: calculatedData.salesChartData.slice(0, 5).map(i => ({ name: i.name, qty: i.Quantidade, total: i.Total })),
+      itemsSnapshot: calculatedData.items.map(item => ({
+        id: item.id,
+        name: item.name,
+        init: item.init,
+        buy: item.buy,
+        end: item.end,
+        soldQty: item.soldQty,
+        revenue: item.revenue,
+        isPromo: item.isPromo,
+        breakdown: item.breakdown,
+        mixMatchQtyUsed: item.mixMatchQtyUsed,
+        avulsaQty: item.avulsaQty,
+        discountAmount: item.discountAmount
+      })),
+      closedBy: user?.name || 'Vendedor',
+      status: existingReport?.status || ClosureStatus.FECHO_PARCIAL_FUNCIONARIO,
+      timestamp: Date.now(),
+      // Regista quem fez a edição para validar na segunda confirmação
+      editedBy: existingReport ? user?.name : undefined
+    };
+
     setShowCloseModal(false);
+    
+    // PONTO 6: Se for uma edição de fecho já confirmado, exige segunda confirmação
+    if (existingReport && existingReport.status !== ClosureStatus.ABERTO) {
+      setEditConfirmationData(newReport);
+      executeSync(newReport); // Sempre salva e redireciona para o relatório
+      setShowConfirmEditModal(true); // Mas mostra o modal para a segunda confirmação
+      return;
+    }
+
+    executeSync(newReport);
+  };
+
+  const executeSync = async (reportData: any) => {
     triggerHaptic('impact');
     setSyncState({ status: 'syncing', currentStep: 0, completedSteps: [] });
 
@@ -575,90 +827,112 @@ const Sales: React.FC = () => {
 
     await new Promise(resolve => setTimeout(resolve, 800));
 
-    const reportId = existingReport?.id || generateUUID();
-    const performer = user?.name || 'Sistema';
-
-    const initialStatus = 
-      existingReport?.status === ClosureStatus.FECHO_CONFIRMADO ? ClosureStatus.FECHO_CONFIRMADO :
-      user?.role === UserRole.GERENTE ? ClosureStatus.FECHO_PARCIAL_GERENTE :
-      user?.role === UserRole.ADMIN_GERAL || user?.role === UserRole.PROPRIETARIO ? ClosureStatus.FECHO_PARCIAL_ADMIN :
-      ClosureStatus.FECHO_PARCIAL_FUNCIONARIO;
-
-    const reportTimestamp = new Date(reportDate + 'T12:00:00'); 
-    const newReport: DailyReport & { status: ClosureStatus } = {
-      id: reportId,
-      dateISO: reportTimestamp.toISOString(),
-      displayDate: reportTimestamp.toLocaleDateString('pt-AO', { year: 'numeric', month: 'long', day: 'numeric' }),
-      weekday: reportTimestamp.toLocaleDateString('pt-AO', { weekday: 'long' }),
-      generatedAt: getSystemDate().toLocaleTimeString('pt-AO'),
-      totals: {
-        expected: totalExpected,
-        lifted: totalLifted,
-        discrepancy: discrepancy,
-        soldStock: calculatedData.totalTheoreticalRevenue,
-        profit: calculatedData.totalTheoreticalProfit
-      },
-      financials: {
-        cash: declaredCash,
-        transfer: declaredTransfer,
-        ticket: declaredTicket,
-        lunch: lunchExpense,
-        justification: financials.discrepancyJustification
-      },
-      topProducts: calculatedData.salesChartData.slice(0, 5).map(i => ({ name: i.name, qty: i.Quantidade, total: i.Total })),
-      itemsSnapshot: calculatedData.items.filter(i => i.soldQty !== 0 || i.init !== 0 || i.end !== 0),
-      closedBy: user?.name || 'Sistema',
-      status: initialStatus,
-      timestamp: reportTimestamp.getTime(),
-      
-      // Compatibility fields for Dashboard
-      date: formatDateISO(reportTimestamp),
-      itemsSummary: calculatedData.items
-        .filter(i => i.soldQty > 0)
-        .map(i => ({
-          productId: i.id,
-          name: i.name,
-          qty: i.soldQty,
-          total: i.revenue,
-          // DETALHES VISÍVEIS PARA TODOS OS UTILIZADORES
-          isMixMatch: i.isPromo || false,
-          discountAmount: i.isPromo 
-            ? ((i.sellPrice * i.soldQty) - i.revenue) 
-            : 0,
-          mixMatchQtyUsed: i.breakdown?.packs 
-            ? i.breakdown.packs * i.promoQty 
-            : undefined
-        })),
-      totalLifted: totalLifted,
-      cash: declaredCash,
-      tpa: declaredTicket,
-      transfer: declaredTransfer,
-      lunchExpense: lunchExpense,
-      discrepancy: discrepancy,
-      profit: calculatedData.totalTheoreticalProfit
-    };
-
-    // Save snapshot to report for persistence
-    (newReport as any).stockSnapshot = {
-      initial: initialStock,
-      final: endingStock
-    };
-
     try {
-        addSalesReport(newReport as any);
+        if (existingReport) {
+            updateSalesReport(reportData.id, reportData);
+        } else {
+            addSalesReport(reportData);
+        }
         
         setSyncState(prev => ({ ...prev, status: 'success' }));
         triggerHaptic('success');
 
         setTimeout(() => {
             setSyncState({ status: 'idle', currentStep: -1, completedSteps: [] });
+            setForceEditMode(false); // Redirect to report view after successful closure
+            setViewHistoryReport(null); // Clear history view if any
             pageTopRef.current?.scrollIntoView({ behavior: 'smooth' });
-        }, 2500);
+        }, 1500);
     } catch (error: any) {
         setSyncState(prev => ({ ...prev, status: 'error' }));
         triggerHaptic('error');
         alert("Não foi possível completar a ação. Verifique os dados.");
     }
+  };
+
+  // Modal de Confirmação de Edição Final
+  const ConfirmEditModal = () => {
+    const lastActor = editConfirmationData?.editedBy || editConfirmationData?.closedBy || 'Desconhecido';
+    const isAdminOrOwner = user?.role === UserRole.PROPRIETARIO || user?.role === UserRole.ADMIN_GERAL;
+    const isDifferentUser = user?.name !== lastActor;
+    const hoursSinceClosure = editConfirmationData?.timestamp ? (Date.now() - editConfirmationData.timestamp) / (1000 * 60 * 60) : 0;
+    const canConfirm = isAdminOrOwner || isDifferentUser || hoursSinceClosure >= INACTIVITY_THRESHOLD_HOURS;
+    const isUnilateralAllowed = isAdminOrOwner || hoursSinceClosure >= INACTIVITY_THRESHOLD_HOURS;
+
+    return (
+      showConfirmEditModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[300] flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white dark:bg-slate-800 rounded-[40px] p-10 w-full max-w-lg shadow-2xl border border-slate-100 dark:border-slate-700 text-center relative">
+            <button onClick={() => setShowConfirmEditModal(false)} className="absolute top-6 right-6 p-2 text-slate-400 hover:text-red-500 transition-colors">
+              <X size={24} />
+            </button>
+
+            <div className="w-20 h-20 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-full flex items-center justify-center mx-auto mb-6">
+              <ShieldCheck size={40} />
+            </div>
+            
+            <h2 className="text-2xl font-black text-[#003366] dark:text-white uppercase mb-4">Segunda Confirmação Necessária</h2>
+            
+            <div className="bg-slate-50 dark:bg-slate-700/50 p-6 rounded-3xl mb-8 border border-slate-100 dark:border-slate-600">
+              <p className="text-slate-600 dark:text-slate-400 font-medium leading-relaxed mb-4">
+                Esta edição foi realizada por <strong className="text-[#003366] dark:text-blue-400">{lastActor}</strong>.
+              </p>
+              {isAdminOrOwner ? (
+                <p className="text-sm text-green-600 dark:text-green-500 font-bold italic">
+                  Como Administrador/Proprietário, você tem permissão para realizar a confirmação unilateral desta alteração.
+                </p>
+              ) : (
+                <p className="text-sm text-slate-500 dark:text-slate-400 italic">
+                  Para garantir a integridade, a confirmação final deve ser feita por um utilizador diferente daquele que realizou a edição.
+                </p>
+              )}
+            </div>
+
+            {!canConfirm && (
+              <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-2xl flex items-center gap-3 text-left">
+                <AlertTriangle size={20} className="text-red-500 shrink-0" />
+                <p className="text-xs font-bold text-red-600 dark:text-red-400 uppercase">
+                  Você não pode confirmar sua própria edição. Solicite a validação de outro colega ou administrador.
+                </p>
+              </div>
+            )}
+            
+            <div className="flex flex-col gap-3">
+              <button 
+                disabled={!canConfirm}
+                onClick={() => {
+                  setShowConfirmEditModal(false);
+                  if (editConfirmationData.id) {
+                    // Forçar o status de confirmado e propagar dados finais para Dashboard/Calendário
+                    const finalReport = {
+                      ...editConfirmationData,
+                      status: ClosureStatus.FECHO_CONFIRMADO,
+                      confirmedBy: user?.name || 'Admin',
+                      confirmationTimestamp: Date.now(),
+                      unilateralAdminConfirmation: isUnilateralAllowed,
+                      stockUpdated: true
+                    };
+                    
+                    updateSalesReport(editConfirmationData.id, finalReport);
+                    confirmSalesReport(editConfirmationData.id, user?.name || 'Admin', isUnilateralAllowed);
+                  }
+                }}
+                className={`w-full py-5 font-black rounded-2xl shadow-xl transition-all uppercase tracking-widest ${
+                  canConfirm 
+                    ? 'bg-[#003366] text-white hover:opacity-90 active:scale-95' 
+                    : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                }`}
+              >
+                Confirmar Fecho Definitivo
+              </button>
+              <button onClick={() => setShowConfirmEditModal(false)} className="w-full py-4 bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 font-black rounded-2xl hover:bg-slate-200 transition-all uppercase text-sm">
+                Voltar e Revisar
+              </button>
+            </div>
+          </div>
+        </div>
+      )
+    );
   };
 
   const getCloseButtonColor = () => {
@@ -667,18 +941,6 @@ const Sales: React.FC = () => {
     return 'bg-[#003366] text-white hover:opacity-90 shadow-blue-200';
   };
 
-  const handleReopenDay = () => {
-    if (!canReopenDay) {
-        triggerHaptic('error');
-        showToast("Sem permissão para reabrir o dia.");
-        return;
-    }
-    if (confirm("Deseja realmente reabrir este dia operacional? Isso permitirá novas alterações.")) {
-        unlockDay(reportDate, "Reabertura via Vendas");
-        showToast("Dia reaberto com sucesso!");
-        triggerHaptic('success');
-    }
-  };
 
   const getCloseButtonText = () => {
     if (isLocked) return 'Dia Encerrado';
@@ -686,8 +948,6 @@ const Sales: React.FC = () => {
     if (!isFinancialsConfirmed) return 'Confirmar Valores';
     return 'Fechar o Dia';
   };
-
-  const INACTIVITY_THRESHOLD_HOURS = 24;
 
   const getReportData = (report: any) => {
       if (!report) return {
@@ -732,13 +992,16 @@ const Sales: React.FC = () => {
     const reportData = getReportData(rawReport);
     
     const isConfirmed = reportData.status === ClosureStatus.FECHO_CONFIRMADO || reportData.status === ClosureStatus.CAIXA_FECHADA || reportData.status === ClosureStatus.BLOQUEADO;
+    
+    // Regra definitiva: Admin/Proprietário confirmam sempre. Outros apenas se forem utilizadores diferentes do autor ou após 24h.
+    const lastActor = reportData.editedBy || reportData.closedBy || 'Desconhecido';
+    const hoursSinceClosure = reportData.timestamp ? (Date.now() - reportData.timestamp) / (1000 * 60 * 60) : 0;
     const canConfirm = !isConfirmed && (
-      (user?.role === UserRole.ADMIN_GERAL || user?.role === UserRole.PROPRIETARIO) ||
-      (user?.name && reportData.closedBy !== user.name)
+      isAdminOrOwner || (user?.name && lastActor !== user.name) || hoursSinceClosure >= INACTIVITY_THRESHOLD_HOURS
     );
 
-    const hoursSinceClosure = (Date.now() - (reportData.timestamp || Date.now())) / (1000 * 60 * 60);
-    const isUnilateralAllowed = !isConfirmed && hoursSinceClosure > INACTIVITY_THRESHOLD_HOURS && (user?.role === UserRole.ADMIN_GERAL || user?.role === UserRole.PROPRIETARIO);
+    // Administradores e Proprietários podem sempre realizar confirmação unilateral imediata, outros após 24h
+    const isUnilateralAllowed = !isConfirmed && (isAdminOrOwner || hoursSinceClosure >= INACTIVITY_THRESHOLD_HOURS);
 
     const handleConfirmClose = () => {
       if (isDayLocked(reportDate)) {
@@ -749,7 +1012,20 @@ const Sales: React.FC = () => {
       if (!reportDate) return;
       if (!canConfirm && !isUnilateralAllowed) return;
       
+      // Forçar o status de confirmado e propagar dados finais para Dashboard/Calendário
+      const finalReport = {
+        ...reportData,
+        status: ClosureStatus.FECHO_CONFIRMADO,
+        confirmedBy: user?.name || 'Admin',
+        confirmationTimestamp: Date.now(),
+        unilateralAdminConfirmation: isUnilateralAllowed,
+        stockUpdated: true
+      };
+      
+      updateSalesReport(reportData.id, finalReport);
       confirmSalesReport(reportData.id, user?.name || 'Admin', isUnilateralAllowed);
+      
+      setForceEditMode(false); // Ensure view switches to report after confirmation
       showToast("Validação final concluída com sucesso!");
       triggerHaptic('success');
     };
@@ -766,9 +1042,8 @@ const Sales: React.FC = () => {
                     <div className="flex items-center gap-4 ml-[2cm]">
                       <button 
                         onClick={() => {
-                          // Abre histórico (podes melhorar com modal se quiseres)
-                          console.log('Histórico de Alterações Manuais:', stockOperationHistory.filter(log => log.referenceId === reportData.id));
-                          alert('Histórico aberto no console (podes criar um modal depois)');
+                          triggerHaptic('selection');
+                          setShowManualHistoryModal(true);
                         }}
                         className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
                       >
@@ -785,14 +1060,6 @@ const Sales: React.FC = () => {
                       </div>
                       
                       <div className="flex items-center gap-3">
-                        {canReopenDay && (
-                          <button 
-                            onClick={handleReopenDay}
-                            className="px-4 py-2 bg-amber-500 text-white rounded-full font-bold text-sm flex items-center gap-2 hover:bg-amber-600 transition-colors shadow-md"
-                          >
-                            <Unlock size={18} /> Reabrir Dia
-                          </button>
-                        )}
                         <div className={`px-4 py-2 rounded-full font-bold text-sm flex items-center gap-2 ${
                           reportData.status === ClosureStatus.BLOQUEADO ? 'bg-green-100 text-green-700' :
                           isConfirmed ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
@@ -943,7 +1210,7 @@ const Sales: React.FC = () => {
                                <th className="p-4 font-bold text-center">Compra</th>
                                <th className="p-4 font-bold text-center">Final</th>
                                <th className="p-4 font-bold text-center">Vendido</th>
-                               <th className="p-4 font-bold text-right">Desconto MixMatch</th>
+                               <th className="p-4 font-bold text-right">Detalhes / Desconto</th>
                                <th className="p-4 font-bold text-right">Subtotal</th>
                             </tr>
                          </thead>
@@ -955,8 +1222,21 @@ const Sales: React.FC = () => {
                                   <td className="p-4 text-center text-green-600 font-medium">+{item.buy}</td>
                                   <td className="p-4 text-center text-slate-500">{item.end}</td>
                                   <td className="p-4 text-center font-bold text-slate-700 dark:text-slate-200">{item.soldQty}</td>
-                                  <td className="p-4 text-right font-medium text-amber-600">
-                                    {item.discountAmount ? `-${item.discountAmount.toLocaleString()} Kz` : '-'}
+                                   <td className="p-4 text-right">
+                                      {item.isPromo && item.soldQty > 0 ? (
+                                        <div className="flex flex-col items-end">
+                                          <span className="text-[10px] text-slate-400 uppercase font-bold leading-tight">
+                                            {item.mixMatchQtyUsed || 0} un (Mix Match) + {item.avulsaQty || 0} un (Avulsa)
+                                          </span>
+                                          {item.discountAmount > 0 && (
+                                            <span className="text-xs font-medium text-amber-600">
+                                              -{item.discountAmount.toLocaleString()} Kz
+                                            </span>
+                                          )}
+                                        </div>
+                                      ) : (
+                                        <span className="text-slate-400">-</span>
+                                      )}
                                   </td>
                                   <td className="p-4 text-right font-bold text-[#003366] dark:text-blue-300">{(item.revenue || 0).toLocaleString('pt-AO')} Kz</td>
                                </tr>
@@ -1113,7 +1393,18 @@ const Sales: React.FC = () => {
 
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className={`transition-all duration-300 ${sidebarMode === 'hidden' ? 'pl-16 md:pl-20' : ''}`}>
-          <h1 className="text-3xl font-bold text-[#003366] dark:text-white">Controle de Vendas</h1>
+          <div className="flex items-center gap-4">
+            <h1 className="text-3xl font-bold text-[#003366] dark:text-white">Controle de Vendas</h1>
+            <button 
+              onClick={() => {
+                triggerHaptic('selection');
+                setShowManualHistoryModal(true);
+              }}
+              className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors border border-slate-200 dark:border-slate-700"
+            >
+              <History size={14} /> Histórico Manual
+            </button>
+          </div>
           <div className="flex items-center gap-3 mt-1 group">
              <Calendar size={18} className="text-[#003366] dark:text-blue-400" />
              <span className="text-[#003366] dark:text-blue-400 font-bold">
@@ -1126,11 +1417,6 @@ const Sales: React.FC = () => {
         </div>
         <div className="flex-1 flex items-center justify-center md:justify-end w-full md:w-auto gap-4">
           <SyncStatus />
-          {isLocked && canReopenDay && (
-            <button onClick={handleReopenDay} className="pill-button px-6 py-3 font-bold flex items-center justify-center gap-2 shadow-lg transition-all bg-amber-500 text-white hover:bg-amber-600">
-              <Unlock size={20} /> Reabrir Dia
-            </button>
-          )}
           {existingReport && existingReport.status === ClosureStatus.ABERTO && (
              <button onClick={() => {
                // Forçar visualização do relatório mesmo estando aberto
@@ -1181,16 +1467,32 @@ const Sales: React.FC = () => {
                       </div>
                   </td>
                   <td className="p-2 bg-blue-50/30 dark:bg-blue-900/10">
-                    <input type="number" disabled={!canEditInitialStock || isReadOnly} placeholder="0" value={initialStock[item.id] || ''} onChange={(e) => handleStockChange(setInitialStock, item.id, e.target.value)} className="w-full text-center border rounded-lg py-2 focus:ring-2 focus:ring-blue-500 outline-none font-medium dark:bg-slate-700 dark:text-white" />
+                    <input 
+                      type="text" 
+                      inputMode="decimal"
+                      disabled={!canEditInitialStock || isReadOnly} 
+                      placeholder="0" 
+                      value={initialStock[item.id] ?? ''} 
+                      onChange={(e) => handleStockChange(setInitialStock, item.id, e.target.value)} 
+                      className="w-full text-center border rounded-lg py-2 focus:ring-2 focus:ring-blue-500 outline-none font-medium dark:bg-slate-700 dark:text-white" 
+                    />
                   </td>
                   <td className="p-2 bg-green-50/30 dark:bg-green-900/10">
-                       <input type="number" value={purchasedStock[item.id] || 0} readOnly className="w-full text-center bg-white/50 dark:bg-slate-700/50 border border-green-200 dark:border-green-800 rounded-lg py-2 text-green-700 dark:text-green-400 font-bold cursor-default" />
+                       <input type="text" inputMode="decimal" value={purchasedStock[item.id] || 0} readOnly className="w-full text-center bg-white/50 dark:bg-slate-700/50 border border-green-200 dark:border-green-800 rounded-lg py-2 text-green-700 dark:text-green-400 font-bold cursor-default" />
                   </td>
                   <td className="p-2 bg-purple-50/30 dark:bg-purple-900/10">
                        <div className="w-full text-center py-2 text-purple-700 dark:text-purple-400 font-bold">{item.stock}</div>
                   </td>
                   <td className="p-2 bg-red-50/30 dark:bg-red-900/10">
-                    <input type="number" disabled={isReadOnly} placeholder="0" value={endingStock[item.id] || ''} onChange={(e) => handleStockChange(setEndingStock, item.id, e.target.value)} className="w-full text-center border rounded-lg py-2 outline-none font-medium dark:text-white bg-white dark:bg-slate-700 focus:ring-2 focus:ring-red-500" />
+                    <input 
+                      type="text" 
+                      inputMode="decimal"
+                      disabled={isReadOnly} 
+                      placeholder="0" 
+                      value={endingStock[item.id] ?? ''} 
+                      onChange={(e) => handleStockChange(setEndingStock, item.id, e.target.value)} 
+                      className="w-full text-center border rounded-lg py-2 outline-none font-medium dark:text-white bg-white dark:bg-slate-700 focus:ring-2 focus:ring-red-500" 
+                    />
                   </td>
                   <td className="p-2 bg-slate-100/50 dark:bg-slate-700/30">
                     <div className="text-center font-bold py-2 text-slate-700 dark:text-slate-200">{item.soldQty}</div>
@@ -1211,16 +1513,17 @@ const Sales: React.FC = () => {
                                         </span>
                                     )}
                                 </div>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div className="bg-blue-50 dark:bg-blue-900/10 p-3 rounded-lg border border-blue-100 dark:border-blue-800">
                                         <label className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase mb-1 block">
-                                            Packs de {item.promoQty} ({item.promoPrice} Kz)
+                                            Grupos de Mix Match ({item.promoQty}un por {item.promoPrice} Kz)
                                         </label>
                                         <div className="flex items-center gap-2">
                                             <input 
-                                                type="number" 
-                                                value={item.breakdown?.packs || 0}
-                                                onChange={(e) => handleBreakdownChange(item.id, 'packs', e.target.value, item.breakdown)}
+                                                type="text" 
+                                                inputMode="decimal"
+                                                value={item.breakdown?.packs ?? ''}
+                                                onChange={(e) => handleBreakdownChange(item.id, 'packs', e.target.value, item.soldQty, item.promoQty)}
                                                 className="w-16 p-1 text-center font-bold rounded border-none outline-none focus:ring-1 focus:ring-blue-500 dark:bg-slate-700 dark:text-white"
                                             />
                                             <span className="text-xs font-medium text-slate-500">= {(((item.breakdown?.packs || 0) * item.promoPrice) || 0).toLocaleString()} Kz</span>
@@ -1232,24 +1535,14 @@ const Sales: React.FC = () => {
                                         </label>
                                         <div className="flex items-center gap-2">
                                             <input 
-                                                type="number" 
-                                                value={item.breakdown?.singles || 0}
-                                                onChange={(e) => handleBreakdownChange(item.id, 'singles', e.target.value, item.breakdown)}
+                                                type="text" 
+                                                inputMode="decimal"
+                                                value={item.breakdown?.singles ?? ''}
+                                                onChange={(e) => handleBreakdownChange(item.id, 'singles', e.target.value, item.soldQty, item.promoQty)}
                                                 className="w-16 p-1 text-center font-bold rounded border-none outline-none focus:ring-1 focus:ring-slate-500 dark:bg-slate-600 dark:text-white"
                                             />
                                             <span className="text-xs font-medium text-slate-500">= {(((item.breakdown?.singles || 0) * item.sellPrice) || 0).toLocaleString()} Kz</span>
                                         </div>
-                                    </div>
-                                    <div className="bg-red-50 dark:bg-red-900/10 p-3 rounded-lg border border-red-100 dark:border-red-800">
-                                        <label className="text-[10px] font-bold text-red-500 dark:text-red-400 uppercase mb-1 block">
-                                            Quebras (0 Kz)
-                                        </label>
-                                        <input 
-                                            type="number" 
-                                            value={item.breakdown?.waste || 0}
-                                            onChange={(e) => handleBreakdownChange(item.id, 'waste', e.target.value, item.breakdown)}
-                                            className="w-full p-1 text-center font-bold rounded border-none outline-none focus:ring-1 focus:ring-red-500 text-red-600 dark:bg-slate-700 dark:text-red-400"
-                                        />
                                     </div>
                                 </div>
                             </div>
@@ -1265,7 +1558,14 @@ const Sales: React.FC = () => {
                   ) : (
                     <div className="flex items-center gap-2 bg-blue-50 dark:bg-blue-900/20 p-2 rounded-xl">
                       <input type="text" placeholder="Nome do Produto" value={newProductName} onChange={(e) => setNewProductName(e.target.value)} className="flex-1 p-2 rounded-lg border-none dark:bg-slate-700 dark:text-white" autoFocus />
-                      <input type="number" placeholder="Preço Venda (Kz)" value={newProductPrice} onChange={(e) => setNewProductPrice(e.target.value)} className="w-32 p-2 rounded-lg border-none dark:bg-slate-700 dark:text-white" />
+                      <input 
+                        type="text" 
+                        inputMode="decimal"
+                        placeholder="Preço Venda (Kz)" 
+                        value={newProductPrice ?? ''} 
+                        onChange={(e) => setNewProductPrice(e.target.value)} 
+                        className="w-32 p-2 rounded-lg border-none dark:bg-slate-700 dark:text-white" 
+                      />
                       <button onClick={handleAddNewProduct} className="bg-green-500 text-white px-4 py-2 rounded-lg font-bold">Salvar</button>
                     </div>
                   )}
@@ -1285,15 +1585,24 @@ const Sales: React.FC = () => {
           <div className="space-y-4">
              <div className="p-4 bg-red-50 dark:bg-red-900/10 rounded-2xl border border-red-100 dark:border-red-900/30">
                <label className="text-xs font-bold text-red-500 dark:text-red-400 uppercase block mb-2">Despesa de Almoço (Retirado)</label>
-               <input type="number" value={financials.lunch} disabled={isFinancialsConfirmed || isReadOnly || isDayLocked(reportDate)} onChange={(e) => handleFinancialChange('lunch', e.target.value)} className="w-full p-3 bg-white dark:bg-slate-800 rounded-xl border border-red-200 dark:border-red-800 font-bold text-red-600 dark:text-red-400" placeholder="0" />
+               <input 
+                 type="text" 
+                 inputMode="decimal"
+                 value={financials.lunch ?? ''} 
+                 disabled={isFinancialsConfirmed || isReadOnly || isDayLocked(reportDate)} 
+                 onChange={(e) => handleFinancialChange('lunch', e.target.value)} 
+                 className="w-full p-3 bg-white dark:bg-slate-800 rounded-xl border border-red-200 dark:border-red-800 font-bold text-red-600 dark:text-red-400" 
+                 placeholder="0" 
+               />
             </div>
             <div className="pt-4 border-t border-slate-100 dark:border-slate-700 space-y-4">
                 <p className="text-sm font-bold text-[#003366] dark:text-blue-400 mb-4 uppercase tracking-widest">Valores Levantados (Gaveta)</p>
                 <div>
                    <label className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1 mb-1"><Wallet size={14} /> Total em Cash</label>
                    <input 
-                     type="number" 
-                     value={financials.cash} 
+                     type="text" 
+                     inputMode="decimal"
+                     value={financials.cash ?? ''} 
                      disabled={isFinancialsConfirmed || isReadOnly || isDayLocked(reportDate)} 
                      onChange={(e) => handleFinancialChange('cash', e.target.value)} 
                      className="w-full p-4 rounded-2xl soft-ui-inset font-bold text-green-700 bg-white dark:bg-slate-800 outline-none" 
@@ -1303,11 +1612,27 @@ const Sales: React.FC = () => {
                 <div className="grid grid-cols-2 gap-4">
                    <div>
                       <label className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1 mb-1"><ArrowRightLeft size={14} /> Transferência</label>
-                      <input type="number" value={financials.transfer} disabled={isFinancialsConfirmed || isReadOnly || isDayLocked(reportDate)} onChange={(e) => handleFinancialChange('transfer', e.target.value)} className="w-full p-4 rounded-2xl soft-ui-inset font-bold text-blue-700 bg-white dark:bg-slate-800 outline-none" placeholder="0" />
+                      <input 
+                        type="text" 
+                        inputMode="decimal"
+                        value={financials.transfer ?? ''} 
+                        disabled={isFinancialsConfirmed || isReadOnly || isDayLocked(reportDate)} 
+                        onChange={(e) => handleFinancialChange('transfer', e.target.value)} 
+                        className="w-full p-4 rounded-2xl soft-ui-inset font-bold text-blue-700 bg-white dark:bg-slate-800 outline-none" 
+                        placeholder="0" 
+                      />
                    </div>
                    <div>
                       <label className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1 mb-1"><CreditCard size={14} /> TPA / Ticket</label>
-                      <input type="number" value={financials.ticket} disabled={isFinancialsConfirmed || isReadOnly || isDayLocked(reportDate)} onChange={(e) => handleFinancialChange('ticket', e.target.value)} className="w-full p-4 rounded-2xl soft-ui-inset font-bold text-purple-700 bg-white dark:bg-slate-800 outline-none" placeholder="0" />
+                      <input 
+                        type="text" 
+                        inputMode="decimal"
+                        value={financials.ticket ?? ''} 
+                        disabled={isFinancialsConfirmed || isReadOnly || isDayLocked(reportDate)} 
+                        onChange={(e) => handleFinancialChange('ticket', e.target.value)} 
+                        className="w-full p-4 rounded-2xl soft-ui-inset font-bold text-purple-700 bg-white dark:bg-slate-800 outline-none" 
+                        placeholder="0" 
+                      />
                    </div>
                 </div>
                 {isDayLocked(reportDate) ? (
@@ -1370,27 +1695,89 @@ const Sales: React.FC = () => {
 
       {showCloseModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-fade-in">
-           <div className="bg-white dark:bg-slate-800 rounded-[32px] p-8 w-full max-w-md shadow-2xl relative">
+           <div className="bg-white dark:bg-slate-800 rounded-[32px] p-8 w-full max-w-md shadow-2xl relative max-h-[90vh] overflow-y-auto">
               <div className="text-center mb-6">
                  <div className="w-16 h-16 bg-blue-50 dark:bg-blue-900/30 text-[#003366] dark:text-blue-400 rounded-full flex items-center justify-center mx-auto mb-4">
                     <CheckCircle size={32} />
                  </div>
                  <h2 className="text-2xl font-black text-[#003366] dark:text-white">Confirmar Fecho</h2>
-                 <p className="text-slate-500 dark:text-slate-400 mt-2">Deseja realmente encerrar o dia e atualizar o stock?</p>
+                 <p className="text-slate-500 dark:text-slate-400 mt-2">Valide os valores financeiros para encerrar o dia.</p>
               </div>
               
-              <div className="bg-slate-50 dark:bg-slate-700/50 rounded-2xl p-4 mb-6 space-y-2">
-                 <div className="flex justify-between text-sm"><span className="text-slate-500 dark:text-slate-400">Total Vendas:</span><span className="font-bold dark:text-white">{(calculatedData.totalTheoreticalRevenue || 0).toLocaleString('pt-AO')} Kz</span></div>
-                 <div className="flex justify-between text-sm"><span className="text-slate-500 dark:text-slate-400">Total Levantado:</span><span className="font-bold dark:text-white">{(totalLifted || 0).toLocaleString('pt-AO')} Kz</span></div>
-                 <div className={`flex justify-between text-sm font-bold ${discrepancy < 0 ? 'text-red-500' : 'text-green-500'}`}>
-                    <span>Divergência:</span>
-                    <span>{(discrepancy || 0).toLocaleString('pt-AO')} Kz</span>
+              <div className="space-y-4 mb-6">
+                 <div className="grid grid-cols-2 gap-4">
+                    <div>
+                       <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Dinheiro (Cash)</label>
+                       <input 
+                         type="text" 
+                         inputMode="decimal"
+                         value={formValues.cash || ''} 
+                         onChange={(e) => setFormValues(prev => ({ ...prev, cash: Number(e.target.value) || 0 }))}
+                         className="w-full p-3 bg-slate-50 dark:bg-slate-700/50 rounded-xl border border-slate-200 dark:border-slate-600 font-bold text-green-600 outline-none focus:ring-2 focus:ring-green-500"
+                       />
+                    </div>
+                    <div>
+                       <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">TPA / Multicaixa</label>
+                       <input 
+                         type="text" 
+                         inputMode="decimal"
+                         value={formValues.tpa || ''} 
+                         onChange={(e) => setFormValues(prev => ({ ...prev, tpa: Number(e.target.value) || 0 }))}
+                         className="w-full p-3 bg-slate-50 dark:bg-slate-700/50 rounded-xl border border-slate-200 dark:border-slate-600 font-bold text-purple-600 outline-none focus:ring-2 focus:ring-purple-500"
+                       />
+                    </div>
                  </div>
+
+                 <div className="grid grid-cols-2 gap-4">
+                    <div>
+                       <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Transferência</label>
+                       <input 
+                         type="text" 
+                         inputMode="decimal"
+                         value={formValues.transfer || ''} 
+                         onChange={(e) => setFormValues(prev => ({ ...prev, transfer: Number(e.target.value) || 0 }))}
+                         className="w-full p-3 bg-slate-50 dark:bg-slate-700/50 rounded-xl border border-slate-200 dark:border-slate-600 font-bold text-blue-600 outline-none focus:ring-2 focus:ring-blue-500"
+                       />
+                    </div>
+                    <div>
+                       <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Despesa Almoço</label>
+                       <input 
+                         type="text" 
+                         inputMode="decimal"
+                         value={formValues.lunch || ''} 
+                         onChange={(e) => setFormValues(prev => ({ ...prev, lunch: Number(e.target.value) || 0 }))}
+                         className="w-full p-3 bg-slate-50 dark:bg-slate-700/50 rounded-xl border border-slate-200 dark:border-slate-600 font-bold text-red-600 outline-none focus:ring-2 focus:ring-red-500"
+                       />
+                    </div>
+                 </div>
+
+                 <div className="p-4 bg-slate-50 dark:bg-slate-700/50 rounded-2xl space-y-2 border border-slate-100 dark:border-slate-600">
+                    <div className="flex justify-between text-xs"><span className="text-slate-500 dark:text-slate-400">Total Vendas (Stock):</span><span className="font-bold dark:text-white">{(calculatedData.totalTheoreticalRevenue || 0).toLocaleString('pt-AO')} Kz</span></div>
+                    <div className="flex justify-between text-xs"><span className="text-slate-500 dark:text-slate-400">Total Levantado:</span><span className="font-bold dark:text-white">{(formValues.cash + formValues.tpa + formValues.transfer).toLocaleString('pt-AO')} Kz</span></div>
+                    <div className="flex justify-between text-xs"><span className="text-slate-500 dark:text-slate-400">Despesa Almoço:</span><span className="font-bold text-red-500">-{formValues.lunch.toLocaleString('pt-AO')} Kz</span></div>
+                    <div className={`flex justify-between text-sm font-bold pt-2 border-t border-slate-200 dark:border-slate-600 ${((formValues.cash + formValues.tpa + formValues.transfer) - (calculatedData.totalTheoreticalRevenue - formValues.lunch)) < 0 ? 'text-red-500' : 'text-green-500'}`}>
+                       <span>Divergência:</span>
+                       <span>{((formValues.cash + formValues.tpa + formValues.transfer) - (calculatedData.totalTheoreticalRevenue - formValues.lunch)).toLocaleString('pt-AO')} Kz</span>
+                    </div>
+                 </div>
+
+                 {((formValues.cash + formValues.tpa + formValues.transfer) - (calculatedData.totalTheoreticalRevenue - formValues.lunch)) !== 0 && (
+                    <div>
+                       <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Justificativa da Divergência</label>
+                       <textarea 
+                         value={formValues.justification} 
+                         onChange={(e) => setFormValues(prev => ({ ...prev, justification: e.target.value }))}
+                         className="w-full p-3 bg-slate-50 dark:bg-slate-700/50 rounded-xl border border-slate-200 dark:border-slate-600 font-medium text-slate-700 dark:text-slate-300 outline-none focus:ring-2 focus:ring-blue-500"
+                         rows={2}
+                         placeholder="Descreva o motivo da quebra ou sobra..."
+                       />
+                    </div>
+                 )}
               </div>
 
               <div className="flex gap-4">
-                 <button onClick={() => setShowCloseModal(false)} className="flex-1 py-4 bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 font-bold rounded-2xl">Cancelar</button>
-                 <button onClick={handleDayClosureSubmit} className="flex-1 py-4 bg-[#003366] text-white font-bold rounded-2xl shadow-lg">Confirmar</button>
+                 <button onClick={() => setShowCloseModal(false)} className="flex-1 py-4 bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 font-bold rounded-2xl hover:bg-slate-200 transition-colors">Cancelar</button>
+                 <button onClick={handleDayClosureSubmit} className="flex-1 py-4 bg-[#003366] text-white font-bold rounded-2xl shadow-lg hover:opacity-90 transition-all">Confirmar Fecho</button>
               </div>
            </div>
         </div>
@@ -1413,6 +1800,8 @@ const Sales: React.FC = () => {
 
       {/* Modal Mix Match */}
       <MixMatchModal />
+      <ConfirmEditModal />
+      <ManualHistoryModal />
     </div>
   );
 };
