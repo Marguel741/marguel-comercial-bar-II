@@ -129,7 +129,7 @@ interface ProductContextType {
   registrarAlmocoBlindado: (report: SalesReport) => void;
   updateSalesReport: (reportId: string, updates: Partial<SalesReport>) => void;
   updateSalesReportJustification: (reportId: string, justificationData: any) => void;
-  confirmSalesReport: (reportId: string, confirmedBy: string, isUnilateral?: boolean) => void;
+  confirmSalesReport: (reportId: string, confirmedBy: string, isUnilateral?: boolean, reportData?: SalesReport) => void;
   addAuditLog: (log: Omit<AuditLog, 'id' | 'timestamp'>) => void;
   addEquipment: (equipment: Omit<Equipment, 'id' | 'prevQty'>) => void;
   updateEquipment: (id: string, updates: Partial<Equipment>) => void;
@@ -1584,9 +1584,9 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     });
   };
 
-  const confirmSalesReport = (reportId: string, confirmedBy: string, isUnilateral: boolean = false) => {
+  const confirmSalesReport = (reportId: string, confirmedBy: string, isUnilateral: boolean = false, reportData?: SalesReport) => {
     if (!checkPermission('sales_closure')) return;
-    const report = salesReports.find(r => r.id === reportId);
+    const report = reportData || salesReports.find(r => r.id === reportId);
     if (!report) return;
 
     const reportDateStr = report.dateISO ? report.dateISO : report.date;

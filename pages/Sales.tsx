@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Save, Calculator, DollarSign, Calendar, TrendingDown, AlertCircle, PlusCircle, Wallet, CreditCard, ArrowRightLeft, CheckCircle, X, Send, MessageSquare, Clock, Plus, Lock, Unlock, BarChart2, ArrowUp, Filter, Eye, ChevronRight, RefreshCw, Database, Server, ShieldCheck, Smartphone, ChevronDown, ChevronUp, AlertTriangle, Check, History } from 'lucide-react';
+import { Save, Calculator, DollarSign, Calendar, TrendingDown, AlertCircle, PlusCircle, Wallet, CreditCard, ArrowRightLeft, CheckCircle, X, Send, MessageSquare, Clock, Plus, Lock, Unlock, BarChart2, ArrowUp, Filter, Eye, ChevronRight, RefreshCw, Database, Server, ShieldCheck, Smartphone, ChevronDown, ChevronUp, AlertTriangle, Check, History, Maximize2, Minimize2 } from 'lucide-react';
 import SoftCard from '../components/SoftCard';
 import { useProducts } from '../contexts/ProductContext';
 import { 
@@ -93,18 +93,21 @@ const Sales: React.FC = () => {
   const salesReports = contextSalesReports as unknown as DailyReport[];
 
   const pageTopRef = useRef<HTMLDivElement>(null);
+  const dateInputRef = useRef<HTMLInputElement>(null);
   const todayISO = getSystemDate().toISOString().split('T')[0];
   const [reportDate, setReportDate] = useState(todayISO);
+  const [isSummaryFullscreen, setIsSummaryFullscreen] = useState(false);
 
   const existingReport = salesReports.find(r => {
     const reportDateISO = (r as any).dateISO ? (r as any).dateISO.split('T')[0] : r.date;
     return reportDateISO === reportDate;
   });
 
-  // Sync reportDate with systemDate
+  // Sync reportDate with systemDate only on mount
+  // Removed auto-sync to allow viewing other days
   useEffect(() => {
     setReportDate(todayISO);
-  }, [todayISO]);
+  }, []);
 
   // Bloqueio de datas futuras e limitação de ano
   useEffect(() => {
@@ -119,6 +122,16 @@ const Sales: React.FC = () => {
     setHasManuallyOpened(false);
     setForceEditMode(false);
   }, [reportDate, todayISO]);
+
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsSummaryFullscreen(false);
+    };
+    if (isSummaryFullscreen) {
+      window.addEventListener('keydown', handleEsc);
+    }
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [isSummaryFullscreen]);
 
   const [initialStock, setInitialStock] = useState<Record<string, string>>({});
   const [endingStock, setEndingStock] = useState<Record<string, string>>({});
@@ -495,7 +508,8 @@ const Sales: React.FC = () => {
   const canViewMargins = hasPermission(user, 'sales_view_margins');
   
   const isLocked = isDayLocked(reportDate);
-  const isReadOnly = isLocked || (!forceEditMode && (existingReport?.status !== undefined && existingReport.status !== ClosureStatus.ABERTO));
+  const isNotToday = reportDate !== todayISO;
+  const isReadOnly = isLocked || isNotToday || (!forceEditMode && (existingReport?.status !== undefined && existingReport.status !== ClosureStatus.ABERTO));
 
   const showToast = (message: string) => {
     setToast({ show: true, message });
@@ -907,17 +921,18 @@ const Sales: React.FC = () => {
                     ...editConfirmationData,
                     status: ClosureStatus.FECHO_CONFIRMADO,
                     confirmedBy: user?.name || 'Sistema',
-                    confirmationTimestamp: new Date().toISOString(),
+                    confirmationTimestamp: Date.now(),
                     unilateralAdminConfirmation: isUnilateralAllowed,
-                    stockUpdated: false, // será marcado como true dentro do confirmSalesReport
-                    editedBy: user?.name || 'Admin',
+                    stockUpdated: false, // Garantir que confirmSalesReport processe o stock
+                    processedFinancials: false, // Garantir que confirmSalesReport processe o financeiro
+                    editedBy: editConfirmationData.editedBy || user?.name || 'Admin',
                   };
 
                   updateSalesReport(editConfirmationData.id, finalReport);
-                  await confirmSalesReport(finalReport.id, finalReport);
+                  await confirmSalesReport(finalReport.id, user?.name || 'Sistema', isUnilateralAllowed, finalReport);
 
                   setShowConfirmEditModal(false);
-                  setIsEditing(false);
+                  setForceEditMode(false);
                   console.log("✅ Fecho confirmado com sucesso e propagado para o sistema.");
                 }}
                 className={`w-full py-5 font-black rounded-2xl shadow-xl transition-all uppercase tracking-widest ${
@@ -939,6 +954,7 @@ const Sales: React.FC = () => {
   };
 
   const getCloseButtonColor = () => {
+    if (isNotToday) return 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500';
     if (calculatedData.hasStockError) return 'bg-red-500 text-white';
     if (!isFinancialsConfirmed) return 'bg-slate-200 text-slate-600 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-300';
     return 'bg-[#003366] text-white hover:opacity-90 shadow-blue-200';
@@ -946,6 +962,7 @@ const Sales: React.FC = () => {
 
 
   const getCloseButtonText = () => {
+    if (isNotToday) return 'Visualização';
     if (isLocked) return 'Dia Encerrado';
     if (calculatedData.hasStockError) return 'Erro de Stock';
     if (!isFinancialsConfirmed) return 'Confirmar Valores';
@@ -994,14 +1011,14 @@ const Sales: React.FC = () => {
     
     const reportData = getReportData(rawReport);
     
-    const isConfirmed = reportData.status === ClosureStatus.FECHO_CONFIRMADO || reportData.status === ClosureStatus.CAIXA_FECHADA || reportData.status === ClosureStatus.BLOQUEADO;
+    const isConfirmed = reportData.status === ClosureStatus.FECHO_CONFIRMADO || reportData.status === ClosureStatus.BLOQUEADO;
     
     // Regra definitiva: Admin/Proprietário confirmam sempre. Outros apenas se forem utilizadores diferentes do autor ou após 24h.
     const lastActor = reportData.editedBy || reportData.closedBy || reportData.initiatedBy || 'Desconhecido';
     const canConfirm = !isConfirmed && (isAdminOrOwner || (user?.name && lastActor !== user.name));
     const isUnilateralAllowed = isAdminOrOwner;
 
-    const handleConfirmClose = () => {
+    const handleConfirmClose = async () => {
       if (isDayLocked(reportDate)) {
         triggerHaptic('error');
         showToast('Dia bloqueado. Desbloqueie primeiro para confirmar o fecho.');
@@ -1009,22 +1026,25 @@ const Sales: React.FC = () => {
       }
       if (!reportDate) return;
       if (!canConfirm && !isUnilateralAllowed) return;
-      
-      // Forçar o status de confirmado e propagar dados finais para Dashboard/Calendário
+
       const finalReport = {
         ...reportData,
         status: ClosureStatus.FECHO_CONFIRMADO,
-        confirmedBy: user?.name || 'Admin',
+        confirmedBy: user?.name || 'Sistema',
         confirmationTimestamp: Date.now(),
         unilateralAdminConfirmation: isUnilateralAllowed,
-        stockUpdated: true
+        stockUpdated: false, // Garantir que confirmSalesReport processe o stock
+        processedFinancials: false // Garantir que confirmSalesReport processe o financeiro
       };
-      
+
+      // Atualiza localmente
       updateSalesReport(reportData.id, finalReport);
-      confirmSalesReport(reportData.id, user?.name || 'Admin', isUnilateralAllowed);
-      
-      setForceEditMode(false); // Ensure view switches to report after confirmation
-      showToast("Validação final concluída com sucesso!");
+
+      // CHAMADA CORRETA – esta é a função que realmente propaga stock + financeiro
+      await confirmSalesReport(finalReport.id, user?.name || 'Sistema', isUnilateralAllowed, finalReport);
+
+      setForceEditMode(false);
+      showToast("Fecho confirmado e propagado com sucesso!");
       triggerHaptic('success');
     };
 
@@ -1053,7 +1073,39 @@ const Sales: React.FC = () => {
                 <SoftCard className="p-8 mb-6">
                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
                       <div>
-                        <h1 className="text-2xl font-black text-[#003366] dark:text-white uppercase">Relatório de Fecho - {reportData.displayDate}</h1>
+                        <div className="flex items-center gap-3">
+                          <h1 className="text-2xl font-black text-[#003366] dark:text-white uppercase">
+                            Relatório de Fecho - {reportData.displayDate}
+                          </h1>
+                          {isLocked && (
+                            <span className="px-3 py-1 bg-red-100 text-red-600 text-[10px] font-black uppercase rounded-full">
+                              (Dia bloqueado)
+                            </span>
+                          )}
+                          
+                          <div className="relative">
+                            <input 
+                              type="date" 
+                              ref={dateInputRef}
+                              value={reportDate}
+                              onChange={(e) => setReportDate(e.target.value)}
+                              className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                              max={todayISO}
+                            />
+                            <button className="p-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-full hover:bg-slate-200 transition-colors">
+                              <Calendar size={18} />
+                            </button>
+                          </div>
+
+                          {isNotToday && (
+                            <button 
+                              onClick={() => setReportDate(todayISO)}
+                              className="px-3 py-1 bg-emerald-500 text-white rounded-full text-[10px] font-black uppercase hover:bg-emerald-600 transition-all shadow-sm flex items-center gap-1"
+                            >
+                              <RefreshCw size={12} /> Hoje
+                            </button>
+                          )}
+                        </div>
                         <p className="text-slate-500 font-medium">Iniciado por {reportData.closedBy} às {reportData.generatedAt}</p>
                       </div>
                       
@@ -1195,9 +1247,16 @@ const Sales: React.FC = () => {
                 </SoftCard>
 
                 {/* Detailed Breakdown Section */}
-                <SoftCard className="p-0 overflow-hidden">
-                   <div className="p-4 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+                <SoftCard className="p-0 overflow-hidden relative">
+                   <div className="p-4 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
                       <h3 className="font-bold text-[#003366] dark:text-white">Resumo de Vendas</h3>
+                      <button 
+                        onClick={() => { setIsSummaryFullscreen(true); triggerHaptic('selection'); }}
+                        className="p-2 text-slate-400 hover:text-[#003366] dark:hover:text-blue-400 transition-colors"
+                        title="Ver em tela cheia"
+                      >
+                        <Maximize2 size={18} />
+                      </button>
                    </div>
                    <div className="overflow-x-auto">
                       <table className="w-full text-sm text-left">
@@ -1242,6 +1301,77 @@ const Sales: React.FC = () => {
                          </tbody>
                       </table>
                    </div>
+
+                    {/* Fullscreen Overlay */}
+                    {isSummaryFullscreen && (
+                      <div className="fixed inset-0 z-[300] bg-black/90 backdrop-blur-md flex items-center justify-center p-2 md:p-4 animate-fade-in">
+                        <div className="bg-white dark:bg-slate-800 rounded-[32px] w-full max-w-none h-full md:h-[95vh] shadow-2xl flex flex-col overflow-hidden border border-slate-200 dark:border-slate-700">
+                         <div className="p-4 md:p-6 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
+                           <div className="flex items-center gap-3">
+                             <div className="p-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl">
+                               <BarChart2 size={24} />
+                             </div>
+                             <div>
+                               <h3 className="font-black text-lg md:text-xl text-[#003366] dark:text-white uppercase">Resumo Detalhado de Vendas</h3>
+                               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{reportData.displayDate}</p>
+                             </div>
+                           </div>
+                           <button 
+                             onClick={() => { setIsSummaryFullscreen(false); triggerHaptic('selection'); }}
+                             className="p-2 md:p-3 bg-slate-100 dark:bg-slate-700 text-slate-500 hover:text-red-500 rounded-2xl transition-all flex items-center gap-2 font-bold uppercase text-[10px] md:text-xs"
+                           >
+                             <Minimize2 size={18} /> Fechar
+                           </button>
+                         </div>
+                         <div className="flex-1 overflow-auto p-2 md:p-4">
+                            <table className="w-full text-[11px] md:text-sm text-left table-auto border-collapse">
+                               <thead>
+                                  <tr className="bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 sticky top-0 z-10">
+                                     <th className="px-2 py-4 font-bold">Produto</th>
+                                     <th className="px-1 py-4 font-bold text-center">Inicial</th>
+                                     <th className="px-1 py-4 font-bold text-center">Compra</th>
+                                     <th className="px-1 py-4 font-bold text-center">Final</th>
+                                     <th className="px-1 py-4 font-bold text-center">Vendido</th>
+                                     <th className="px-2 py-4 font-bold text-right">Detalhes / Desconto</th>
+                                     <th className="px-2 py-4 font-bold text-right">Subtotal</th>
+                                  </tr>
+                               </thead>
+                               <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                                  {reportData.itemsSnapshot?.map((item: any) => (
+                                     <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                                        <td className="px-2 py-4 font-bold text-slate-700 dark:text-slate-300 break-words max-w-[150px] md:max-w-none">{item.name}</td>
+                                        <td className="px-1 py-4 text-center text-slate-500">{item.init}</td>
+                                        <td className="px-1 py-4 text-center text-green-600 font-medium">+{item.buy}</td>
+                                        <td className="px-1 py-4 text-center text-slate-500">{item.end}</td>
+                                        <td className="px-1 py-4 text-center font-bold text-slate-700 dark:text-slate-200">{item.soldQty}</td>
+                                         <td className="px-2 py-4 text-right">
+                                            {item.isPromo && item.soldQty > 0 ? (
+                                              <div className="flex flex-col items-end">
+                                                <span className="text-[9px] md:text-[10px] text-slate-400 uppercase font-bold leading-tight whitespace-nowrap">
+                                                  {item.mixMatchQtyUsed || 0} un (Mix Match)
+                                                </span>
+                                                <span className="text-[9px] md:text-[10px] text-slate-400 uppercase font-bold leading-tight whitespace-nowrap">
+                                                  + {item.avulsaQty || 0} un (Avulsa)
+                                                </span>
+                                                {item.discountAmount > 0 && (
+                                                  <span className="text-[10px] md:text-xs font-medium text-amber-600">
+                                                    -{item.discountAmount.toLocaleString()} Kz
+                                                  </span>
+                                                )}
+                                              </div>
+                                            ) : (
+                                              <span className="text-slate-400">-</span>
+                                            )}
+                                        </td>
+                                        <td className="px-2 py-4 text-right font-bold text-[#003366] dark:text-blue-300 whitespace-nowrap">{(item.revenue || 0).toLocaleString('pt-AO')} Kz</td>
+                                     </tr>
+                                  ))}
+                               </tbody>
+                            </table>
+                         </div>
+                       </div>
+                     </div>
+                   )}
                 </SoftCard>
             </div>
         </div>
@@ -1393,23 +1523,50 @@ const Sales: React.FC = () => {
         <div className={`transition-all duration-300 ${sidebarMode === 'hidden' ? 'pl-16 md:pl-20' : ''}`}>
           <div className="flex items-center gap-4">
             <h1 className="text-3xl font-bold text-[#003366] dark:text-white">Controle de Vendas</h1>
-            <button 
-              onClick={() => {
-                triggerHaptic('selection');
-                setShowManualHistoryModal(true);
-              }}
-              className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors border border-slate-200 dark:border-slate-700"
-            >
-              <History size={14} /> Histórico Manual
-            </button>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => {
+                  triggerHaptic('selection');
+                  setShowManualHistoryModal(true);
+                }}
+                className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors border border-slate-200 dark:border-slate-700"
+              >
+                <History size={14} /> Histórico Manual
+              </button>
+              
+              <div className="relative">
+                <input 
+                  type="date" 
+                  ref={dateInputRef}
+                  value={reportDate}
+                  onChange={(e) => setReportDate(e.target.value)}
+                  className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                  max={todayISO}
+                />
+                <button 
+                  className="px-3 py-1.5 bg-[#003366] text-white rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:opacity-90 transition-all shadow-md"
+                >
+                  <Calendar size={14} /> Ver Outro Dia
+                </button>
+              </div>
+
+              {isNotToday && (
+                <button 
+                  onClick={() => setReportDate(todayISO)}
+                  className="px-3 py-1.5 bg-emerald-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-emerald-600 transition-all shadow-md"
+                >
+                  <RefreshCw size={14} /> Voltar ao Hoje
+                </button>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-3 mt-1 group">
              <Calendar size={18} className="text-[#003366] dark:text-blue-400" />
              <span className="text-[#003366] dark:text-blue-400 font-bold">
-               {formatDisplayDate(formatDateISO(getSystemDate()))}
+               {formatDisplayDate(formatDateISO(new Date(reportDate + 'T12:00:00')))}
              </span>
              <div className="ml-2 px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-[10px] font-black uppercase tracking-tighter rounded border border-blue-200 dark:border-blue-800">
-               Data Operacional
+               {isNotToday ? 'Visualização Histórica' : 'Data Operacional'}
              </div>
           </div>
         </div>
@@ -1422,7 +1579,7 @@ const Sales: React.FC = () => {
                Ver Relatório Parcial
              </button>
           )}
-          <button onClick={handleInitialClose} disabled={isReadOnly && !isLocked} className={`pill-button px-6 py-3 font-bold flex items-center justify-center gap-2 shadow-lg transition-all ${isReadOnly && !isLocked ? 'bg-slate-300 cursor-not-allowed text-slate-500' : getCloseButtonColor()}`}>
+          <button onClick={handleInitialClose} disabled={isReadOnly} className={`pill-button px-6 py-3 font-bold flex items-center justify-center gap-2 shadow-lg transition-all ${isReadOnly ? 'bg-slate-300 cursor-not-allowed text-slate-500' : getCloseButtonColor()}`}>
             <Save size={20} /> {getCloseButtonText()}
           </button>
         </div>

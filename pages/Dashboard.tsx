@@ -30,6 +30,13 @@ const Dashboard: React.FC = () => {
   React.useEffect(() => {
     localStorage.setItem('mg_custom_alerts', JSON.stringify(customAlerts));
   }, [customAlerts]);
+
+  // Request notification permission on mount
+  React.useEffect(() => {
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+  }, []);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [timeRange, setTimeRange] = useState<'week' | 'month' | 'quarter' | 'year'>('week');
@@ -294,6 +301,48 @@ const Dashboard: React.FC = () => {
 
     return uniqueList;
   }, [products, getConfirmedSalesReports, systemDate, customAlerts]);
+
+  // Track alerts that have already been notified in this session
+  const notifiedAlertsRef = React.useRef<Set<string>>(new Set());
+  const isInitialMount = React.useRef(true);
+
+  // Notify new alerts
+  React.useEffect(() => {
+    if (!("Notification" in window)) return;
+
+    // On initial mount, we just populate the ref with existing alerts to avoid spamming
+    if (isInitialMount.current) {
+      alerts.forEach(alert => notifiedAlertsRef.current.add(alert.id));
+      isInitialMount.current = false;
+      return;
+    }
+
+    if (Notification.permission === "granted") {
+      alerts.forEach(alert => {
+        if (!notifiedAlertsRef.current.has(alert.id)) {
+          try {
+            new Notification("Alerta Marguel", {
+              body: alert.message || (Array.isArray(alert.details) ? alert.details.join(', ') : alert.details),
+              icon: "/logo-marguel.png",
+              tag: "marguel-alert-" + alert.id
+            });
+            notifiedAlertsRef.current.add(alert.id);
+          } catch (err) {
+            console.error("Erro ao disparar notificação:", err);
+          }
+        }
+      });
+    }
+
+    // Sync notifiedAlertsRef with current alerts: remove IDs that are no longer active
+    // This allows re-notifying if an alert is resolved and then recurs later.
+    const currentIds = new Set(alerts.map(a => a.id));
+    notifiedAlertsRef.current.forEach(id => {
+      if (!currentIds.has(id)) {
+        notifiedAlertsRef.current.delete(id);
+      }
+    });
+  }, [alerts]);
 
   const toggleNotificationExpand = (id: string) => {
     setExpandedNotificationIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);

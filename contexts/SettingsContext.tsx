@@ -19,8 +19,6 @@ interface SettingsContextType {
   lastSyncDate: string;
   setLastSyncDate: (date: string) => void;
   isOnline: boolean;
-  maintenanceMode: boolean;
-  setMaintenanceMode: (enabled: boolean) => void;
 }
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
@@ -55,9 +53,6 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   });
 
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [maintenanceMode, setMaintenanceModeState] = useState<boolean>(() => {
-    return localStorage.getItem('maintenance_mode_enabled') === 'true';
-  });
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -147,20 +142,6 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     localStorage.setItem('last_sync_date', date);
   };
 
-  const setMaintenanceMode = (enabled: boolean) => {
-    const old = maintenanceMode;
-    setMaintenanceModeState(enabled);
-    localStorage.setItem('maintenance_mode_enabled', enabled.toString());
-    addLog({
-      action: enabled ? 'SYSTEM_MAINTENANCE_ENABLED' : 'SYSTEM_MAINTENANCE_DISABLED',
-      module: 'SISTEMA',
-      description: `Modo manutenção ${enabled ? 'ativado' : 'desativado'}`,
-      previousValue: old,
-      newValue: enabled,
-      entityId: null
-    }, user);
-  };
-
   // Idle Timer Logic
   useEffect(() => {
     if (idleTimeout <= 0 || !user) return;
@@ -207,9 +188,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setUsageAnalyticsEnabled,
       lastSyncDate,
       setLastSyncDate,
-      isOnline,
-      maintenanceMode,
-      setMaintenanceMode
+      isOnline
     }}>
       {children}
     </SettingsContext.Provider>

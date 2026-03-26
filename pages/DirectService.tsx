@@ -1,10 +1,10 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { Search, ShoppingCart, Plus, Minus, Trash2, CheckCircle, Wallet, CreditCard, ArrowRightLeft, X, History, Clock, Eye, Wifi, WifiOff, Cloud, Loader2, Check, Filter, AlertCircle, Tag } from 'lucide-react';
+import { Search, ShoppingCart, Plus, Minus, Trash2, CheckCircle, Wallet, CreditCard, ArrowRightLeft, X, History, Clock, Eye, Wifi, WifiOff, Cloud, Loader2, Check, Filter, AlertCircle, Tag, Lock, AlertTriangle } from 'lucide-react';
 import { useProducts } from '../contexts/ProductContext';
 import { useLayout } from '../contexts/LayoutContext';
 import { useAuth } from '../contexts/AuthContext';
 import SoftCard from '../components/SoftCard';
-import { dbAddSale, dbGetAllSales, dbUpdateSale, DirectSale } from '../src/services/db';
+import { dbAddSale, dbGetAllSales, dbUpdateSale, dbDeleteSale, DirectSale } from '../src/services/db';
 import { processSync, serverTimeOffset } from '../src/services/syncService';
 import { roundKz, formatKz, formatDateISO, formatDisplayDate, generateUUID } from '../src/utils';
 import { hasPermission } from '../src/utils/permissions';
@@ -33,6 +33,8 @@ const DirectService: React.FC = () => {
   } = useProducts();
   const { triggerHaptic, sidebarMode } = useLayout();
   const { user } = useAuth();
+
+  const isAdminOrOwner = user?.role === 'PROPRIETARIO' || user?.role === 'ADMIN_GERAL';
 
   if (!hasPermission(user, 'direct_service_view')) {
     return <AccessDenied />;
@@ -65,6 +67,11 @@ const DirectService: React.FC = () => {
   const [historyFilterUser, setHistoryFilterUser] = useState('');
   const [isInitializing, setIsInitializing] = useState(true);
   const [historyLimit, setHistoryLimit] = useState(50);
+  const [deleteConfirmation, setDeleteConfirmation] = useState<{
+    isOpen: boolean,
+    type: 'single' | 'mass',
+    sale?: DirectSale
+  }>({ isOpen: false, type: 'single' });
   
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -442,6 +449,93 @@ const DirectService: React.FC = () => {
       setTimeout(() => setNetworkToast(prev => ({ ...prev, show: false })), 4000);
   };
 
+  const handleDeleteSale = (sale: DirectSale) => {
+      const isOwnerOfSale = sale.userId === user?.id;
+      if (!isAdminOrOwner && !isOwnerOfSale) {
+          alert("Você só pode eliminar as suas próprias vendas.");
+          return;
+      }
+
+      if (isLocked) {
+          alert("Dia Bloqueado.");
+          return;
+      }
+
+      setDeleteConfirmation({ isOpen: true, type: 'single', sale });
+  };
+
+  const confirmDeleteAction = async () => {
+      const { type, sale } = deleteConfirmation;
+      try {
+          triggerHaptic('warning');
+          
+          if (type === 'single' && sale) {
+              // 1. Delete from DB
+              await dbDeleteSale(sale.id);
+              
+              // 2. Update local state
+              setDirectSales(prev => prev.filter(s => s.id !== sale.id));
+
+              // 3. Audit Log (No stock mention)
+              addAuditLog({
+                  action: 'ELIMINACAO_VENDA',
+                  entity: 'DirectSale',
+                  entityId: sale.id,
+                  details: `Venda de ${formatKz(sale.total)} eliminada por ${user?.name}. (Sem alteração de stock)`,
+                  performedBy: user?.name || 'Sistema'
+              });
+          } else if (type === 'mass') {
+              const todayStr = formatDateISO(systemDate);
+              const salesToDelete = directSales.filter(s => s.date === todayStr);
+              
+              for (const s of salesToDelete) {
+                  await dbDeleteSale(s.id);
+              }
+
+              setDirectSales(prev => prev.filter(s => s.date !== todayStr));
+
+              addAuditLog({
+                  action: 'ELIMINACAO_MASSA_VENDAS',
+                  entity: 'DirectSale',
+                  entityId: todayStr,
+                  details: `${salesToDelete.length} vendas do dia ${todayStr} eliminadas por ${user?.name}. (Sem alteração de stock)`,
+                  performedBy: user?.name || 'Sistema'
+              });
+          }
+
+          setNetworkToast({
+              show: true,
+              message: type === 'single' ? "Venda eliminada com sucesso." : "Vendas do dia eliminadas.",
+              type: 'success'
+          });
+          setTimeout(() => setNetworkToast(prev => ({ ...prev, show: false })), 4000);
+      } catch (error) {
+          console.error("Delete failed", error);
+          alert("Erro ao eliminar venda.");
+      } finally {
+          setDeleteConfirmation({ isOpen: false, type: 'single' });
+      }
+  };
+
+  const handleDeleteAllSalesOfDay = () => {
+      if (!isAdminOrOwner) return;
+      
+      if (isLocked) {
+          alert("Dia Bloqueado.");
+          return;
+      }
+
+      const todayStr = formatDateISO(systemDate);
+      const hasSales = directSales.some(s => s.date === todayStr);
+
+      if (!hasSales) {
+          alert("Não há vendas para eliminar no dia de hoje.");
+          return;
+      }
+
+      setDeleteConfirmation({ isOpen: true, type: 'mass' });
+  };
+
   const filteredHistory = useMemo(() => {
       return directSales.filter(sale => {
           let matchDate = true;
@@ -492,18 +586,29 @@ const DirectService: React.FC = () => {
                           <h2 className="text-xl font-bold text-[#003366] dark:text-white flex items-center gap-2">
                               <History size={24} /> Histórico de Vendas Diretas
                           </h2>
-             {Object.entries(cart).filter(([id, qty]) => productMap.get(id)?.category === 'Cerveja').reduce((sum, [id, qty]) => sum + qty, 0) >= 3 && (
-                    <button 
-                        onClick={() => setIsBeerMixMatchActive(!isBeerMixMatchActive)}
-                        className={`p-2 rounded-full transition-all ${isBeerMixMatchActive ? 'bg-amber-500 text-white' : 'bg-slate-200 text-slate-600'}`}
-                        title="Mix Match Cervejas (3 por 1000 Kz)"
-                    >
-                        🍺
-                    </button>
-                )}
-                          <button onClick={() => setShowHistory(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors">
-                              <X size={20} className="text-slate-500" />
-                          </button>
+                          <div className="flex items-center gap-2">
+                              {isAdminOrOwner && (
+                                  <button 
+                                      onClick={handleDeleteAllSalesOfDay}
+                                      className="flex items-center gap-1 px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg text-xs font-bold transition-colors"
+                                      title="Eliminar todas as vendas do dia atual"
+                                  >
+                                      <Trash2 size={14} /> Eliminar Todas (Hoje)
+                                  </button>
+                              )}
+                              {Object.entries(cart).filter(([id, qty]) => productMap.get(id)?.category === 'Cerveja').reduce((sum, [_, qty]) => sum + Number(qty), 0) >= 3 && (
+                                  <button 
+                                      onClick={() => setIsBeerMixMatchActive(!isBeerMixMatchActive)}
+                                      className={`p-2 rounded-full transition-all ${isBeerMixMatchActive ? 'bg-amber-500 text-white' : 'bg-slate-200 text-slate-600'}`}
+                                      title="Mix Match Cervejas (3 por 1000 Kz)"
+                                  >
+                                      🍺
+                                  </button>
+                              )}
+                              <button onClick={() => setShowHistory(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors">
+                                  <X size={20} className="text-slate-500" />
+                              </button>
+                          </div>
                       </div>
                       
                       {/* Summary Banner */}
@@ -596,8 +701,7 @@ const DirectService: React.FC = () => {
                                                   <span>{sale.attendant}</span>
                                               </div>
                                           </div>
-                                          
-                                          {/* Actions */}
+                                                     {/* Actions */}
                                           <div className="flex gap-2 ml-2">
                                               {sale.syncError && sale.statusSync !== 'cancelled' && (
                                                   <button 
@@ -608,11 +712,11 @@ const DirectService: React.FC = () => {
                                                       <ArrowRightLeft size={16} />
                                                   </button>
                                               )}
-                                              {sale.statusSync !== 'cancelled' && sale.statusSync !== 'synced' && (
+                                              {(isAdminOrOwner || sale.userId === user?.id) && (
                                                   <button 
-                                                    onClick={() => handleCancelSale(sale)} 
+                                                    onClick={() => handleDeleteSale(sale)} 
                                                     className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors" 
-                                                    title="Anular Venda (Auditável)"
+                                                    title="Eliminar Venda Permanentemente"
                                                   >
                                                       <Trash2 size={16} />
                                                   </button>
@@ -819,9 +923,20 @@ const DirectService: React.FC = () => {
                                           </div>
                                       </div>
                                   </div>
-                                  <div className="text-right">
-                                      <p className="font-bold text-[#003366] dark:text-white">{formatKz(sale.total)}</p>
-                                      <p className="text-[10px] uppercase font-bold text-slate-400">{sale.paymentMethod}</p>
+                                  <div className="flex items-center gap-4">
+                                      <div className="text-right">
+                                          <p className="font-bold text-[#003366] dark:text-white">{formatKz(sale.total)}</p>
+                                          <p className="text-[10px] uppercase font-bold text-slate-400">{sale.paymentMethod}</p>
+                                      </div>
+                                      {(isAdminOrOwner || sale.userId === user?.id) && (
+                                          <button 
+                                            onClick={() => handleDeleteSale(sale)} 
+                                            className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
+                                            title="Eliminar Venda"
+                                          >
+                                              <Trash2 size={16} />
+                                          </button>
+                                      )}
                                   </div>
                               </div>
                           ))}
@@ -942,6 +1057,48 @@ const DirectService: React.FC = () => {
             )}
          </div>
       </div>
+
+      {/* Confirmation Modal */}
+      {deleteConfirmation.isOpen && (
+        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white dark:bg-slate-800 w-full max-w-md rounded-2xl shadow-2xl p-6 animate-scale-in">
+            <div className="flex items-center gap-4 mb-6 text-red-600">
+              <div className="p-3 bg-red-50 dark:bg-red-900/20 rounded-full">
+                <AlertTriangle size={32} />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold">Confirmar Eliminação</h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Esta ação é irreversível.</p>
+              </div>
+            </div>
+            
+            <p className="text-slate-600 dark:text-slate-300 mb-8">
+              {deleteConfirmation.type === 'single' 
+                ? `Tem certeza que deseja eliminar permanentemente esta venda de ${formatKz(deleteConfirmation.sale?.total || 0)}?`
+                : `Tem certeza que deseja eliminar TODAS as vendas do dia de hoje?`}
+              <br />
+              <span className="text-xs font-bold text-amber-600 mt-2 block italic">
+                * O stock não será alterado.
+              </span>
+            </p>
+
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setDeleteConfirmation({ isOpen: false, type: 'single' })}
+                className="flex-1 py-3 font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl transition-colors"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={confirmDeleteAction}
+                className="flex-1 py-3 bg-red-600 text-white font-bold rounded-xl shadow-lg hover:bg-red-700 active:scale-95 transition-all"
+              >
+                Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

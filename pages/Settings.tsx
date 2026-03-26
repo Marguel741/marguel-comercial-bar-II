@@ -43,7 +43,6 @@ const Settings: React.FC = () => {
     uiEffectsEnabled, setUiEffectsEnabled,
     diagnosticReportingMode, setDiagnosticReportingMode,
     usageAnalyticsEnabled, setUsageAnalyticsEnabled,
-    maintenanceMode, setMaintenanceMode,
     lastSyncDate, isOnline
   } = useSettings();
 
@@ -60,7 +59,10 @@ const Settings: React.FC = () => {
   const [isEditingAccount, setIsEditingAccount] = useState(false);
   const [accountForm, setAccountForm] = useState({
     name: user?.name || '',
-    username: user?.username || ''
+    username: user?.username || '',
+    phoneNumber: user?.phoneNumber || '',
+    secondaryPhoneNumber: user?.secondaryPhoneNumber || '',
+    associatedEmail: user?.associatedEmail || user?.email || ''
   });
 
   // Security State
@@ -174,8 +176,34 @@ const Settings: React.FC = () => {
               <span className="text-sm font-bold text-slate-800 dark:text-white">@{user?.username || 'não definido'}</span>
             </div>
             <div className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-800">
+              <span className="text-sm text-slate-500 dark:text-slate-400">Telefone Principal</span>
+              <span className="text-sm font-bold text-slate-800 dark:text-white">{user?.phoneNumber || 'Não definido'}</span>
+            </div>
+            <div className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-800">
+              <span className="text-sm text-slate-500 dark:text-slate-400">Telefone Alternativo</span>
+              <span className="text-sm font-bold text-slate-800 dark:text-white">{user?.secondaryPhoneNumber || 'Não definido'}</span>
+            </div>
+            <div className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-800">
+              <span className="text-sm text-slate-500 dark:text-slate-400">Email Associado</span>
+              <span className="text-sm font-bold text-slate-800 dark:text-white">{user?.associatedEmail || user?.email || 'Não definido'}</span>
+            </div>
+            <div className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-800">
               <span className="text-sm text-slate-500 dark:text-slate-400">Função</span>
-              <span className="text-sm font-bold text-slate-400 dark:text-slate-500 italic">Inalterável</span>
+              <span className="text-sm font-bold text-[#003366] dark:text-blue-400 uppercase">{user?.role.replace(/_/g, ' ')}</span>
+            </div>
+            <div className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-800">
+              <span className="text-sm text-slate-500 dark:text-slate-400">Data de Criação</span>
+              <span className="text-sm font-bold text-slate-800 dark:text-white">{user?.createdAt || 'Não disponível'}</span>
+            </div>
+            <div className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-800">
+              <span className="text-sm text-slate-500 dark:text-slate-400">Último Login</span>
+              <span className="text-sm font-bold text-slate-800 dark:text-white">{user?.lastLogin || user?.lastSeen || 'Agora'}</span>
+            </div>
+            <div className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-800">
+              <span className="text-sm text-slate-500 dark:text-slate-400">Status</span>
+              <span className={`text-sm font-bold ${user?.isBanned ? 'text-red-500' : 'text-green-500'}`}>
+                {user?.isBanned ? 'Inativo (Banido)' : 'Ativo'}
+              </span>
             </div>
           </div>
 
@@ -446,38 +474,6 @@ const Settings: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Modo Manutenção */}
-              <SoftCard className="p-6 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-red-50 dark:bg-red-900/20 rounded-lg">
-                      <Lock className="w-5 h-5 text-red-600 dark:text-red-400" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-slate-800 dark:text-white">Modo Manutenção</h3>
-                      <p className="text-xs text-slate-500">Bloquear acesso ao sistema</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setMaintenanceMode(!maintenanceMode)}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-all focus:outline-none ${
-                      maintenanceMode ? 'bg-red-600' : 'bg-slate-200 dark:bg-slate-700'
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                        maintenanceMode ? 'translate-x-6' : 'translate-x-1'
-                      }`}
-                    />
-                  </button>
-                </div>
-                {maintenanceMode && (
-                  <div className="p-3 bg-red-50 dark:bg-red-900/10 text-red-700 dark:text-red-400 text-[10px] rounded-xl border border-red-100 dark:border-red-900/30 font-bold">
-                    ATENÇÃO: O sistema está bloqueado para utilizadores comuns.
-                  </div>
-                )}
-              </SoftCard>
-
               {/* Sincronização Completa */}
               <SoftCard className="p-6 space-y-4 bg-slate-900 dark:bg-black text-white border-none overflow-hidden relative group">
                 <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform">
@@ -599,6 +595,38 @@ const Settings: React.FC = () => {
                         className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-10 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                       />
                     </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block">Telefone Principal</label>
+                      <input 
+                        type="tel"
+                        value={accountForm.phoneNumber}
+                        onChange={e => setAccountForm({...accountForm, phoneNumber: e.target.value})}
+                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                        placeholder="Ex: 9xx xxx xxx"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block">Telefone Alternativo</label>
+                      <input 
+                        type="tel"
+                        value={accountForm.secondaryPhoneNumber}
+                        onChange={e => setAccountForm({...accountForm, secondaryPhoneNumber: e.target.value})}
+                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                        placeholder="Contacto de emergência"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block">Email Associado</label>
+                    <input 
+                      type="email"
+                      value={accountForm.associatedEmail}
+                      onChange={e => setAccountForm({...accountForm, associatedEmail: e.target.value})}
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                      placeholder="email@exemplo.com"
+                    />
                   </div>
                   <div className="p-4 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-2xl">
                     <p className="text-[10px] text-amber-700 dark:text-amber-400 font-bold leading-tight">

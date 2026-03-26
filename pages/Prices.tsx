@@ -206,6 +206,7 @@ const Prices: React.FC = () => {
 
   const togglePromo = (productId: string) => {
     if (!canManagePrices) return;
+    triggerHaptic('selection');
     const product = products.find(p => p.id === productId);
     if (!product) return;
 
@@ -1648,7 +1649,10 @@ const Prices: React.FC = () => {
                   {reportProposal.date} • {(reportProposal as any).completedBy || (reportProposal as any).createdBy || 'Sistema'}
                 </p>
               </div>
-              <button onClick={() => setReportProposal(null)} className="p-3 bg-slate-100 dark:bg-slate-700 text-slate-400 hover:text-red-500 rounded-2xl transition-all">
+              <button 
+              onClick={() => { triggerHaptic('selection'); setReportProposal(null); }} 
+              className="p-3 bg-slate-100 dark:bg-slate-700 text-slate-400 hover:text-red-500 rounded-2xl transition-all"
+            >
                 <X size={24} />
               </button>
             </div>
@@ -1740,7 +1744,7 @@ const Prices: React.FC = () => {
                       {(reportProposal as any).attachments.map((img: string, idx: number) => (
                         <div 
                           key={idx} 
-                          onClick={() => setViewImageIndex(idx)}
+                          onClick={() => { triggerHaptic('selection'); setViewImageIndex(idx); }}
                           className="aspect-square rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 cursor-pointer hover:scale-105 transition-all shadow-md"
                         >
                           <img src={img} alt="Anexo" className="w-full h-full object-cover" />
@@ -1769,7 +1773,10 @@ const Prices: React.FC = () => {
               <h3 className="text-xl font-bold text-[#003366] dark:text-white flex items-center gap-2">
                 <History size={20} /> Histórico de Preços
               </h3>
-              <button onClick={() => setViewHistoryId(null)} className="p-2 text-slate-400 hover:text-red-500 transition-all">
+              <button 
+                onClick={() => { triggerHaptic('selection'); setViewHistoryId(null); }} 
+                className="p-2 text-slate-400 hover:text-red-500 transition-all"
+              >
                 <X size={24} />
               </button>
             </div>
@@ -1805,7 +1812,10 @@ const Prices: React.FC = () => {
       {/* --- IMAGE VIEWER MODAL --- */}
       {viewImageIndex !== null && reportProposal && (reportProposal as any).attachments && (
         <div className="fixed inset-0 bg-black/95 z-[100] flex items-center justify-center p-4 animate-fade-in">
-          <button onClick={() => setViewImageIndex(null)} className="absolute top-6 right-6 p-4 text-white hover:text-red-500 transition-all z-10">
+          <button 
+            onClick={() => { triggerHaptic('selection'); setViewImageIndex(null); }} 
+            className="absolute top-6 right-6 p-4 text-white hover:text-red-500 transition-all z-10"
+          >
             <X size={32} />
           </button>
           <img 
@@ -1816,14 +1826,14 @@ const Prices: React.FC = () => {
           <div className="absolute bottom-10 flex gap-4">
             <button 
               disabled={viewImageIndex === 0}
-              onClick={() => setViewImageIndex(prev => prev! - 1)}
+              onClick={() => { triggerHaptic('selection'); setViewImageIndex(prev => prev! - 1); }}
               className="p-4 bg-white/10 text-white rounded-full hover:bg-white/20 disabled:opacity-20"
             >
               <ArrowLeft size={24} />
             </button>
             <button 
               disabled={viewImageIndex === (reportProposal as any).attachments.length - 1}
-              onClick={() => setViewImageIndex(prev => prev! + 1)}
+              onClick={() => { triggerHaptic('selection'); setViewImageIndex(prev => prev! + 1); }}
               className="p-4 bg-white/10 text-white rounded-full hover:bg-white/20 disabled:opacity-20"
             >
               <ArrowRight size={24} />
@@ -1854,7 +1864,7 @@ const Prices: React.FC = () => {
               />
               <div className="grid grid-cols-2 gap-3 pt-4">
                 <button 
-                  onClick={() => setShowSaveProposalDialog(false)}
+                  onClick={() => { triggerHaptic('selection'); setShowSaveProposalDialog(false); }}
                   className="py-4 bg-slate-100 dark:bg-slate-800 text-slate-500 rounded-2xl font-bold hover:bg-slate-200 transition-all"
                 >
                   Cancelar
@@ -1889,7 +1899,7 @@ const Prices: React.FC = () => {
               </div>
               <div className="grid grid-cols-2 gap-3 pt-4">
                 <button 
-                  onClick={() => setShowConfirmPurchase(false)}
+                  onClick={() => { triggerHaptic('selection'); setShowConfirmPurchase(false); }}
                   className="py-4 bg-slate-100 dark:bg-slate-800 text-slate-500 rounded-2xl font-bold hover:bg-slate-200 transition-all"
                 >
                   Cancelar
@@ -1922,13 +1932,18 @@ const Prices: React.FC = () => {
               </div>
               <div className="grid grid-cols-1 gap-3 pt-4">
                 <button 
-                  onClick={() => { setIsCurrentSimulationSaved(false); setShowAlreadySavedModal(false); setShowSaveProposalDialog(true); }}
+                  onClick={() => { 
+                    triggerHaptic('impact');
+                    setIsCurrentSimulationSaved(false); 
+                    setShowAlreadySavedModal(false); 
+                    setShowSaveProposalDialog(true); 
+                  }}
                   className="py-4 bg-[#003366] text-white rounded-2xl font-black shadow-lg shadow-blue-200 dark:shadow-none hover:scale-[1.02] active:scale-95 transition-all"
                 >
                   Salvar como Nova
                 </button>
                 <button 
-                  onClick={() => setShowAlreadySavedModal(false)}
+                  onClick={() => { triggerHaptic('selection'); setShowAlreadySavedModal(false); }}
                   className="py-4 bg-slate-100 dark:bg-slate-800 text-slate-500 rounded-2xl font-bold hover:bg-slate-200 transition-all"
                 >
                   Entendido

@@ -97,6 +97,12 @@ export interface User {
   avatar?: string;
   isOnline?: boolean;
   lastSeen?: string;
+  phoneNumber?: string;
+  secondaryPhoneNumber?: string;
+  associatedEmail?: string;
+  createdAt?: string;
+  lastLogin?: string;
+  status?: 'Ativo' | 'Inativo';
 }
 
 export interface Product {

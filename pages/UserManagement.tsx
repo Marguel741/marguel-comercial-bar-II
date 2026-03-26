@@ -28,7 +28,15 @@ const UserManagement: React.FC = () => {
   
   // Permission Matrix Modal State
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editingProfile, setEditingProfile] = useState<User | null>(null);
   const [tempPermissions, setTempPermissions] = useState<UserPermissions | null>(null);
+  const [profileForm, setProfileForm] = useState({
+    name: '',
+    email: '',
+    phoneNumber: '',
+    secondaryPhoneNumber: '',
+    associatedEmail: ''
+  });
 
   // Track modified users to show save button
   const [modifiedUsers, setModifiedUsers] = useState<Set<string>>(new Set());
@@ -41,6 +49,7 @@ const UserManagement: React.FC = () => {
 
   // Actions
   const handleApprove = (id: string) => {
+    triggerHaptic('success');
     const targetUser = users.find(u => u.id === id);
     const updated = users.map(u => u.id === id ? { ...u, isApproved: true } : u);
     setUsers(updated);
@@ -62,6 +71,7 @@ const UserManagement: React.FC = () => {
     setUsers(updated);
     saveMockUsers(updated);
     const isBanned = updated.find(u => u.id === id)?.isBanned;
+    triggerHaptic(isBanned ? 'warning' : 'success');
     addLog({
       action: isBanned ? 'BANIR_UTILIZADOR' : 'DESBANIR_UTILIZADOR',
       module: 'UTILIZADORES',
@@ -74,6 +84,7 @@ const UserManagement: React.FC = () => {
   };
 
   const handleRoleChange = (id: string, newRole: UserRole) => {
+    triggerHaptic('success');
     const targetUser = users.find(u => u.id === id);
     const updated = users.map(u => u.id === id ? { ...u, role: newRole, permissions: DEFAULT_PERMISSIONS[newRole] } : u);
     setUsers(updated);
@@ -91,6 +102,7 @@ const UserManagement: React.FC = () => {
 
   // Permission Matrix Actions
   const openPermissionMatrix = (user: User) => {
+    triggerHaptic('selection');
     setEditingUser(user);
     // Ensure all keys from DEFAULT_PERMISSIONS are present as a base
     const basePermissions = DEFAULT_PERMISSIONS[user.role];
@@ -98,13 +110,52 @@ const UserManagement: React.FC = () => {
     setTempPermissions({ ...basePermissions, ...userPermissions });
   };
 
+  const openProfileEdit = (user: User) => {
+    triggerHaptic('selection');
+    setEditingProfile(user);
+    setProfileForm({
+      name: user.name || '',
+      email: user.email || '',
+      phoneNumber: user.phoneNumber || '',
+      secondaryPhoneNumber: user.secondaryPhoneNumber || '',
+      associatedEmail: user.associatedEmail || user.email || ''
+    });
+  };
+
+  const saveProfile = () => {
+    if (!editingProfile) return;
+    triggerHaptic('success');
+    
+    const updated = users.map(u => u.id === editingProfile.id ? { 
+      ...u, 
+      ...profileForm 
+    } : u);
+    
+    setUsers(updated);
+    saveMockUsers(updated);
+    dispatchCustomEvent('mg_users_updated');
+    
+    addLog({
+      action: 'EDITAR_PERFIL_UTILIZADOR',
+      module: 'UTILIZADORES',
+      description: `Perfil de ${editingProfile.name} atualizado por admin`,
+      entityId: editingProfile.id,
+      newValue: profileForm
+    }, currentUser);
+
+    showToast(`Perfil de ${profileForm.name} atualizado!`);
+    setEditingProfile(null);
+  };
+
   const closePermissionMatrix = () => {
+    triggerHaptic('selection');
     setEditingUser(null);
     setTempPermissions(null);
   };
 
   const handleTempPermissionToggle = (key: keyof UserPermissions) => {
     if (!tempPermissions) return;
+    triggerHaptic('selection');
     
     setTempPermissions(prev => {
       if (!prev) return null;
@@ -126,6 +177,7 @@ const UserManagement: React.FC = () => {
 
   const savePermissions = () => {
     if (!editingUser || !tempPermissions) return;
+    triggerHaptic('success');
     
     const updated = users.map(u => u.id === editingUser.id ? { ...u, permissions: tempPermissions } : u);
     setUsers(updated);
@@ -216,7 +268,7 @@ const UserManagement: React.FC = () => {
           <select 
             className="bg-slate-50 dark:bg-slate-700 border-none rounded-xl px-4 py-3 soft-ui-inset text-slate-600 dark:text-slate-200 font-medium"
             value={filterRole}
-            onChange={(e) => setFilterRole(e.target.value)}
+            onChange={(e) => { triggerHaptic('selection'); setFilterRole(e.target.value); }}
           >
             <option value="ALL">Todos os Cargos</option>
             {Object.values(UserRole).map(role => (
@@ -226,7 +278,7 @@ const UserManagement: React.FC = () => {
           <select 
             className="bg-slate-50 dark:bg-slate-700 border-none rounded-xl px-4 py-3 soft-ui-inset text-slate-600 dark:text-slate-200 font-medium"
             value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
+            onChange={(e) => { triggerHaptic('selection'); setFilterStatus(e.target.value); }}
           >
             <option value="ALL">Todos os Status</option>
             <option value="ACTIVE">Ativos</option>
@@ -270,7 +322,7 @@ const UserManagement: React.FC = () => {
               </div>
 
               {/* Badges */}
-              <div className="flex flex-wrap gap-2 mb-6">
+              <div className="flex flex-wrap gap-2 mb-4">
                 <span className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider ${getRoleBadgeColor(u.role)}`}>
                   {u.role.replace(/_/g, ' ')}
                 </span>
@@ -285,20 +337,36 @@ const UserManagement: React.FC = () => {
                   </span>
                 )}
               </div>
+
+              {/* Contact Info Preview */}
+              <div className="mb-4 space-y-1">
+                <div className="flex items-center gap-2 text-[10px] text-slate-500 dark:text-slate-400">
+                  <span className="font-bold">Tel:</span>
+                  <span>{u.phoneNumber || '---'}</span>
+                </div>
+                <div className="flex items-center gap-2 text-[10px] text-slate-500 dark:text-slate-400">
+                  <span className="font-bold">Login:</span>
+                  <span>{u.lastLogin || u.lastSeen || 'Nunca'}</span>
+                </div>
+              </div>
               
               <div className="flex-1"></div>
 
               {/* Specific Permissions Section */}
-              <div className="mb-4 bg-slate-50 dark:bg-slate-700/50 p-3 rounded-xl border border-slate-100 dark:border-slate-600">
-                <p className="text-[10px] font-bold text-slate-400 uppercase mb-2 flex items-center gap-1">
-                  <Shield size={10} /> Matriz de Permissões
-                </p>
+              <div className="mb-4 grid grid-cols-2 gap-2">
                 <button 
-                  onClick={() => openPermissionMatrix(u)}
-                  disabled={isMe || u.isBanned || isHighLevel}
-                  className="w-full py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg text-xs font-bold text-[#003366] dark:text-white hover:bg-slate-50 dark:hover:bg-slate-700 transition-all flex items-center justify-center gap-2"
+                  onClick={() => openProfileEdit(u)}
+                  disabled={u.isBanned}
+                  className="py-2 bg-slate-50 dark:bg-slate-700/50 border border-slate-100 dark:border-slate-600 rounded-lg text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all flex items-center justify-center gap-1"
                 >
-                  <Filter size={14} /> Gerir Permissões Granulares
+                  <UserIcon size={12} /> Perfil / Detalhes
+                </button>
+                <button 
+                  onClick={() => { triggerHaptic('selection'); openPermissionMatrix(u); }}
+                  disabled={isMe || u.isBanned || isHighLevel}
+                  className="py-2 bg-slate-50 dark:bg-slate-700/50 border border-slate-100 dark:border-slate-600 rounded-lg text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all flex items-center justify-center gap-1"
+                >
+                  <Shield size={12} /> Permissões
                 </button>
               </div>
 
@@ -310,7 +378,7 @@ const UserManagement: React.FC = () => {
                     className="w-full bg-slate-50 dark:bg-slate-700 text-sm p-2 rounded-lg border-none soft-ui-inset dark:text-white"
                     value={u.role}
                     disabled={isMe || u.isBanned}
-                    onChange={(e) => handleRoleChange(u.id, e.target.value as UserRole)}
+                    onChange={(e) => { triggerHaptic('selection'); handleRoleChange(u.id, e.target.value as UserRole); }}
                   >
                     {Object.values(UserRole).map(role => (
                       <option key={role} value={role}>{role.replace(/_/g, ' ')}</option>
@@ -321,7 +389,7 @@ const UserManagement: React.FC = () => {
                 <div className="flex gap-2">
                   {!u.isApproved && (
                     <button 
-                      onClick={() => handleApprove(u.id)}
+                      onClick={() => { triggerHaptic('impact'); handleApprove(u.id); }}
                       disabled={isMe}
                       className="flex-1 py-2 bg-green-500 text-white rounded-xl text-xs font-bold hover:bg-green-600 transition-colors shadow-md shadow-green-100"
                     >
@@ -330,7 +398,7 @@ const UserManagement: React.FC = () => {
                   )}
                   
                   <button 
-                    onClick={() => handleBanToggle(u.id)}
+                    onClick={() => { triggerHaptic(u.isBanned ? 'impact' : 'warning'); handleBanToggle(u.id); }}
                     disabled={isMe}
                     className={`flex-1 py-2 rounded-xl text-xs font-bold transition-colors ${
                       u.isBanned 
@@ -377,7 +445,7 @@ const UserManagement: React.FC = () => {
                     <p className="text-sm text-slate-500 dark:text-slate-400">Configurando acessos para {editingUser.name}</p>
                   </div>
                 </div>
-                <button onClick={closePermissionMatrix} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors">
+                <button onClick={() => { triggerHaptic('selection'); closePermissionMatrix(); }} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors">
                   <XCircle size={24} className="text-slate-400" />
                 </button>
               </div>
@@ -507,16 +575,117 @@ const UserManagement: React.FC = () => {
               {/* Modal Footer */}
               <div className="p-6 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-end gap-3">
                 <button 
-                  onClick={closePermissionMatrix}
+                  onClick={() => { triggerHaptic('selection'); closePermissionMatrix(); }}
                   className="px-6 py-2 text-slate-500 font-bold hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-all"
                 >
                   Cancelar
                 </button>
                 <button 
-                  onClick={savePermissions}
+                  onClick={() => { triggerHaptic('impact'); savePermissions(); }}
                   className="px-8 py-2 bg-[#003366] text-white font-bold rounded-xl shadow-lg shadow-blue-200 dark:shadow-none hover:scale-[1.02] active:scale-95 transition-all flex items-center gap-2"
                 >
                   <Save size={18} /> Salvar Matriz
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* PROFILE EDIT MODAL */}
+        {editingProfile && (
+          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+            <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-scale-in">
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50">
+                <h2 className="text-xl font-bold text-[#003366] dark:text-white">Perfil do Utilizador</h2>
+                <button onClick={() => setEditingProfile(null)} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors">
+                  <XCircle size={24} className="text-slate-400" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-6 overflow-y-auto max-h-[70vh] custom-scrollbar">
+                {/* Read-only info */}
+                <div className="grid grid-cols-2 gap-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700">
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">Função</p>
+                    <p className="text-xs font-bold text-[#003366] dark:text-blue-400 uppercase">{editingProfile.role.replace(/_/g, ' ')}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">Status</p>
+                    <p className={`text-xs font-bold ${editingProfile.isBanned ? 'text-red-500' : 'text-green-500'}`}>
+                      {editingProfile.isBanned ? 'Inativo' : 'Ativo'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">Criado em</p>
+                    <p className="text-xs font-bold text-slate-700 dark:text-slate-300">{editingProfile.createdAt || '---'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">Último Login</p>
+                    <p className="text-xs font-bold text-slate-700 dark:text-slate-300">{editingProfile.lastLogin || editingProfile.lastSeen || '---'}</p>
+                  </div>
+                </div>
+
+                {/* Editable fields */}
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Nome Completo</label>
+                    <input 
+                      type="text"
+                      value={profileForm.name}
+                      onChange={e => setProfileForm({...profileForm, name: e.target.value})}
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Email de Login</label>
+                    <input 
+                      type="email"
+                      value={profileForm.email}
+                      onChange={e => setProfileForm({...profileForm, email: e.target.value})}
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Telefone Principal</label>
+                      <input 
+                        type="tel"
+                        value={profileForm.phoneNumber}
+                        onChange={e => setProfileForm({...profileForm, phoneNumber: e.target.value})}
+                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Contacto Alt.</label>
+                      <input 
+                        type="tel"
+                        value={profileForm.secondaryPhoneNumber}
+                        onChange={e => setProfileForm({...profileForm, secondaryPhoneNumber: e.target.value})}
+                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Email Associado</label>
+                    <input 
+                      type="email"
+                      value={profileForm.associatedEmail}
+                      onChange={e => setProfileForm({...profileForm, associatedEmail: e.target.value})}
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-end gap-3">
+                <button onClick={() => setEditingProfile(null)} className="px-6 py-2 text-slate-500 font-bold hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-all">
+                  Cancelar
+                </button>
+                <button 
+                  onClick={saveProfile}
+                  className="px-8 py-2 bg-[#E3007E] text-white font-bold rounded-xl shadow-lg shadow-pink-200 dark:shadow-none hover:scale-[1.02] active:scale-95 transition-all flex items-center gap-2"
+                >
+                  <Save size={18} /> Salvar Alterações
                 </button>
               </div>
             </div>

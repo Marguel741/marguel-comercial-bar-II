@@ -25,9 +25,8 @@ import { ProductProvider } from './contexts/ProductContext';
 import { FinanceProvider } from './contexts/FinanceContext';
 import { LayoutProvider } from './contexts/LayoutContext';
 import { ThemeProvider } from './contexts/ThemeContext';
-import { SettingsProvider, useSettings } from './contexts/SettingsContext';
+import { SettingsProvider } from './contexts/SettingsContext';
 import { getMockUsers, saveMockUsers } from './src/services/mockUsers';
-import { AlertTriangle } from 'lucide-react';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode, permission: keyof UserPermissions }> = ({ children, permission }) => {
   const { user } = useAuth();
@@ -41,33 +40,6 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode, permission: keyof Us
   return <>{children}</>;
 };
 
-const MaintenanceGuard: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user } = useAuth();
-  const { maintenanceMode } = useSettings();
-
-  const isAdmin = user?.role === UserRole.ADMIN_GERAL || user?.role === UserRole.PROPRIETARIO;
-
-  if (maintenanceMode && !isAdmin) {
-    return (
-      <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-900 text-white p-6 text-center">
-        <div className="p-6 bg-amber-500/20 rounded-full mb-6">
-          <AlertTriangle size={64} className="text-amber-500 animate-pulse" />
-        </div>
-        <h1 className="text-4xl font-black tracking-tighter uppercase mb-4">Sistema em Manutenção</h1>
-        <p className="text-slate-400 max-w-md text-lg">
-          O sistema está temporariamente em manutenção para melhorias técnicas. 
-          Por favor, tente novamente em alguns minutos.
-        </p>
-        <div className="mt-12 text-slate-500 text-xs uppercase tracking-widest font-bold">
-          Marguel ERP Systems
-        </div>
-      </div>
-    );
-  }
-
-  return <>{children}</>;
-};
-
 const AppContent: React.FC = () => {
   const [showSplash, setShowSplash] = useState(true);
   const { user, isLoading } = useAuth();
@@ -78,12 +50,10 @@ const AppContent: React.FC = () => {
   if (isLoading) return <div className="h-screen w-screen flex items-center justify-center bg-slate-900 text-white font-black tracking-tighter text-2xl animate-pulse">Carregando permissões...</div>;
 
   return (
-    <ThemeProvider>
-      <SettingsProvider>
-        <MaintenanceGuard>
-          <ProductProvider>
-            <FinanceProvider>
-              <LayoutProvider>
+    <SettingsProvider>
+        <ProductProvider>
+          <FinanceProvider>
+            <LayoutProvider>
                 <Router>
                   <div className="flex h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-300 overflow-hidden">
                     <Sidebar />
@@ -164,17 +134,17 @@ const AppContent: React.FC = () => {
               </LayoutProvider>
             </FinanceProvider>
           </ProductProvider>
-        </MaintenanceGuard>
-      </SettingsProvider>
-    </ThemeProvider>
-  );
-};
+        </SettingsProvider>
+    );
+  };
 
 const App: React.FC = () => {
   return (
     <AuditProvider>
       <AuthProvider>
-        <AppContent />
+        <ThemeProvider>
+          <AppContent />
+        </ThemeProvider>
       </AuthProvider>
     </AuditProvider>
   );

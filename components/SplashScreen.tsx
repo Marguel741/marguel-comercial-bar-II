@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useTheme } from "../contexts/ThemeContext";
 
 interface SplashScreenProps {
   onComplete: () => void;
@@ -6,6 +7,7 @@ interface SplashScreenProps {
 
 const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
   const [animationStarted, setAnimationStarted] = useState(false);
+  const { currentTheme } = useTheme();
 
   useEffect(() => {
     setAnimationStarted(true);
@@ -14,9 +16,9 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
   }, [onComplete]);
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#020408] overflow-hidden">
+    <div className={`fixed inset-0 z-50 flex flex-col items-center justify-center ${currentTheme === 'dark' ? 'bg-black' : 'bg-white'} overflow-hidden transition-colors duration-500`}>
       {/* Cinematic Background with Zoom */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-blue-900/10 via-[#020408] to-[#000000] animate-zoom-in" />
+      <div className={`absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] ${currentTheme === 'dark' ? 'from-blue-900/10 via-black to-black' : 'from-blue-500/5 via-white to-white'} animate-zoom-in`} />
 
       <div className="relative z-10 flex flex-col items-center">
         {/* SVG Logo Animation */}
@@ -75,14 +77,14 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
         {/* Text Animation - Elegant & Premium */}
         <div className="overflow-hidden text-center relative w-full px-4">
           <h1 
-            className="text-2xl md:text-4xl font-medium text-transparent bg-clip-text bg-gradient-to-r from-slate-300 via-white to-slate-300 tracking-[0.3em] uppercase opacity-0 animate-fade-in-up whitespace-nowrap"
+            className={`text-2xl md:text-4xl font-medium text-transparent bg-clip-text bg-gradient-to-r ${currentTheme === 'dark' ? 'from-slate-300 via-white to-slate-300' : 'from-slate-600 via-slate-900 to-slate-600'} tracking-[0.3em] uppercase opacity-0 animate-fade-in-up whitespace-nowrap`}
             style={{ 
               animationDelay: '3.2s', 
               animationFillMode: 'forwards',
               fontFamily: '"Outfit", sans-serif'
             }}
           >
-            Marguel Sistema de Gestão Interna
+            MARGUEL MOBILE SGI
           </h1>
           
           {/* Animated Underline */}
