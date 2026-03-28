@@ -748,9 +748,9 @@ const Sales: React.FC = () => {
     }
     
     if (!calculatedData.allMixMatchValid) {
-        showToast("Existem produtos com Mix Match inválido. Por favor, ajuste antes de fechar.");
-        triggerHaptic('error');
-        return;
+      showToast("Existem produtos com Mix Match inválido. Por favor, ajuste antes de fechar.");
+      triggerHaptic('error');
+      return;
     }
 
     const newReport: DailyReport = {
@@ -789,22 +789,22 @@ const Sales: React.FC = () => {
         discountAmount: item.discountAmount
       })),
       closedBy: user?.name || 'Vendedor',
-      status: existingReport?.status || ClosureStatus.FECHO_PARCIAL_FUNCIONARIO,
+      status: ClosureStatus.FECHO_PARCIAL_FUNCIONARIO,   // ← SEMPRE parcial no primeiro fecho
       timestamp: Date.now(),
-      // Regista quem fez a edição para validar na segunda confirmação
       editedBy: existingReport ? user?.name : undefined
     };
 
     setShowCloseModal(false);
-    
-    // PONTO 6: Se for uma edição de fecho já confirmado, exige segunda confirmação
+
+    // === PONTO CRÍTICO === 
+    // Se já existe relatório (edição), MOSTRA O MODAL DE SEGUNDA CONFIRMAÇÃO ANTES DE SALVAR
     if (existingReport && existingReport.status !== ClosureStatus.ABERTO) {
       setEditConfirmationData(newReport);
-      executeSync(newReport); // Sempre salva e redireciona para o relatório
-      setShowConfirmEditModal(true); // Mas mostra o modal para a segunda confirmação
+      setShowConfirmEditModal(true);   // ← Só mostra o modal, NÃO salva ainda
       return;
     }
 
+    // Para fecho novo (primeira vez) salva normalmente como parcial
     executeSync(newReport);
   };
 
@@ -1004,8 +1004,8 @@ const Sales: React.FC = () => {
       };
   };
 
-  // === NOVA CONDIÇÃO (só mostra relatório se já estiver confirmado) ===
-  if ((viewHistoryReport || (existingReport && (existingReport.status === ClosureStatus.FECHO_CONFIRMADO || existingReport.status === ClosureStatus.BLOQUEADO))) && !forceEditMode) {
+  // === CONDIÇÃO CORRIGIDA (só mostra relatório se já estiver CONFIRMADO) ===
+  if ((viewHistoryReport || (existingReport && existingReport.status !== ClosureStatus.ABERTO)) && !forceEditMode) {
     const rawReport = viewHistoryReport || existingReport!;
     
     const reportData = getReportData(rawReport);

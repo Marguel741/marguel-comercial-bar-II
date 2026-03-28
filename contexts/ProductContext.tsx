@@ -1603,7 +1603,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       stockUpdated: false
     };
 
-    // Processar financeiro e stock APENAS aqui (segunda confirmação)
     if (!report.processedFinancials) {
       const cash = updatedReport.cash || 0;
       const tpa = updatedReport.tpa || 0;
