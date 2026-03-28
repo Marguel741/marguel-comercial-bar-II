@@ -1590,9 +1590,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     if (!report) return;
 
     const reportDateStr = report.dateISO ? report.dateISO : report.date;
-    validateAction('SALES_REPORT', { date: reportDateStr, items: report.itemsSummary });
 
-    // 1. Update report status and stock flag
     let updatedReport: SalesReport = {
       ...report,
       status: ClosureStatus.FECHO_CONFIRMADO,
@@ -1600,90 +1598,45 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       confirmationTimestamp: getSystemDate().getTime(),
       unilateralAdminConfirmation: isUnilateral,
       processedFinancials: true,
-      tpa: (report.tpa || 0) + (report.transfer || 0), // Soma Transferência ao TPA automaticamente
-      transfer: 0 // Zera o campo transferência no relatório final
+      tpa: (report.tpa || 0) + (report.transfer || 0),
+      transfer: 0,
+      stockUpdated: false
     };
 
-    // 2. Financial Integration (Estado de Conta)
-    // Only process if not already processed to prevent duplication
+    // Processar financeiro e stock APENAS aqui (segunda confirmação)
     if (!report.processedFinancials) {
       const cash = updatedReport.cash || 0;
-      const tpa = updatedReport.tpa || 0; // Já contém o transfer somado acima
+      const tpa = updatedReport.tpa || 0;
       const totalLifted = updatedReport.totalLifted || 0;
 
-      // Update accumulators
       setCashBalance(prev => prev + cash);
-      setTPABalance(prev => prev + tpa); // TPA já inclui transfer
+      setTPABalance(prev => prev + tpa);
 
-      // Total Lifted goes to main account (Conta Corrente)
       if (totalLifted > 0) {
-        processTransaction(
-          'deposit', 
-          'main', 
-          totalLifted, 
-          `Fecho Confirmado (${reportDateStr}) - Total Levantado: ${totalLifted.toLocaleString('pt-AO')} Kz`, 
-          'Fecho de Caixa', 
-          reportId, 
-          'day_closure', 
-          confirmedBy
-        );
+        processTransaction('deposit', 'main', totalLifted, `Fecho Confirmado (${reportDateStr})`, 'Fecho de Caixa', reportId, 'day_closure', confirmedBy);
       }
-
-      addAuditLog({
-        action: 'INTEGRAÇÃO_FINANCEIRA_FECHO',
-        entity: 'SalesReport',
-        entityId: reportId,
-        details: `Valores de fecho integrados: Total Levantado(+${totalLifted}), Cash(+${cash}), TPA(+${tpa}) (Transferência somada ao TPA)`,
-        performedBy: confirmedBy
-      });
     }
 
-    // 3. Register Global Expense if exists (Sync)
-    if (updatedReport.lunchExpense > 0) {
-      registrarDespesaGlobal({
-        tipo: "DESPESA_OPERACIONAL",
-        origem: "CONTROLE_VENDAS",
-        descricao: `Almoço (${reportDateStr})`,
-        nota: `Despesa de almoço registada no fecho de vendas de ${reportDateStr}`,
-        valor: updatedReport.lunchExpense,
-        usuario: confirmedBy,
-        data_operacional: reportDateStr,
-        referenceId: `lunch_${reportId}` // Added referenceId for duplicate prevention
-      });
-    }
-
-    // 4. Update Stock (Only if not already updated)
-    // AGORA USANDO productId – 100% consistente com o resto do sistema
     if (updatedReport.itemsSummary && !updatedReport.stockUpdated) {
       setProducts(prevProducts => prevProducts.map(p => {
-        const soldItem = updatedReport.itemsSummary.find(item => 
-          item.productId === p.id || item.name === p.name // fallback seguro (nunca quebra)
-        );
-        
+        const soldItem = updatedReport.itemsSummary.find(item => item.productId === p.id || item.name === p.name);
         if (soldItem && soldItem.qty > 0) {
-          return { 
-            ...p, 
-            stock: Math.max(0, p.stock - soldItem.qty) 
-          };
+          return { ...p, stock: Math.max(0, p.stock - soldItem.qty) };
         }
         return p;
       }));
-      
-      updatedReport = { ...updatedReport, stockUpdated: true };
+      updatedReport.stockUpdated = true;
     }
 
-    // 5. Update salesReports state
     const newSalesReports = salesReports.map(r => r.id === reportId ? updatedReport : r);
     setSalesReports(newSalesReports);
-    
-    // 6. Explicitly save to localStorage as requested
     localStorage.setItem('mg_sales_reports', JSON.stringify(newSalesReports));
 
     addAuditLog({
       action: isUnilateral ? 'CONFIRMAÇÃO_UNILATERAL_FECHO' : 'VALIDAÇÃO_FINAL_FECHO',
       entity: 'SalesReport',
       entityId: reportId,
-      details: `Validação final do fecho de ${reportDateStr} realizada por ${confirmedBy}${isUnilateral ? ' (Unilateral)' : ''}. Financeiro e Stock integrados.`,
+      description: `Validação final do fecho de ${reportDateStr}`,
       performedBy: confirmedBy
     });
   };

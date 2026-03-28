@@ -1004,9 +1004,8 @@ const Sales: React.FC = () => {
       };
   };
 
-  // Só mostra a visualização de relatório se for um relatório do histórico 
-  // ou se o relatório do dia atual já tiver sido fechado (status !== ABERTO)
-  if ((viewHistoryReport || (existingReport && existingReport.status !== ClosureStatus.ABERTO)) && !forceEditMode) {
+  // === NOVA CONDIÇÃO (só mostra relatório se já estiver confirmado) ===
+  if ((viewHistoryReport || (existingReport && (existingReport.status === ClosureStatus.FECHO_CONFIRMADO || existingReport.status === ClosureStatus.BLOQUEADO))) && !forceEditMode) {
     const rawReport = viewHistoryReport || existingReport!;
     
     const reportData = getReportData(rawReport);
@@ -1025,7 +1024,6 @@ const Sales: React.FC = () => {
         return;
       }
       if (!reportDate) return;
-      if (!canConfirm && !isUnilateralAllowed) return;
 
       const finalReport = {
         ...reportData,
@@ -1033,14 +1031,11 @@ const Sales: React.FC = () => {
         confirmedBy: user?.name || 'Sistema',
         confirmationTimestamp: Date.now(),
         unilateralAdminConfirmation: isUnilateralAllowed,
-        stockUpdated: false, // Garantir que confirmSalesReport processe o stock
-        processedFinancials: false // Garantir que confirmSalesReport processe o financeiro
+        stockUpdated: false,
+        processedFinancials: false
       };
 
-      // Atualiza localmente
       updateSalesReport(reportData.id, finalReport);
-
-      // CHAMADA CORRETA – esta é a função que realmente propaga stock + financeiro
       await confirmSalesReport(finalReport.id, user?.name || 'Sistema', isUnilateralAllowed, finalReport);
 
       setForceEditMode(false);
