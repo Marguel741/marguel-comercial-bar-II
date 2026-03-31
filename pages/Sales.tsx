@@ -789,22 +789,21 @@ const Sales: React.FC = () => {
         discountAmount: item.discountAmount
       })),
       closedBy: user?.name || 'Vendedor',
-      status: ClosureStatus.FECHO_PARCIAL_FUNCIONARIO,   // ← SEMPRE parcial no primeiro fecho
+      status: ClosureStatus.FECHO_PARCIAL_FUNCIONARIO,
       timestamp: Date.now(),
       editedBy: existingReport ? user?.name : undefined
     };
 
     setShowCloseModal(false);
 
-    // === PONTO CRÍTICO === 
-    // Se já existe relatório (edição), MOSTRA O MODAL DE SEGUNDA CONFIRMAÇÃO ANTES DE SALVAR
+    // Se já existe relatório → força o modal de segunda confirmação
     if (existingReport && existingReport.status !== ClosureStatus.ABERTO) {
       setEditConfirmationData(newReport);
-      setShowConfirmEditModal(true);   // ← Só mostra o modal, NÃO salva ainda
+      setShowConfirmEditModal(true);
       return;
     }
 
-    // Para fecho novo (primeira vez) salva normalmente como parcial
+    // Fecho novo → salva parcial e mostra relatório imediatamente
     executeSync(newReport);
   };
 
@@ -923,17 +922,23 @@ const Sales: React.FC = () => {
                     confirmedBy: user?.name || 'Sistema',
                     confirmationTimestamp: Date.now(),
                     unilateralAdminConfirmation: isUnilateralAllowed,
-                    stockUpdated: false, // Garantir que confirmSalesReport processe o stock
-                    processedFinancials: false, // Garantir que confirmSalesReport processe o financeiro
+                    stockUpdated: false,           // ← força o context a deduzir stock
+                    processedFinancials: false,    // ← força o context a criar transações financeiras
+                    _deltaApplied: false,
+                    isFinalClosure: true,
                     editedBy: editConfirmationData.editedBy || user?.name || 'Admin',
                   };
 
+                  // 1. Atualiza o relatório no contexto
                   updateSalesReport(editConfirmationData.id, finalReport);
+
+                  // 2. Chama a confirmação final com o objeto completo
                   await confirmSalesReport(finalReport.id, user?.name || 'Sistema', isUnilateralAllowed, finalReport);
 
                   setShowConfirmEditModal(false);
                   setForceEditMode(false);
-                  console.log("✅ Fecho confirmado com sucesso e propagado para o sistema.");
+                  showToast("✅ Fecho confirmado e propagado para todo o sistema!");
+                  triggerHaptic('success');
                 }}
                 className={`w-full py-5 font-black rounded-2xl shadow-xl transition-all uppercase tracking-widest ${
                   canConfirm 
@@ -1004,8 +1009,8 @@ const Sales: React.FC = () => {
       };
   };
 
-  // === CONDIÇÃO CORRIGIDA (só mostra relatório se já estiver CONFIRMADO) ===
-  if ((viewHistoryReport || (existingReport && existingReport.status !== ClosureStatus.ABERTO)) && !forceEditMode) {
+  // CHECKPOINT ESTÁVEL – só mostra relatório se já estiver CONFIRMADO
+  if ((viewHistoryReport || (existingReport && (existingReport.status === ClosureStatus.FECHO_CONFIRMADO || existingReport.status === ClosureStatus.BLOQUEADO))) && !forceEditMode) {
     const rawReport = viewHistoryReport || existingReport!;
     
     const reportData = getReportData(rawReport);

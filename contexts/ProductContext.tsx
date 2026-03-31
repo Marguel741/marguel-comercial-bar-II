@@ -1586,56 +1586,79 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   const confirmSalesReport = (reportId: string, confirmedBy: string, isUnilateral: boolean = false, reportData?: SalesReport) => {
     if (!checkPermission('sales_closure')) return;
-    const report = reportData || salesReports.find(r => r.id === reportId);
+
+    // Usa sempre o reportData enviado do Sales.tsx (é o mais atualizado)
+    let report = reportData || salesReports.find(r => r.id === reportId);
     if (!report) return;
 
-    const reportDateStr = report.dateISO ? report.dateISO : report.date;
+    const reportDateStr = report.dateISO || report.date;
 
-    let updatedReport: SalesReport = {
+    // ==================== RELATÓRIO FINAL ====================
+    const finalReport: SalesReport = {
       ...report,
       status: ClosureStatus.FECHO_CONFIRMADO,
       confirmedBy,
       confirmationTimestamp: getSystemDate().getTime(),
       unilateralAdminConfirmation: isUnilateral,
-      processedFinancials: true,
-      tpa: (report.tpa || 0) + (report.transfer || 0),
-      transfer: 0,
-      stockUpdated: false
+      processedFinancials: false,   // força financeiro
+      stockUpdated: false,          // força stock
+      _deltaApplied: false,
+      isFinalClosure: true
     };
 
-    if (!report.processedFinancials) {
-      const cash = updatedReport.cash || 0;
-      const tpa = updatedReport.tpa || 0;
-      const totalLifted = updatedReport.totalLifted || 0;
+    // ==================== FINANCEIRO (sempre executa na confirmação final) ====================
+    const cash = finalReport.cash || 0;
+    const tpa = (finalReport.tpa || 0) + (finalReport.transfer || 0);
+    const totalLifted = finalReport.totalLifted || (cash + tpa);
 
-      setCashBalance(prev => prev + cash);
-      setTPABalance(prev => prev + tpa);
+    setCashBalance(prev => prev + cash);
+    setTPABalance(prev => prev + tpa);
 
-      if (totalLifted > 0) {
-        processTransaction('deposit', 'main', totalLifted, `Fecho Confirmado (${reportDateStr})`, 'Fecho de Caixa', reportId, 'day_closure', confirmedBy);
-      }
+    if (totalLifted > 0) {
+      processTransaction(
+        'deposit',
+        'main',
+        totalLifted,
+        `Fecho Confirmado (${reportDateStr})`,
+        'Fecho de Caixa',
+        reportId,
+        'day_closure',
+        confirmedBy,
+        reportDateStr
+      );
     }
 
-    if (updatedReport.itemsSummary && !updatedReport.stockUpdated) {
-      setProducts(prevProducts => prevProducts.map(p => {
-        const soldItem = updatedReport.itemsSummary.find(item => item.productId === p.id || item.name === p.name);
-        if (soldItem && soldItem.qty > 0) {
-          return { ...p, stock: Math.max(0, p.stock - soldItem.qty) };
-        }
-        return p;
-      }));
-      updatedReport.stockUpdated = true;
+    // ==================== STOCK (prioriza productId) ====================
+    if (finalReport.itemsSummary && !finalReport.stockUpdated) {
+      setProducts(prevProducts =>
+        prevProducts.map(p => {
+          const soldItem = finalReport.itemsSummary!.find(
+            item => item.productId === p.id || item.name === p.name
+          );
+          if (soldItem && soldItem.qty > 0) {
+            return { ...p, stock: Math.max(0, p.stock - soldItem.qty) };
+          }
+          return p;
+        })
+      );
+      finalReport.stockUpdated = true;
     }
 
-    const newSalesReports = salesReports.map(r => r.id === reportId ? updatedReport : r);
-    setSalesReports(newSalesReports);
-    localStorage.setItem('mg_sales_reports', JSON.stringify(newSalesReports));
+    // Atualiza o array global
+    setSalesReports(prev =>
+      prev.map(r => (r.id === reportId ? finalReport : r))
+    );
+
+    // Persistência imediata
+    localStorage.setItem('mg_sales_reports', JSON.stringify(
+      salesReports.map(r => r.id === reportId ? finalReport : r)
+    ));
 
     addAuditLog({
       action: isUnilateral ? 'CONFIRMAÇÃO_UNILATERAL_FECHO' : 'VALIDAÇÃO_FINAL_FECHO',
-      entity: 'SalesReport',
+      module: 'VENDAS',
       entityId: reportId,
-      description: `Validação final do fecho de ${reportDateStr}`,
+      description: `Fecho confirmado para ${reportDateStr}`,
       performedBy: confirmedBy
     });
   };
