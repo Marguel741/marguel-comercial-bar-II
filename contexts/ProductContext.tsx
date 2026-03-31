@@ -1587,26 +1587,24 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   const confirmSalesReport = (reportId: string, confirmedBy: string, isUnilateral: boolean = false, reportData?: SalesReport) => {
     if (!checkPermission('sales_closure')) return;
 
-    // Usa sempre o reportData enviado do Sales.tsx (é o mais atualizado)
     let report = reportData || salesReports.find(r => r.id === reportId);
     if (!report) return;
 
     const reportDateStr = report.dateISO || report.date;
 
-    // ==================== RELATÓRIO FINAL ====================
     const finalReport: SalesReport = {
       ...report,
       status: ClosureStatus.FECHO_CONFIRMADO,
       confirmedBy,
       confirmationTimestamp: getSystemDate().getTime(),
       unilateralAdminConfirmation: isUnilateral,
-      processedFinancials: false,   // força financeiro
-      stockUpdated: false,          // força stock
+      processedFinancials: false,
+      stockUpdated: false,
       _deltaApplied: false,
       isFinalClosure: true
     };
 
-    // ==================== FINANCEIRO (sempre executa na confirmação final) ====================
+    // FINANCEIRO – sempre executa na confirmação final
     const cash = finalReport.cash || 0;
     const tpa = (finalReport.tpa || 0) + (finalReport.transfer || 0);
     const totalLifted = finalReport.totalLifted || (cash + tpa);
@@ -1628,7 +1626,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       );
     }
 
-    // ==================== STOCK (prioriza productId) ====================
+    // STOCK – prioriza productId
     if (finalReport.itemsSummary && !finalReport.stockUpdated) {
       setProducts(prevProducts =>
         prevProducts.map(p => {
@@ -1644,12 +1642,8 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       finalReport.stockUpdated = true;
     }
 
-    // Atualiza o array global
-    setSalesReports(prev =>
-      prev.map(r => (r.id === reportId ? finalReport : r))
-    );
-
-    // Persistência imediata
+    // Atualiza e persiste
+    setSalesReports(prev => prev.map(r => r.id === reportId ? finalReport : r));
     localStorage.setItem('mg_sales_reports', JSON.stringify(
       salesReports.map(r => r.id === reportId ? finalReport : r)
     ));
