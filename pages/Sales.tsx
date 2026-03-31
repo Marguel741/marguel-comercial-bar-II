@@ -789,21 +789,22 @@ const Sales: React.FC = () => {
         discountAmount: item.discountAmount
       })),
       closedBy: user?.name || 'Vendedor',
-      status: ClosureStatus.FECHO_PARCIAL_FUNCIONARIO,
+      status: ClosureStatus.FECHO_PARCIAL_FUNCIONARIO,   // ← SEMPRE parcial no primeiro fecho
       timestamp: Date.now(),
       editedBy: existingReport ? user?.name : undefined
     };
 
     setShowCloseModal(false);
 
-    // Se já existe relatório → força o modal de segunda confirmação
+    // === PONTO CRÍTICO === 
+    // Se já existe relatório (edição), MOSTRA O MODAL DE SEGUNDA CONFIRMAÇÃO ANTES DE SALVAR
     if (existingReport && existingReport.status !== ClosureStatus.ABERTO) {
       setEditConfirmationData(newReport);
-      setShowConfirmEditModal(true);
+      setShowConfirmEditModal(true);   // ← Só mostra o modal, NÃO salva ainda
       return;
     }
 
-    // Fecho novo → salva parcial e mostra relatório imediatamente
+    // Para fecho novo (primeira vez) salva normalmente como parcial
     executeSync(newReport);
   };
 
@@ -927,6 +928,12 @@ const Sales: React.FC = () => {
                     _deltaApplied: false,
                     isFinalClosure: true,
                     editedBy: editConfirmationData.editedBy || user?.name || 'Admin',
+                    // Adicionando campos root para compatibilidade total com SalesReport
+                    totalLifted: editConfirmationData.totals?.lifted,
+                    cash: editConfirmationData.financials?.cash,
+                    tpa: editConfirmationData.financials?.ticket,
+                    transfer: editConfirmationData.financials?.transfer,
+                    lunchExpense: editConfirmationData.financials?.lunch,
                   };
 
                   // 1. Atualiza o relatório no contexto
@@ -1009,8 +1016,8 @@ const Sales: React.FC = () => {
       };
   };
 
-  // CHECKPOINT ESTÁVEL – só mostra relatório se já estiver CONFIRMADO
-  if ((viewHistoryReport || (existingReport && (existingReport.status === ClosureStatus.FECHO_CONFIRMADO || existingReport.status === ClosureStatus.BLOQUEADO))) && !forceEditMode) {
+  // === CONDIÇÃO CORRIGIDA (só mostra relatório se já estiver CONFIRMADO) ===
+  if ((viewHistoryReport || (existingReport && existingReport.status !== ClosureStatus.ABERTO)) && !forceEditMode) {
     const rawReport = viewHistoryReport || existingReport!;
     
     const reportData = getReportData(rawReport);
@@ -1037,7 +1044,13 @@ const Sales: React.FC = () => {
         confirmationTimestamp: Date.now(),
         unilateralAdminConfirmation: isUnilateralAllowed,
         stockUpdated: false,
-        processedFinancials: false
+        processedFinancials: false,
+        // Adicionando campos root para compatibilidade total com SalesReport
+        totalLifted: reportData.totals?.lifted,
+        cash: reportData.financials?.cash,
+        tpa: reportData.financials?.ticket,
+        transfer: reportData.financials?.transfer,
+        lunchExpense: reportData.financials?.lunch,
       };
 
       updateSalesReport(reportData.id, finalReport);

@@ -1587,72 +1587,93 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   const confirmSalesReport = (reportId: string, confirmedBy: string, isUnilateral: boolean = false, reportData?: SalesReport) => {
     if (!checkPermission('sales_closure')) return;
 
+    // 1. Obter o relatório (priorizar reportData passado como argumento do Sales.tsx)
     let report = reportData || salesReports.find(r => r.id === reportId);
     if (!report) return;
 
     const reportDateStr = report.dateISO || report.date;
 
+    // 2. Preparar o relatório final com os flags de processamento
     const finalReport: SalesReport = {
       ...report,
       status: ClosureStatus.FECHO_CONFIRMADO,
       confirmedBy,
       confirmationTimestamp: getSystemDate().getTime(),
       unilateralAdminConfirmation: isUnilateral,
-      processedFinancials: false,
-      stockUpdated: false,
-      _deltaApplied: false,
+      processedFinancials: true,   // Marcamos como processado para evitar duplicidade futura
+      stockUpdated: true,          // Marcamos como atualizado
       isFinalClosure: true
     };
 
-    // FINANCEIRO – sempre executa na confirmação final
-    const cash = finalReport.cash || 0;
-    const tpa = (finalReport.tpa || 0) + (finalReport.transfer || 0);
-    const totalLifted = finalReport.totalLifted || (cash + tpa);
-
-    setCashBalance(prev => prev + cash);
-    setTPABalance(prev => prev + tpa);
-
-    if (totalLifted > 0) {
-      processTransaction(
-        'deposit',
-        'main',
-        totalLifted,
-        `Fecho Confirmado (${reportDateStr})`,
-        'Fecho de Caixa',
-        reportId,
-        'day_closure',
-        confirmedBy,
-        reportDateStr
-      );
-    }
-
-    // STOCK – prioriza productId
-    if (finalReport.itemsSummary && !finalReport.stockUpdated) {
-      setProducts(prevProducts =>
-        prevProducts.map(p => {
-          const soldItem = finalReport.itemsSummary!.find(
-            item => item.productId === p.id || item.name === p.name
+    // 3. DEDUÇÃO DE STOCK (Idempotente: só faz se não foi feito antes no relatório original)
+    // Prioriza itemsSnapshot conforme solicitado pelo utilizador
+    if (!report.stockUpdated) {
+      const itemsToDeduct = report.itemsSnapshot || report.itemsSummary || [];
+      
+      setProducts(prevProducts => {
+        return prevProducts.map(p => {
+          const soldItem = itemsToDeduct.find(
+            (item: any) => (item.productId && item.productId === p.id) || item.id === p.id || item.name === p.name
           );
-          if (soldItem && soldItem.qty > 0) {
-            return { ...p, stock: Math.max(0, p.stock - soldItem.qty) };
+          
+          // Prioriza soldQty (do snapshot), fallback para qty (do summary)
+          const qty = soldItem ? (soldItem.soldQty ?? soldItem.qty ?? 0) : 0;
+          
+          if (qty > 0) {
+            return { ...p, stock: Math.max(0, p.stock - qty) };
           }
           return p;
-        })
-      );
-      finalReport.stockUpdated = true;
+        });
+      });
     }
 
-    // Atualiza e persiste
-    setSalesReports(prev => prev.map(r => r.id === reportId ? finalReport : r));
-    localStorage.setItem('mg_sales_reports', JSON.stringify(
-      salesReports.map(r => r.id === reportId ? finalReport : r)
-    ));
+    // 4. PROCESSAMENTO FINANCEIRO (Idempotente)
+    if (!report.processedFinancials) {
+      // Compatibilidade com ambos os formatos de relatório (root vs nested)
+      const cash = (finalReport as any).cash ?? (finalReport as any).financials?.cash ?? 0;
+      const tpa = (finalReport as any).tpa ?? (finalReport as any).financials?.ticket ?? 0;
+      const transfer = (finalReport as any).transfer ?? (finalReport as any).financials?.transfer ?? 0;
+      const totalLifted = (finalReport as any).totalLifted ?? (finalReport as any).totals?.lifted ?? (cash + tpa + transfer);
+      
+      // Atualiza saldos de Caixa e TPA para reflectir no Dashboard/Calendário
+      setCashBalance(prev => prev + cash);
+      setTPABalance(prev => prev + tpa + transfer);
 
+      if (totalLifted > 0) {
+        processTransaction(
+          'deposit',
+          'main',
+          totalLifted,
+          `Fecho Confirmado (${reportDateStr})`,
+          'Fecho de Caixa',
+          reportId,
+          'day_closure',
+          confirmedBy,
+          reportDateStr
+        );
+      }
+    }
+
+    // 5. REGISTO DE DESPESA DE ALMOÇO (Idempotente via registrarAlmocoBlindado)
+    const lunchExpense = (finalReport as any).lunchExpense ?? (finalReport as any).financials?.lunch ?? 0;
+    if (lunchExpense > 0) {
+      registrarAlmocoBlindado({ ...finalReport, lunchExpense } as SalesReport);
+    }
+
+    // 6. ATUALIZAÇÃO DE ESTADO E PERSISTÊNCIA IMEDIATA
+    setSalesReports(prev => {
+      const newReports = prev.map(r => (r.id === reportId ? finalReport : r));
+      // Persistência imediata para garantir que Dashboard e Calendário vejam os dados
+      localStorage.setItem('mg_sales_reports', JSON.stringify(newReports));
+      return newReports;
+    });
+
+    // 7. LOG DE AUDITORIA
     addAuditLog({
       action: isUnilateral ? 'CONFIRMAÇÃO_UNILATERAL_FECHO' : 'VALIDAÇÃO_FINAL_FECHO',
       module: 'VENDAS',
       entityId: reportId,
-      description: `Fecho confirmado para ${reportDateStr}`,
+      description: `Fecho confirmado para ${reportDateStr}. Stock, Financeiro e Almoço processados.`,
       performedBy: confirmedBy
     });
   };
