@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Save, Calculator, DollarSign, Calendar, TrendingDown, AlertCircle, PlusCircle, Wallet, CreditCard, ArrowRightLeft, CheckCircle, X, Send, MessageSquare, Clock, Plus, Lock, Unlock, BarChart2, ArrowUp, Filter, Eye, ChevronRight, RefreshCw, Database, Server, ShieldCheck, Smartphone, ChevronDown, ChevronUp, AlertTriangle, Check, History, Maximize2, Minimize2 } from 'lucide-react';
+import { Save, Calculator, DollarSign, Calendar, TrendingDown, AlertCircle, PlusCircle, Wallet, CreditCard, ArrowRightLeft, CheckCircle, X, Send, MessageSquare, Clock, Plus, Lock, Unlock, BarChart2, ArrowUp, Filter, Eye, ChevronRight, RefreshCw, Database, Server, ShieldCheck, Smartphone, ChevronDown, ChevronUp, AlertTriangle, Check, History, Maximize2, Minimize2, Edit3, Printer, Cloud, CloudOff } from 'lucide-react';
 import SoftCard from '../components/SoftCard';
 import { useProducts } from '../contexts/ProductContext';
 import { 
@@ -797,14 +797,14 @@ const Sales: React.FC = () => {
     setShowCloseModal(false);
 
     // === PONTO CRÍTICO === 
-    // Se já existe relatório (edição), MOSTRA O MODAL DE SEGUNDA CONFIRMAÇÃO ANTES DE SALVAR
+    // Se já existe relatório (edição ou fecho parcial anterior), MOSTRA O MODAL DE SEGUNDA CONFIRMAÇÃO
     if (existingReport && existingReport.status !== ClosureStatus.ABERTO) {
       setEditConfirmationData(newReport);
-      setShowConfirmEditModal(true);   // ← Só mostra o modal, NÃO salva ainda
+      setShowConfirmEditModal(true);   // ← Só abre o modal, NÃO salva ainda
       return;
     }
 
-    // Para fecho novo (primeira vez) salva normalmente como parcial
+    // Para fecho novo (primeira vez) salva como parcial
     executeSync(newReport);
   };
 
@@ -1017,7 +1017,7 @@ const Sales: React.FC = () => {
   };
 
   // === CONDIÇÃO CORRIGIDA (só mostra relatório se já estiver CONFIRMADO) ===
-  if ((viewHistoryReport || (existingReport && existingReport.status !== ClosureStatus.ABERTO)) && !forceEditMode) {
+  if ((viewHistoryReport || (existingReport && (existingReport.status === ClosureStatus.FECHO_CONFIRMADO || existingReport.status === ClosureStatus.BLOQUEADO))) && !forceEditMode) {
     const rawReport = viewHistoryReport || existingReport!;
     
     const reportData = getReportData(rawReport);
@@ -1062,332 +1062,292 @@ const Sales: React.FC = () => {
     };
 
     return (
-        <div ref={pageTopRef} className="p-4 md:p-8 space-y-8 animate-fade-in pb-32 bg-[#F8FAFC] dark:bg-slate-900 min-h-screen">
-            {toast.show && (
-              <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] animate-fade-slide-up">
-                 <div className="bg-[#003366] text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-2 font-bold text-sm"><CheckCircle size={18} className="text-green-400" /> {toast.message}</div>
+      <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-8 animate-fade-in pb-32">
+          {/* Header do Relatório */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                  <h1 className="text-3xl font-black text-[#003366] dark:text-white uppercase tracking-tight">Relatório de Vendas</h1>
+                  <p className="text-slate-500 font-bold uppercase text-xs tracking-widest mt-1">
+                      {reportData.displayDate} • Status: <span className={isConfirmed ? 'text-green-600' : 'text-amber-600'}>{reportData.status.replace(/_/g, ' ')}</span>
+                  </p>
               </div>
-            )}
-            <div className="max-w-5xl mx-auto print:max-w-none">
-                <div className="flex justify-between items-center mb-8">
-                    <div className="flex items-center gap-4 ml-[2cm]">
-                      <button 
-                        onClick={() => {
-                          triggerHaptic('selection');
-                          setShowManualHistoryModal(true);
-                        }}
-                        className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-                      >
-                        <History size={16} /> Ver Histórico de Alterações Manuais
-                      </button>
-                    </div>
-                </div>
-                
-                <SoftCard className="p-8 mb-6">
-                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-                      <div>
+              <div className="flex items-center gap-2">
+                  {isAdminOrOwner && (
+                    <button 
+                      onClick={() => { setForceEditMode(true); triggerHaptic('selection'); }}
+                      className="p-3 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-2xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 transition-all shadow-sm flex items-center gap-2 font-bold text-xs uppercase"
+                    >
+                      <Edit3 size={16} /> Forçar Edição
+                    </button>
+                  )}
+                  <button 
+                    onClick={() => { window.print(); triggerHaptic('selection'); }}
+                    className="p-3 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-2xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 transition-all shadow-sm flex items-center gap-2 font-bold text-xs uppercase"
+                  >
+                    <Printer size={16} /> Imprimir
+                  </button>
+              </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <div className="lg:col-span-2 space-y-8">
+                  <SoftCard className="p-8 relative overflow-hidden">
+                     <div className="flex items-center justify-between mb-8">
                         <div className="flex items-center gap-3">
-                          <h1 className="text-2xl font-black text-[#003366] dark:text-white uppercase">
-                            Relatório de Fecho - {reportData.displayDate}
-                          </h1>
-                          {isLocked && (
-                            <span className="px-3 py-1 bg-red-100 text-red-600 text-[10px] font-black uppercase rounded-full">
-                              (Dia bloqueado)
-                            </span>
-                          )}
-                          
-                          <div className="relative">
-                            <input 
-                              type="date" 
-                              ref={dateInputRef}
-                              value={reportDate}
-                              onChange={(e) => setReportDate(e.target.value)}
-                              className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                              max={todayISO}
-                            />
-                            <button className="p-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-full hover:bg-slate-200 transition-colors">
-                              <Calendar size={18} />
-                            </button>
-                          </div>
-
-                          {isNotToday && (
-                            <button 
-                              onClick={() => setReportDate(todayISO)}
-                              className="px-3 py-1 bg-emerald-500 text-white rounded-full text-[10px] font-black uppercase hover:bg-emerald-600 transition-all shadow-sm flex items-center gap-1"
-                            >
-                              <RefreshCw size={12} /> Hoje
-                            </button>
-                          )}
-                        </div>
-                        <p className="text-slate-500 font-medium">Iniciado por {reportData.closedBy} às {reportData.generatedAt}</p>
-                      </div>
-                      
-                      <div className="flex items-center gap-3">
-                        <div className={`px-4 py-2 rounded-full font-bold text-sm flex items-center gap-2 ${
-                          reportData.status === ClosureStatus.BLOQUEADO ? 'bg-green-100 text-green-700' :
-                          isConfirmed ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
-                        }`}>
-                          {reportData.status === ClosureStatus.BLOQUEADO ? <ShieldCheck size={18} /> :
-                           isConfirmed ? <ShieldCheck size={18} /> : <Clock size={18} />}
-                          {reportData.status === ClosureStatus.BLOQUEADO ? 'DIA CONFIRMADO' :
-                           isConfirmed ? 'FECHO CONFIRMADO' : 'AGUARDANDO REVISÃO'}
-                        </div>
-                        
-                        {isLocked ? (
-                          <div className="flex items-center gap-2 text-red-600 font-bold text-sm bg-red-50 dark:bg-red-900/20 px-4 py-2 rounded-full border border-red-100 dark:border-red-800">
-                            <Lock size={18} /> Edição bloqueada: Este dia está encerrado no Calendário Global.
-                          </div>
-                        ) : (
-                          (!isConfirmed || reportData.status !== ClosureStatus.BLOQUEADO) && (
-                            <button 
-                              onClick={() => {
-                                setForceEditMode(true);
-                                triggerHaptic('selection');
-                              }}
-                              className="px-4 py-2 bg-[#003366] text-white rounded-full font-bold text-sm flex items-center gap-2 hover:opacity-90 transition-all shadow-md"
-                            >
-                              <Unlock size={18} /> Editar Dados
-                            </button>
-                          )
-                        )}
-                      </div>
-                   </div>
-
-                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                        <div className="p-6 bg-slate-50 dark:bg-slate-700/50 rounded-2xl border border-slate-100 dark:border-slate-700">
-                            <p className="text-xs font-bold text-slate-400 uppercase">Total Vendido</p>
-                            <p className="text-2xl font-black text-[#003366] dark:text-white">{(reportData.totals?.soldStock || 0).toLocaleString('pt-AO')} Kz</p>
-                        </div>
-                        <div className="p-6 bg-[#003366] text-white rounded-2xl border border-[#003366] shadow-lg">
-                            <p className="text-xs font-bold text-white/70 uppercase">Total Levantado</p>
-                            <p className="text-3xl font-black">{(reportData.totals?.lifted || 0).toLocaleString('pt-AO')} Kz</p>
-                        </div>
-                         <div className={`p-6 rounded-2xl border ${(reportData.totals?.discrepancy || 0) !== 0 ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-100'}`}>
-                            <p className="text-xs font-bold text-slate-400 uppercase">Divergência</p>
-                            <p className={`text-2xl font-black ${(reportData.totals?.discrepancy || 0) < 0 ? 'text-red-600' : (reportData.totals?.discrepancy || 0) > 0 ? 'text-green-600' : 'text-slate-600'}`}>
-                              {(reportData.totals?.discrepancy || 0).toLocaleString('pt-AO')} Kz
-                            </p>
-                        </div>
-                        {canViewMargins && (
-                          <div className="p-6 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl border border-emerald-100 dark:border-emerald-800">
-                              <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase">Margem de Lucro</p>
-                              <p className="text-2xl font-black text-emerald-700 dark:text-emerald-300">
-                                {(reportData.totals?.profit || 0).toLocaleString('pt-AO')} Kz
-                              </p>
-                          </div>
-                        )}
-                   </div>
-
-                   {reportData.totals?.discrepancy !== 0 && (
-                     <div className={`p-6 rounded-3xl mb-8 ${reportData.totals?.discrepancy < 0 ? 'bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20' : 'bg-green-50 dark:bg-green-900/10 border border-green-100 dark:border-green-900/20'}`}>
-                        <h4 className={`font-black uppercase mb-2 ${reportData.totals?.discrepancy < 0 ? 'text-red-700 dark:text-red-400' : 'text-green-700 dark:text-green-400'}`}>
-                           Justificativa de {reportData.totals?.discrepancy < 0 ? 'Quebra' : 'Sobra'}
-                        </h4>
-                        <textarea 
-                           value={reportData.financials?.justification || ''} 
-                           disabled={isConfirmed || reportData.status === ClosureStatus.BLOQUEADO}
-                           onChange={(e) => updateSalesReport(reportData.id, { financials: { ...reportData.financials, justification: e.target.value } })}
-                           className="w-full p-4 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 font-medium text-slate-700 dark:text-slate-300 outline-none"
-                           placeholder="Descreva o motivo da divergência..."
-                           rows={3}
-                        />
-                        {!isConfirmed && reportData.status !== ClosureStatus.BLOQUEADO && (
-                           <button 
-                              onClick={() => {
-                                 const justificationData = {
-                                    tipo: "JUSTIFICATIVA_CAIXA",
-                                    valor_quebra_ou_sobra: reportData.totals?.discrepancy,
-                                    justificativa: reportData.financials?.justification,
-                                    usuario: user?.name || 'Desconhecido',
-                                    data: reportDate,
-                                    hora: Date.now()
-                                 };
-                                 updateSalesReportJustification(reportData.id, justificationData);
-                                 showToast("Justificativa registada com sucesso");
-                                 triggerHaptic('success');
-                              }}
-                              className="mt-4 px-6 py-3 bg-[#003366] text-white font-bold rounded-xl shadow-lg hover:opacity-90 transition-all flex items-center gap-2"
-                           >
-                              <MessageSquare size={18} />
-                              Submeter Justificativa
-                           </button>
-                        )}
-                     </div>
-                   )}
-
-                   {!isConfirmed && reportData.status !== ClosureStatus.BLOQUEADO && (
-                     <div className="p-6 bg-blue-50 dark:bg-blue-900/20 rounded-3xl border border-blue-100 dark:border-blue-800/50">
-                        <div className="flex items-start gap-4">
-                           <div className="p-3 bg-blue-100 dark:bg-blue-800 text-blue-600 dark:text-blue-300 rounded-2xl">
-                              <ShieldCheck size={24} />
+                           <div className="p-3 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-2xl">
+                              <BarChart2 size={24} />
                            </div>
-                           <div className="flex-1">
-                              <h3 className="font-bold text-[#003366] dark:text-blue-300">Segunda Confirmação Necessária</h3>
-                              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-                                 Este fecho foi registado como <strong>{reportData.status.replace(/_/g, ' ')}</strong>. 
-                                 Para que o stock e o financeiro sejam atualizados globalmente, é necessária uma segunda confirmação por um administrador ou gerente diferente (ou confirmação unilateral do proprietário).
+                           <h3 className="font-black text-xl text-[#003366] dark:text-white uppercase">Resumo Financeiro</h3>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {reportData.syncStatus === 'synced' ? (
+                            <div className="flex items-center gap-1.5 px-3 py-1 bg-green-50 text-green-600 rounded-full text-[10px] font-black uppercase border border-green-100">
+                              <Cloud size={12} /> Sincronizado
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-600 rounded-full text-[10px] font-black uppercase border border-amber-100">
+                              <CloudOff size={12} /> Local
+                            </div>
+                          )}
+                        </div>
+                     </div>
+
+                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                          <div className="p-6 bg-slate-50 dark:bg-slate-700/50 rounded-2xl border border-slate-100 dark:border-slate-700">
+                              <p className="text-xs font-bold text-slate-400 uppercase">Total Vendido</p>
+                              <p className="text-2xl font-black text-[#003366] dark:text-white">{(reportData.totals?.soldStock || 0).toLocaleString('pt-AO')} Kz</p>
+                          </div>
+                          <div className="p-6 bg-[#003366] text-white rounded-2xl border border-[#003366] shadow-lg">
+                              <p className="text-xs font-bold text-white/70 uppercase">Total Levantado</p>
+                              <p className="text-3xl font-black">{(reportData.totals?.lifted || 0).toLocaleString('pt-AO')} Kz</p>
+                          </div>
+                           <div className={`p-6 rounded-2xl border ${(reportData.totals?.discrepancy || 0) !== 0 ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-100'}`}>
+                              <p className="text-xs font-bold text-slate-400 uppercase">Divergência</p>
+                              <p className={`text-2xl font-black ${(reportData.totals?.discrepancy || 0) < 0 ? 'text-red-600' : (reportData.totals?.discrepancy || 0) > 0 ? 'text-green-600' : 'text-slate-600'}`}>
+                                {(reportData.totals?.discrepancy || 0).toLocaleString('pt-AO')} Kz
                               </p>
-                              
-                              {(canConfirm || isUnilateralAllowed) && (
-                                <button 
-                                  onClick={handleConfirmClose}
-                                  className="mt-4 px-6 py-3 bg-[#003366] text-white font-bold rounded-xl shadow-lg hover:opacity-90 transition-all flex items-center gap-2"
-                                >
-                                  <CheckCircle size={20} />
-                                  {isUnilateralAllowed ? 'Confirmar Unilateralmente (Proprietário)' : 'Confirmar Fecho Definitivo'}
-                                </button>
-                              )}
-                              
-                              {!canConfirm && !isUnilateralAllowed && (
-                                <p className="mt-4 text-xs font-bold text-amber-600 bg-amber-50 dark:bg-amber-900/30 p-3 rounded-lg border border-amber-100 dark:border-amber-800 inline-block">
-                                   Aguardando confirmação de outro responsável.
+                          </div>
+                          {canViewMargins && (
+                            <div className="p-6 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl border border-emerald-100 dark:border-emerald-800">
+                                <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase">Margem de Lucro</p>
+                                <p className="text-2xl font-black text-emerald-700 dark:text-emerald-300">
+                                  {(reportData.totals?.profit || 0).toLocaleString('pt-AO')} Kz
                                 </p>
-                              )}
-                           </div>
-                        </div>
+                            </div>
+                          )}
                      </div>
-                   )}
 
-                   {isConfirmed && (
-                     <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-2xl border border-green-100 dark:border-green-800/50 flex items-center gap-3">
-                        <CheckCircle size={20} className="text-green-600" />
-                        <p className="text-sm font-bold text-green-700 dark:text-green-400">
-                           Fecho confirmado por {reportData.confirmedBy} em {reportData.confirmationTimestamp ? new Date(reportData.confirmationTimestamp).toLocaleString('pt-AO') : 'N/A'}
-                           {reportData.unilateralAdminConfirmation && ' (Intervenção Administrativa)'}
-                        </p>
-                     </div>
-                   )}
-                </SoftCard>
-
-                {/* Detailed Breakdown Section */}
-                <SoftCard className="p-0 overflow-hidden relative">
-                   <div className="p-4 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
-                      <h3 className="font-bold text-[#003366] dark:text-white">Resumo de Vendas</h3>
-                      <button 
-                        onClick={() => { setIsSummaryFullscreen(true); triggerHaptic('selection'); }}
-                        className="p-2 text-slate-400 hover:text-[#003366] dark:hover:text-blue-400 transition-colors"
-                        title="Ver em tela cheia"
-                      >
-                        <Maximize2 size={18} />
-                      </button>
-                   </div>
-                   <div className="overflow-x-auto">
-                      <table className="w-full text-sm text-left">
-                         <thead>
-                            <tr className="bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
-                               <th className="p-4 font-bold">Produto</th>
-                               <th className="p-4 font-bold text-center">Inicial</th>
-                               <th className="p-4 font-bold text-center">Compra</th>
-                               <th className="p-4 font-bold text-center">Final</th>
-                               <th className="p-4 font-bold text-center">Vendido</th>
-                               <th className="p-4 font-bold text-right">Detalhes / Desconto</th>
-                               <th className="p-4 font-bold text-right">Subtotal</th>
-                            </tr>
-                         </thead>
-                         <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                            {reportData.itemsSnapshot?.map((item: any) => (
-                               <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                                  <td className="p-4 font-bold text-slate-700 dark:text-slate-300">{item.name}</td>
-                                  <td className="p-4 text-center text-slate-500">{item.init}</td>
-                                  <td className="p-4 text-center text-green-600 font-medium">+{item.buy}</td>
-                                  <td className="p-4 text-center text-slate-500">{item.end}</td>
-                                  <td className="p-4 text-center font-bold text-slate-700 dark:text-slate-200">{item.soldQty}</td>
-                                   <td className="p-4 text-right">
-                                      {item.isPromo && item.soldQty > 0 ? (
-                                        <div className="flex flex-col items-end">
-                                          <span className="text-[10px] text-slate-400 uppercase font-bold leading-tight">
-                                            {item.mixMatchQtyUsed || 0} un (Mix Match) + {item.avulsaQty || 0} un (Avulsa)
-                                          </span>
-                                          {item.discountAmount > 0 && (
-                                            <span className="text-xs font-medium text-amber-600">
-                                              -{item.discountAmount.toLocaleString()} Kz
-                                            </span>
-                                          )}
-                                        </div>
-                                      ) : (
-                                        <span className="text-slate-400">-</span>
-                                      )}
-                                  </td>
-                                  <td className="p-4 text-right font-bold text-[#003366] dark:text-blue-300">{(item.revenue || 0).toLocaleString('pt-AO')} Kz</td>
-                               </tr>
-                            ))}
-                         </tbody>
-                      </table>
-                   </div>
-
-                    {/* Fullscreen Overlay */}
-                    {isSummaryFullscreen && (
-                      <div className="fixed inset-0 z-[300] bg-black/90 backdrop-blur-md flex items-center justify-center p-2 md:p-4 animate-fade-in">
-                        <div className="bg-white dark:bg-slate-800 rounded-[32px] w-full max-w-none h-full md:h-[95vh] shadow-2xl flex flex-col overflow-hidden border border-slate-200 dark:border-slate-700">
-                         <div className="p-4 md:p-6 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
-                           <div className="flex items-center gap-3">
-                             <div className="p-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl">
-                               <BarChart2 size={24} />
-                             </div>
-                             <div>
-                               <h3 className="font-black text-lg md:text-xl text-[#003366] dark:text-white uppercase">Resumo Detalhado de Vendas</h3>
-                               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{reportData.displayDate}</p>
-                             </div>
-                           </div>
-                           <button 
-                             onClick={() => { setIsSummaryFullscreen(false); triggerHaptic('selection'); }}
-                             className="p-2 md:p-3 bg-slate-100 dark:bg-slate-700 text-slate-500 hover:text-red-500 rounded-2xl transition-all flex items-center gap-2 font-bold uppercase text-[10px] md:text-xs"
-                           >
-                             <Minimize2 size={18} /> Fechar
-                           </button>
-                         </div>
-                         <div className="flex-1 overflow-auto p-2 md:p-4">
-                            <table className="w-full text-[11px] md:text-sm text-left table-auto border-collapse">
-                               <thead>
-                                  <tr className="bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 sticky top-0 z-10">
-                                     <th className="px-2 py-4 font-bold">Produto</th>
-                                     <th className="px-1 py-4 font-bold text-center">Inicial</th>
-                                     <th className="px-1 py-4 font-bold text-center">Compra</th>
-                                     <th className="px-1 py-4 font-bold text-center">Final</th>
-                                     <th className="px-1 py-4 font-bold text-center">Vendido</th>
-                                     <th className="px-2 py-4 font-bold text-right">Detalhes / Desconto</th>
-                                     <th className="px-2 py-4 font-bold text-right">Subtotal</th>
-                                  </tr>
-                               </thead>
-                               <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                                  {reportData.itemsSnapshot?.map((item: any) => (
-                                     <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                                        <td className="px-2 py-4 font-bold text-slate-700 dark:text-slate-300 break-words max-w-[150px] md:max-w-none">{item.name}</td>
-                                        <td className="px-1 py-4 text-center text-slate-500">{item.init}</td>
-                                        <td className="px-1 py-4 text-center text-green-600 font-medium">+{item.buy}</td>
-                                        <td className="px-1 py-4 text-center text-slate-500">{item.end}</td>
-                                        <td className="px-1 py-4 text-center font-bold text-slate-700 dark:text-slate-200">{item.soldQty}</td>
-                                         <td className="px-2 py-4 text-right">
-                                            {item.isPromo && item.soldQty > 0 ? (
-                                              <div className="flex flex-col items-end">
-                                                <span className="text-[9px] md:text-[10px] text-slate-400 uppercase font-bold leading-tight whitespace-nowrap">
-                                                  {item.mixMatchQtyUsed || 0} un (Mix Match)
-                                                </span>
-                                                <span className="text-[9px] md:text-[10px] text-slate-400 uppercase font-bold leading-tight whitespace-nowrap">
-                                                  + {item.avulsaQty || 0} un (Avulsa)
-                                                </span>
-                                                {item.discountAmount > 0 && (
-                                                  <span className="text-[10px] md:text-xs font-medium text-amber-600">
-                                                    -{item.discountAmount.toLocaleString()} Kz
-                                                  </span>
-                                                )}
-                                              </div>
-                                            ) : (
-                                              <span className="text-slate-400">-</span>
-                                            )}
-                                        </td>
-                                        <td className="px-2 py-4 text-right font-bold text-[#003366] dark:text-blue-300 whitespace-nowrap">{(item.revenue || 0).toLocaleString('pt-AO')} Kz</td>
-                                     </tr>
-                                  ))}
-                               </tbody>
-                            </table>
-                         </div>
+                     {reportData.totals?.discrepancy !== 0 && (
+                       <div className={`p-6 rounded-3xl mb-8 ${reportData.totals?.discrepancy < 0 ? 'bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20' : 'bg-green-50 dark:bg-green-900/10 border border-green-100 dark:border-green-900/20'}`}>
+                          <h4 className={`font-black uppercase mb-2 ${reportData.totals?.discrepancy < 0 ? 'text-red-700 dark:text-red-400' : 'text-green-700 dark:text-green-400'}`}>
+                             Justificativa de {reportData.totals?.discrepancy < 0 ? 'Quebra' : 'Sobra'}
+                          </h4>
+                          <textarea 
+                             value={reportData.financials?.justification || ''} 
+                             disabled={isConfirmed || reportData.status === ClosureStatus.BLOQUEADO}
+                             onChange={(e) => updateSalesReport(reportData.id, { financials: { ...reportData.financials, justification: e.target.value } })}
+                             className="w-full p-4 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 font-medium text-slate-700 dark:text-slate-300 outline-none"
+                             placeholder="Descreva o motivo da divergência..."
+                             rows={3}
+                          />
+                          {!isConfirmed && reportData.status !== ClosureStatus.BLOQUEADO && (
+                             <button 
+                                onClick={() => {
+                                   const justificationData = {
+                                      tipo: "JUSTIFICATIVA_CAIXA",
+                                      valor_quebra_ou_sobra: reportData.totals?.discrepancy,
+                                      justificativa: reportData.financials?.justification,
+                                      usuario: user?.name || 'Desconhecido',
+                                      data: reportDate,
+                                      hora: Date.now()
+                                   };
+                                   updateSalesReportJustification(reportData.id, justificationData);
+                                   showToast("Justificativa registada com sucesso");
+                                   triggerHaptic('success');
+                                }}
+                                className="mt-4 px-6 py-3 bg-[#003366] text-white font-bold rounded-xl shadow-lg hover:opacity-90 transition-all flex items-center gap-2"
+                             >
+                                <MessageSquare size={18} />
+                                Submeter Justificativa
+                             </button>
+                          )}
                        </div>
+                     )}
+
+                     {!isConfirmed && reportData.status !== ClosureStatus.BLOQUEADO && (
+                       <div className="p-6 bg-blue-50 dark:bg-blue-900/20 rounded-3xl border border-blue-100 dark:border-blue-800/50">
+                          <div className="flex items-start gap-4">
+                             <div className="p-3 bg-blue-100 dark:bg-blue-800 text-blue-600 dark:text-blue-300 rounded-2xl">
+                                <ShieldCheck size={24} />
+                             </div>
+                             <div className="flex-1">
+                                <h3 className="font-bold text-[#003366] dark:text-blue-300">Segunda Confirmação Necessária</h3>
+                                <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+                                   Este fecho foi registado como <strong>{reportData.status.replace(/_/g, ' ')}</strong>. 
+                                   Para que o stock e o financeiro sejam atualizados globalmente, é necessária uma segunda confirmação por um administrador ou gerente diferente (ou confirmação unilateral do proprietário).
+                                </p>
+                                
+                                {(canConfirm || isUnilateralAllowed) && (
+                                  <button 
+                                    onClick={handleConfirmClose}
+                                    className="mt-4 px-6 py-3 bg-[#003366] text-white font-bold rounded-xl shadow-lg hover:opacity-90 transition-all flex items-center gap-2"
+                                  >
+                                    <CheckCircle size={20} />
+                                    {isUnilateralAllowed ? 'Confirmar Unilateralmente (Proprietário)' : 'Confirmar Fecho Definitivo'}
+                                  </button>
+                                )}
+                                
+                                {!canConfirm && !isUnilateralAllowed && (
+                                  <p className="mt-4 text-xs font-bold text-amber-600 bg-amber-50 dark:bg-amber-900/30 p-3 rounded-lg border border-amber-100 dark:border-amber-800 inline-block">
+                                     Aguardando confirmação de outro responsável.
+                                  </p>
+                                )}
+                             </div>
+                          </div>
+                       </div>
+                     )}
+
+                     {isConfirmed && (
+                       <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-2xl border border-green-100 dark:border-green-800/50 flex items-center gap-3">
+                          <CheckCircle size={20} className="text-green-600" />
+                          <p className="text-sm font-bold text-green-700 dark:text-green-400">
+                             Fecho confirmado por {reportData.confirmedBy} em {reportData.confirmationTimestamp ? new Date(reportData.confirmationTimestamp).toLocaleString('pt-AO') : 'N/A'}
+                             {reportData.unilateralAdminConfirmation && ' (Intervenção Administrativa)'}
+                          </p>
+                       </div>
+                     )}
+                  </SoftCard>
+
+                  {/* Detailed Breakdown Section */}
+                  <SoftCard className="p-0 overflow-hidden relative">
+                     <div className="p-4 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
+                        <h3 className="font-bold text-[#003366] dark:text-white">Resumo de Vendas</h3>
+                        <button 
+                          onClick={() => { setIsSummaryFullscreen(true); triggerHaptic('selection'); }}
+                          className="p-2 text-slate-400 hover:text-[#003366] dark:hover:text-blue-400 transition-colors"
+                          title="Ver em tela cheia"
+                        >
+                          <Maximize2 size={18} />
+                        </button>
                      </div>
-                   )}
-                </SoftCard>
-            </div>
-        </div>
+                     <div className="overflow-x-auto">
+                        <table className="w-full text-sm text-left">
+                           <thead>
+                              <tr className="bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+                                 <th className="p-4 font-bold">Produto</th>
+                                 <th className="p-4 font-bold text-center">Inicial</th>
+                                 <th className="p-4 font-bold text-center">Compra</th>
+                                 <th className="p-4 font-bold text-center">Final</th>
+                                 <th className="p-4 font-bold text-center">Vendido</th>
+                                 <th className="p-4 font-bold text-right">Detalhes / Desconto</th>
+                                 <th className="p-4 font-bold text-right">Subtotal</th>
+                              </tr>
+                           </thead>
+                           <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                              {reportData.itemsSnapshot?.map((item: any) => (
+                                 <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                                    <td className="p-4 font-bold text-slate-700 dark:text-slate-300">{item.name}</td>
+                                    <td className="p-4 text-center text-slate-500">{item.init}</td>
+                                    <td className="p-4 text-center text-green-600 font-medium">+{item.buy}</td>
+                                    <td className="p-4 text-center text-slate-500">{item.end}</td>
+                                    <td className="p-4 text-center font-bold text-slate-700 dark:text-slate-200">{item.soldQty}</td>
+                                     <td className="p-4 text-right">
+                                        {item.isPromo && item.soldQty > 0 ? (
+                                          <div className="flex flex-col items-end">
+                                            <span className="text-[10px] text-slate-400 uppercase font-bold leading-tight">
+                                              {item.mixMatchQtyUsed || 0} un (Mix Match) + {item.avulsaQty || 0} un (Avulsa)
+                                            </span>
+                                            {item.discountAmount > 0 && (
+                                              <span className="text-xs font-medium text-amber-600">
+                                                -{item.discountAmount.toLocaleString()} Kz
+                                              </span>
+                                            )}
+                                          </div>
+                                        ) : (
+                                          <span className="text-slate-400">-</span>
+                                        )}
+                                    </td>
+                                    <td className="p-4 text-right font-bold text-[#003366] dark:text-blue-300">{(item.revenue || 0).toLocaleString('pt-AO')} Kz</td>
+                                 </tr>
+                              ))}
+                           </tbody>
+                        </table>
+                     </div>
+
+                      {/* Fullscreen Overlay */}
+                      {isSummaryFullscreen && (
+                        <div className="fixed inset-0 z-[300] bg-black/90 backdrop-blur-md flex items-center justify-center p-2 md:p-4 animate-fade-in">
+                          <div className="bg-white dark:bg-slate-800 rounded-[32px] w-full max-w-none h-full md:h-[95vh] shadow-2xl flex flex-col overflow-hidden border border-slate-200 dark:border-slate-700">
+                           <div className="p-4 md:p-6 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
+                             <div className="flex items-center gap-3">
+                               <div className="p-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl">
+                                 <BarChart2 size={24} />
+                               </div>
+                               <div>
+                                 <h3 className="font-black text-lg md:text-xl text-[#003366] dark:text-white uppercase">Resumo Detalhado de Vendas</h3>
+                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{reportData.displayDate}</p>
+                               </div>
+                             </div>
+                             <button 
+                               onClick={() => { setIsSummaryFullscreen(false); triggerHaptic('selection'); }}
+                               className="p-2 md:p-3 bg-slate-100 dark:bg-slate-700 text-slate-500 hover:text-red-500 rounded-2xl transition-all flex items-center gap-2 font-bold uppercase text-[10px] md:text-xs"
+                             >
+                               <Minimize2 size={18} /> Fechar
+                             </button>
+                           </div>
+                           <div className="flex-1 overflow-auto p-2 md:p-4">
+                              <table className="w-full text-[11px] md:text-sm text-left table-auto border-collapse">
+                                 <thead>
+                                    <tr className="bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 sticky top-0 z-10">
+                                       <th className="px-2 py-4 font-bold">Produto</th>
+                                       <th className="px-1 py-4 font-bold text-center">Inicial</th>
+                                       <th className="px-1 py-4 font-bold text-center">Compra</th>
+                                       <th className="px-1 py-4 font-bold text-center">Final</th>
+                                       <th className="px-1 py-4 font-bold text-center">Vendido</th>
+                                       <th className="px-2 py-4 font-bold text-right">Detalhes / Desconto</th>
+                                       <th className="px-2 py-4 font-bold text-right">Subtotal</th>
+                                    </tr>
+                                 </thead>
+                                 <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                                    {reportData.itemsSnapshot?.map((item: any) => (
+                                       <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                                          <td className="px-2 py-4 font-bold text-slate-700 dark:text-slate-300 break-words max-w-[150px] md:max-w-none">{item.name}</td>
+                                          <td className="px-1 py-4 text-center text-slate-500">{item.init}</td>
+                                          <td className="px-1 py-4 text-center text-green-600 font-medium">+{item.buy}</td>
+                                          <td className="px-1 py-4 text-center text-slate-500">{item.end}</td>
+                                          <td className="px-1 py-4 text-center font-bold text-slate-700 dark:text-slate-200">{item.soldQty}</td>
+                                           <td className="px-2 py-4 text-right">
+                                              {item.isPromo && item.soldQty > 0 ? (
+                                                <div className="flex flex-col items-end">
+                                                  <span className="text-[9px] md:text-[10px] text-slate-400 uppercase font-bold leading-tight whitespace-nowrap">
+                                                    {item.mixMatchQtyUsed || 0} un (Mix Match)
+                                                  </span>
+                                                  <span className="text-[9px] md:text-[10px] text-slate-400 uppercase font-bold leading-tight whitespace-nowrap">
+                                                    + {item.avulsaQty || 0} un (Avulsa)
+                                                  </span>
+                                                  {item.discountAmount > 0 && (
+                                                    <span className="text-[10px] md:text-xs font-medium text-amber-600">
+                                                      -{item.discountAmount.toLocaleString()} Kz
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              ) : (
+                                                <span className="text-slate-400">-</span>
+                                              )}
+                                          </td>
+                                          <td className="px-2 py-4 text-right font-bold text-[#003366] dark:text-blue-300 whitespace-nowrap">{(item.revenue || 0).toLocaleString('pt-AO')} Kz</td>
+                                       </tr>
+                                    ))}
+                                 </tbody>
+                              </table>
+                           </div>
+                         </div>
+                        </div>
+                      )}
+                  </SoftCard>
+              </div>
+          </div>
+      </div>
     );
   }
 

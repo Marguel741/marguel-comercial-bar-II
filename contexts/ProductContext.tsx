@@ -398,12 +398,23 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       validateAction('UPDATE_STOCK', { productId, qty: type === 'SALE' ? -quantity : quantity });
 
       // FIND PRODUCT BEFORE UPDATING TO GET CURRENT VALUES
-      // This ensures qtyBefore, qtyAfter, and productName are correctly populated for the log
       const product = products.find(p => p.id === productId);
       if (!product) return;
 
       const productName = product.name;
-      const qtyBefore = product.stock;
+      
+      // IDEMPOTENCY LOGIC: If referenceId exists, check if we already processed this movement
+      let qtyBefore = product.stock;
+      let existingLogId: string | null = null;
+
+      if (referenceId) {
+        const existingLog = stockOperationHistory.find(log => log.referenceId === referenceId && log.productId === productId);
+        if (existingLog) {
+          // Reverse the previous effect
+          qtyBefore = qtyBefore - existingLog.qtyAdded;
+          existingLogId = existingLog.id;
+        }
+      }
       
       let qtyAdded = 0;
       if (type === 'SALE') qtyAdded = -quantity;
@@ -417,20 +428,18 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       });
 
       // Determinar se é um ajuste manual para o histórico
-      // Se for ADJUSTMENT ou MANUAL_ADJUSTMENT, ou se não houver referenceId (vindo do Inventário)
       const isManual = type === 'ADJUSTMENT' || type === 'MANUAL_ADJUSTMENT' || (!referenceId && (type === 'SALE' || type === 'PURCHASE'));
       const logType = isManual ? 'MANUAL_ADJUSTMENT' : type;
 
       // Update Audit Log (StockOperationLog)
       const log: StockOperationLog = {
-        id: generateUUID(),
+        id: existingLogId || generateUUID(),
         productId,
         productName,
         type: logType as any,
         qtyBefore,
         qtyAdded: qtyAdded,
         qtyAfter,
-        // Novos campos solicitados para o histórico detalhado
         previousStock: qtyBefore,
         newStock: qtyAfter,
         qtyChanged: qtyAdded,
@@ -440,7 +449,13 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
         reason: reason || (isManual ? 'Ajuste Manual via Sistema' : 'Movimentação de Stock'),
         referenceId
       };
-      setStockOperationHistory(prev => [log, ...prev]);
+
+      setStockOperationHistory(prev => {
+        if (existingLogId) {
+          return prev.map(l => l.id === existingLogId ? log : l);
+        }
+        return [log, ...prev];
+      });
 
       // Update Audit Context
       addLog({
@@ -1605,46 +1620,40 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       isFinalClosure: true
     };
 
-    // 3. DEDUÇÃO DE STOCK (Idempotente: só faz se não foi feito antes no relatório original)
-    // Prioriza itemsSnapshot conforme solicitado pelo utilizador
+    // 3. DEDUÇÃO DE STOCK (Idempotente)
     if (!report.stockUpdated) {
       const itemsToDeduct = report.itemsSnapshot || report.itemsSummary || [];
       
-      setProducts(prevProducts => {
-        return prevProducts.map(p => {
-          const soldItem = itemsToDeduct.find(
-            (item: any) => (item.productId && item.productId === p.id) || item.id === p.id || item.name === p.name
-          );
-          
-          // Prioriza soldQty (do snapshot), fallback para qty (do summary)
-          const qty = soldItem ? (soldItem.soldQty ?? soldItem.qty ?? 0) : 0;
-          
-          if (qty > 0) {
-            return { ...p, stock: Math.max(0, p.stock - qty) };
-          }
-          return p;
-        });
+      itemsToDeduct.forEach((item: any) => {
+        const p = products.find(prod => (item.productId && item.productId === prod.id) || item.id === prod.id || item.name === prod.name);
+        // Prioriza soldQty (do snapshot), fallback para qty (do summary)
+        const qty = item.soldQty ?? item.qty ?? 0;
+        
+        if (p && qty > 0) {
+          handleStockMovement(p.id, qty, 'SALE', confirmedBy, `Fecho Confirmado: ${reportDateStr}`, reportId);
+        }
       });
     }
 
     // 4. PROCESSAMENTO FINANCEIRO (Idempotente)
     if (!report.processedFinancials) {
-      // Compatibilidade com ambos os formatos de relatório (root vs nested)
+      // Usamos a lógica unificada de ajuste financeiro que já lida com reversão de duplicados
       const cash = (finalReport as any).cash ?? (finalReport as any).financials?.cash ?? 0;
       const tpa = (finalReport as any).tpa ?? (finalReport as any).financials?.ticket ?? 0;
       const transfer = (finalReport as any).transfer ?? (finalReport as any).financials?.transfer ?? 0;
       const totalLifted = (finalReport as any).totalLifted ?? (finalReport as any).totals?.lifted ?? (cash + tpa + transfer);
-      
-      // Atualiza saldos de Caixa e TPA para reflectir no Dashboard/Calendário
-      setCashBalance(prev => prev + cash);
-      setTPABalance(prev => prev + tpa + transfer);
 
+      // 1. Registro de Venda no Estado de Conta (Cash e TPA)
+      processTransaction('deposit', 'cash', cash, `Venda Cash: ${reportDateStr}`, 'Venda', `cash_${reportId}`, 'sales_report', confirmedBy, reportDateStr);
+      processTransaction('deposit', 'tpa', tpa + transfer, `Venda TPA/Transf: ${reportDateStr}`, 'Venda', `tpa_${reportId}`, 'sales_report', confirmedBy, reportDateStr);
+      
+      // 2. Registro do Total Levantado na Conta Principal
       if (totalLifted > 0) {
         processTransaction(
           'deposit',
           'main',
           totalLifted,
-          `Fecho Confirmado (${reportDateStr})`,
+          `Fecho Confirmado (${reportDateStr}) - Total Levantado`,
           'Fecho de Caixa',
           reportId,
           'day_closure',
