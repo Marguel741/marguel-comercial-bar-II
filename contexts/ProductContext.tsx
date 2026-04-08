@@ -1674,8 +1674,10 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     // 6. ATUALIZAÇÃO DE ESTADO E PERSISTÊNCIA IMEDIATA
     setSalesReports(prev => {
-      const newReports = prev.map(r => (r.id === reportId ? finalReport : r));
-      // Persistência imediata para garantir que Dashboard e Calendário vejam os dados
+      const exists = prev.some(r => r.id === reportId);
+      const newReports = exists
+        ? prev.map(r => (r.id === reportId ? finalReport : r))
+        : [finalReport, ...prev];
       localStorage.setItem('mg_sales_reports', JSON.stringify(newReports));
       return newReports;
     });

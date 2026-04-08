@@ -796,10 +796,9 @@ const Sales: React.FC = () => {
 
     setShowCloseModal(false);
 
-    // Salva como parcial (1º fecho ou edição)
-    executeSync(newReport);
-    // Sempre pede segunda confirmação
+    // Salva como parcial e só abre modal após guardar
     setEditConfirmationData({ ...newReport, closedBy: user?.name || 'Vendedor' });
+    await executeSync(newReport);
     setShowConfirmEditModal(true);
   };
 
@@ -1013,7 +1012,14 @@ const Sales: React.FC = () => {
   };
 
   // === CONDIÇÃO CORRIGIDA (só mostra relatório se já estiver CONFIRMADO) ===
-  if ((viewHistoryReport || (existingReport && (existingReport.status === ClosureStatus.FECHO_CONFIRMADO || existingReport.status === ClosureStatus.BLOQUEADO))) && !forceEditMode) {
+  const isPartialClosure = existingReport && (
+    existingReport.status === ClosureStatus.FECHO_PARCIAL_FUNCIONARIO ||
+    existingReport.status === ClosureStatus.FECHO_PARCIAL_GERENTE ||
+    existingReport.status === ClosureStatus.FECHO_PARCIAL_ADMIN ||
+    existingReport.status === ClosureStatus.FECHO_PARCIAL
+  );
+
+  if ((viewHistoryReport || (existingReport && (existingReport.status === ClosureStatus.FECHO_CONFIRMADO || existingReport.status === ClosureStatus.BLOQUEADO || isPartialClosure))) && !forceEditMode) {
     const rawReport = viewHistoryReport || existingReport!;
     
     const reportData = getReportData(rawReport);
