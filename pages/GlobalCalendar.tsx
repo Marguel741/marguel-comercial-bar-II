@@ -422,7 +422,7 @@ const GlobalCalendar: React.FC = () => {
                             </h3>
                             <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-[32px] border border-slate-100 dark:border-slate-700 space-y-4">
                                 <div className="flex justify-between items-center text-sm">
-                                    <span className="text-slate-500 font-medium">Vendas (Entrada Bruta)</span>
+                                    <span className="text-slate-500 font-medium">Venda Bruta (Total Vendido)</span>
                                     <span className={`font-bold ${dayData.isConfirmed ? 'text-[#003366] dark:text-white' : 'text-amber-600 italic'}`}>
                                         {dayData.isConfirmed ? formatKz(dayData.report?.totalLifted || 0) : 'Aguardando Confirmação'}
                                     </span>

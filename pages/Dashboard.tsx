@@ -513,10 +513,10 @@ const Dashboard: React.FC = () => {
         <p className="text-slate-500 dark:text-slate-400 text-sm mb-1">Bem-vindo de volta,</p>
         <h2 className="text-3xl font-bold text-[#0f172a] dark:text-white mb-6">{user?.name || 'Admin'}</h2>
 
-        {/* Main Card – Total Vendido Ontem */}
+        {/* Main Card – Total Levantado Ontem */}
         <div className="bg-[#003366] rounded-[2rem] p-6 text-white shadow-xl mb-8 relative overflow-hidden">
             <div className="relative z-10">
-                <p className="text-blue-200 text-sm mb-1">Total Vendido Ontem</p>
+                <p className="text-blue-200 text-sm mb-1">Total Levantado Ontem</p>
                 <h3 className="text-4xl font-bold mb-2">
                     {yesterdayTotal.toLocaleString('pt-AO')} Kz
                 </h3>

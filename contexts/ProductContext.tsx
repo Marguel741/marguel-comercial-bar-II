@@ -1430,11 +1430,12 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     if (lunchVal > 0 && isFinal && !report.lunchProcessed) {
       const dateKey = new Date(report.dateISO || report.date).toISOString().split('T')[0];
       const lunchRefId = `LUNCH_EXPENSE_${dateKey}`;
+      // Apenas cria o registo informativo — NÃO debita a conta corrente
       registrarDespesaGlobal({
         tipo: "DESPESA_OPERACIONAL",
         origem: "CONTROLE_VENDAS",
         descricao: `Almoço (${dateKey})`,
-        nota: `Débito automático de fecho final.`,
+        nota: `Débito informativo de fecho final (não afeta saldo).`,
         valor: lunchVal,
         usuario: report.closedBy || 'Sistema',
         data_operacional: report.dateISO?.split('T')[0] || report.date,
@@ -1659,19 +1660,16 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     // 4. PROCESSAMENTO FINANCEIRO (Idempotente)
     if (!wasAlreadyProcessed && !report.processedFinancials) {
-      // Usamos a lógica unificada de ajuste financeiro que já lida com reversão de duplicados
       const cash = (finalReport as any).cash ?? (finalReport as any).financials?.cash ?? 0;
       const tpa = (finalReport as any).tpa ?? (finalReport as any).financials?.ticket ?? 0;
       const transfer = (finalReport as any).transfer ?? (finalReport as any).financials?.transfer ?? 0;
-      // totalLifted = cash + tpa + transfer (valores brutos levantados, sem deduzir almoço)
-      const totalLifted = cash + tpa + transfer;
+      const totalLifted = cash + tpa + transfer;   // ← Valor bruto levantado
 
-      // NOTA: Não registamos Cash/TPA como transações separadas no Estado de Conta.
-      // Apenas actualizamos os saldos de Cash e TPA directamente, e registamos
-      // o totalLifted na Conta Corrente (main).
+      // Atualiza apenas os saldos de Cash e TPA (não cria transações no histórico)
       if (cash > 0) setCashBalance(prev => prev + cash);
       if (tpa + transfer > 0) setTPABalance(prev => prev + (tpa + transfer));
 
+      // Apenas 1 transação no Estado de Conta: o Total Levantado
       if (totalLifted > 0) {
         processTransaction(
           'deposit',
@@ -1687,9 +1685,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       }
     }
 
-    // 5. ATUALIZAÇÃO DE ESTADO E PERSISTÊNCIA IMEDIATA (movida antes do almoço)
-
-    // 5. REGISTO DE DESPESA DE ALMOÇO — depois do fecho para ordem correcta no histórico
+    // 5. REGISTO DE DESPESA DE ALMOÇO (apenas informativo — NÃO debita conta corrente)
     const lunchExpense = (finalReport as any).lunchExpense ?? (finalReport as any).financials?.lunch ?? 0;
     if (lunchExpense > 0 && !report.lunchProcessed) {
       registrarAlmocoBlindado({ ...finalReport, lunchExpense } as SalesReport);
