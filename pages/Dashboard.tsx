@@ -83,7 +83,10 @@ const Dashboard: React.FC = () => {
     const yesterday = new Date(systemDate);
     yesterday.setDate(yesterday.getDate() - 1);
     const yesterdayStr = formatDateISO(yesterday);
-    return getConfirmedSalesReports().find(r => r.date === yesterdayStr);
+    return getConfirmedSalesReports().find(r => {
+      const rDate = r.dateISO ? r.dateISO.split('T')[0] : r.date;
+      return rDate === yesterdayStr;
+    });
   }, [getConfirmedSalesReports, systemDate]);
 
   // ==================== TOTAL VENDIDO ONTEM (corrigido) ====================
@@ -110,11 +113,13 @@ const Dashboard: React.FC = () => {
     const productSales: Record<string, number> = {};
     
     getConfirmedSalesReports().forEach(report => {
-      if (report.itemsSummary) {
-        report.itemsSummary.forEach(item => {
-          productSales[item.name] = (productSales[item.name] || 0) + item.qty;
-        });
-      }
+      const items = report.itemsSummary || (report as any).itemsSnapshot || [];
+      items.forEach((item: any) => {
+        const qty = item.qty ?? item.soldQty ?? 0;
+        if (item.name && qty > 0) {
+          productSales[item.name] = (productSales[item.name] || 0) + qty;
+        }
+      });
     });
 
     return Object.entries(productSales)
@@ -156,7 +161,10 @@ const Dashboard: React.FC = () => {
             d.setDate(monday.getDate() + i);
             const dateStr = formatDateISO(d);
             
-            const report = getConfirmedSalesReports().find(r => r.date === dateStr);
+            const report = getConfirmedSalesReports().find(r => {
+              const rDate = (r as any).dateISO ? (r as any).dateISO.split('T')[0] : r.date;
+              return rDate === dateStr;
+            });
             const dayExpenses = expenses
                 .filter(e => e.date === dateStr)
                 .reduce((sum, e) => sum + e.amount, 0);
@@ -179,7 +187,10 @@ const Dashboard: React.FC = () => {
             d.setDate(d.getDate() - i);
             const dateStr = formatDateISO(d);
             
-            const report = getConfirmedSalesReports().find(r => r.date === dateStr);
+            const report = getConfirmedSalesReports().find(r => {
+              const rDate = (r as any).dateISO ? (r as any).dateISO.split('T')[0] : r.date;
+              return rDate === dateStr;
+            });
             const dayExpenses = expenses
                 .filter(e => e.date === dateStr)
                 .reduce((sum, e) => sum + e.amount, 0);

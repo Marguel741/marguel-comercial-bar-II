@@ -68,8 +68,8 @@ const AuditPage: React.FC = () => {
       });
   }, [logs, searchTerm, moduleFilter, userFilter, dateFilter, sortOrder]);
 
-  const modules = useMemo(() => ['all', ...new Set(logs.map(l => l.module))], [logs]);
-  const users = useMemo(() => ['all', ...new Set(logs.map(l => l.performedBy))], [logs]);
+  const modules = useMemo(() => ['all', ...new Set((logs || []).map(l => l.module))], [logs]);
+  const users = useMemo(() => ['all', ...new Set((logs || []).map(l => l.performedBy))], [logs]);
 
   const getModuleColor = (module: string) => {
     switch (module) {

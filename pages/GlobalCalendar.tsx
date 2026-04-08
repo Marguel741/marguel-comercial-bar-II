@@ -104,7 +104,10 @@ const GlobalCalendar: React.FC = () => {
     setSelectedDayDetail(null);
   };
 
-  const salesMap = useMemo(() => new Map(getConfirmedSalesReports().map(r => [cleanDate(r.date), r])), [getConfirmedSalesReports]);
+  const salesMap = useMemo(() => new Map(getConfirmedSalesReports().map(r => {
+    const dateKey = (r as any).dateISO ? (r as any).dateISO.split('T')[0] : r.date;
+    return [cleanDate(dateKey), r];
+  })), [getConfirmedSalesReports]);
   const inventoryMap = useMemo(() => new Map(inventoryHistory.map(h => [cleanDate(h.date), h])), [inventoryHistory]);
 
   const monthStats = useMemo(() => {
@@ -114,7 +117,7 @@ const GlobalCalendar: React.FC = () => {
       const dateStr = formatDateISO(new Date(viewDate.getFullYear(), viewDate.getMonth(), i));
       const r = salesMap.get(cleanDate(dateStr));
       if (r && r.status === ClosureStatus.FECHO_CONFIRMADO) {
-        total = roundKz(total + r.totalLifted);
+        total = roundKz(total + (r.totalLifted || (r as any).totals?.lifted || 0));
         count++;
       }
     }
@@ -440,8 +443,8 @@ const GlobalCalendar: React.FC = () => {
                                 </div>
                                 <div className="flex justify-between items-center pt-2 border-t border-dashed border-slate-200 dark:border-slate-700">
                                     <span className="text-slate-900 dark:text-white font-black uppercase text-xs">Margem de Lucro</span>
-                                    <span className={`text-2xl font-black ${dayData.isConfirmed ? (dayData.report?.profit || 0) >= 0 ? 'text-green-600' : 'text-red-600' : 'text-slate-400 italic'}`}>
-                                        {dayData.isConfirmed ? formatKz(dayData.report?.profit || 0) : 'N/A'}
+                                    <span className={`text-2xl font-black ${dayData.isConfirmed ? ((dayData.report as any)?.profit || (dayData.report as any)?.totals?.profit || 0) >= 0 ? 'text-green-600' : 'text-red-600' : 'text-slate-400 italic'}`}>
+                                        {dayData.isConfirmed ? formatKz((dayData.report as any)?.profit || (dayData.report as any)?.totals?.profit || 0) : 'N/A'}
                                     </span>
                                 </div>
                             </div>
@@ -598,10 +601,10 @@ const GlobalCalendar: React.FC = () => {
                                        </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-50 dark:divide-slate-700">
-                                       {dayData.report.itemsSummary.map((item, idx) => (
+                                       {(dayData.report.itemsSummary || (dayData.report as any).itemsSnapshot || []).map((item: any, idx: number) => (
                                           <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-800 transition-colors">
                                              <td className="px-6 py-4 font-bold text-sm text-slate-700 dark:text-slate-300">{item.name}</td>
-                                             <td className="px-6 py-4 text-center font-black text-blue-600">{item.qty}</td>
+                                             <td className="px-6 py-4 text-center font-black text-blue-600">{item.qty ?? item.soldQty ?? 0}</td>
                                              <td className="px-6 py-4 text-right font-bold text-slate-900 dark:text-white">{formatKz(item.total)}</td>
                                           </tr>
                                        ))}
@@ -724,10 +727,10 @@ const GlobalCalendar: React.FC = () => {
                                               </div>
                                           </div>
 
-                                          {dayData.inventory.discrepancies.length > 0 && (
+                                          {dayData.inventory.discrepancies && dayData.inventory.discrepancies.length > 0 && (
                                               <div className="mt-4 space-y-2">
                                                   <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Detalhes das Divergências:</p>
-                                                  {dayData.inventory.discrepancies.map((d, idx) => (
+                                                  {dayData.inventory.discrepancies.map((d: any, idx: number) => (
                                                       <div key={idx} className="flex justify-between items-center text-xs p-2 bg-white dark:bg-slate-800 rounded-lg">
                                                           <span className="font-medium text-slate-700 dark:text-slate-300">{d.name}</span>
                                                           <span className={`font-bold ${d.diff < 0 ? 'text-red-500' : 'text-green-500'}`}>

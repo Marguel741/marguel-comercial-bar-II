@@ -30,7 +30,14 @@ export const AuditProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   // Load from localStorage
   useEffect(() => {
     const savedLogs = localStorage.getItem('mg_audit_logs');
-    if (savedLogs) setLogs(JSON.parse(savedLogs));
+    if (savedLogs) {
+      try {
+        const parsed = JSON.parse(savedLogs);
+        if (Array.isArray(parsed)) setLogs(parsed);
+      } catch (e) {
+        console.error("Error parsing audit logs", e);
+      }
+    }
 
     const savedEnabled = localStorage.getItem('mg_audit_enabled');
     if (savedEnabled !== null) setIsAuditEnabled(JSON.parse(savedEnabled));

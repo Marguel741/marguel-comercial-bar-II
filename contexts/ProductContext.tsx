@@ -254,7 +254,8 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [products, setProducts] = useState<Product[]>(() => {
     try {
       const saved = localStorage.getItem('mg_products');
-      return saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
+      const parsed = saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
+      return Array.isArray(parsed) ? parsed : INITIAL_PRODUCTS;
     } catch { return INITIAL_PRODUCTS; }
   });
 
@@ -263,7 +264,8 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [expenseCategories, setExpenseCategories] = useState<ExpenseCategory[]>(() => {
     try {
       const saved = localStorage.getItem('mg_expense_categories');
-      return saved ? JSON.parse(saved) : INITIAL_EXPENSE_CATEGORIES;
+      const parsed = saved ? JSON.parse(saved) : INITIAL_EXPENSE_CATEGORIES;
+      return Array.isArray(parsed) ? parsed : INITIAL_EXPENSE_CATEGORIES;
     } catch { return INITIAL_EXPENSE_CATEGORIES; }
   });
   
@@ -271,6 +273,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     try {
       const saved = localStorage.getItem('mg_purchases');
       const parsed = saved ? JSON.parse(saved) : [];
+      if (!Array.isArray(parsed)) return [];
       // Deduplicate by ID
       const unique: PurchaseRecord[] = [];
       const seen = new Set();
@@ -288,6 +291,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     try {
       const saved = localStorage.getItem('mg_expenses');
       const parsed = saved ? JSON.parse(saved) : [];
+      if (!Array.isArray(parsed)) return [];
       // Deduplicate by ID
       const unique: Expense[] = [];
       const seen = new Set();
@@ -308,6 +312,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     try {
       const saved = localStorage.getItem('mg_inventory_history');
       const parsed = saved ? JSON.parse(saved) : [];
+      if (!Array.isArray(parsed)) return [];
       // Deduplicate by ID
       const unique: InventoryLog[] = [];
       const seen = new Set();
@@ -325,6 +330,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     try {
       const saved = localStorage.getItem('mg_stock_operation_history');
       const parsed = saved ? JSON.parse(saved) : [];
+      if (!Array.isArray(parsed)) return [];
       // Deduplicate by ID
       const unique: StockOperationLog[] = [];
       const seen = new Set();
@@ -556,6 +562,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     try {
       const saved = localStorage.getItem('mg_sales_reports');
       const parsed = saved ? JSON.parse(saved) : [];
+      if (!Array.isArray(parsed)) return [];
       // Deduplicate by ID
       const unique: SalesReport[] = [];
       const seen = new Set();
@@ -1656,19 +1663,21 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       const cash = (finalReport as any).cash ?? (finalReport as any).financials?.cash ?? 0;
       const tpa = (finalReport as any).tpa ?? (finalReport as any).financials?.ticket ?? 0;
       const transfer = (finalReport as any).transfer ?? (finalReport as any).financials?.transfer ?? 0;
-      const totalLifted = (finalReport as any).totalLifted ?? (finalReport as any).totals?.lifted ?? (cash + tpa + transfer);
+      // totalLifted = cash + tpa + transfer (valores brutos levantados, sem deduzir almoço)
+      const totalLifted = cash + tpa + transfer;
 
-      // 1. Registro de Venda no Estado de Conta (Cash e TPA)
-      processTransaction('deposit', 'cash', cash, `Venda Cash: ${reportDateStr}`, 'Venda', `cash_${reportId}`, 'sales_report', confirmedBy, reportDateStr);
-      processTransaction('deposit', 'tpa', tpa + transfer, `Venda TPA/Transf: ${reportDateStr}`, 'Venda', `tpa_${reportId}`, 'sales_report', confirmedBy, reportDateStr);
-      
-      // 2. Registro do Total Levantado na Conta Principal
+      // NOTA: Não registamos Cash/TPA como transações separadas no Estado de Conta.
+      // Apenas actualizamos os saldos de Cash e TPA directamente, e registamos
+      // o totalLifted na Conta Corrente (main).
+      if (cash > 0) setCashBalance(prev => prev + cash);
+      if (tpa + transfer > 0) setTPABalance(prev => prev + (tpa + transfer));
+
       if (totalLifted > 0) {
         processTransaction(
           'deposit',
           'main',
           totalLifted,
-          `Fecho Confirmado (${reportDateStr}) - Total Levantado`,
+          `Fecho Confirmado (${reportDateStr})`,
           'Fecho de Caixa',
           reportId,
           'day_closure',
@@ -1678,7 +1687,9 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       }
     }
 
-    // 5. REGISTO DE DESPESA DE ALMOÇO (Idempotente via registrarAlmocoBlindado)
+    // 5. ATUALIZAÇÃO DE ESTADO E PERSISTÊNCIA IMEDIATA (movida antes do almoço)
+
+    // 5. REGISTO DE DESPESA DE ALMOÇO — depois do fecho para ordem correcta no histórico
     const lunchExpense = (finalReport as any).lunchExpense ?? (finalReport as any).financials?.lunch ?? 0;
     if (lunchExpense > 0 && !report.lunchProcessed) {
       registrarAlmocoBlindado({ ...finalReport, lunchExpense } as SalesReport);
