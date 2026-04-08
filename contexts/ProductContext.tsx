@@ -695,18 +695,41 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   }, [transactions, user, getSystemDate, addAuditLog]);
 
   const adjustFinancialsForReport = useCallback((oldReport: SalesReport, newReport: SalesReport) => {
-    const reportDateStr = oldReport.dateISO ? oldReport.dateISO.split('T')[0] : oldReport.date;
-    
-    // 1. Adjust Cash and TPA via processTransaction (Estado de Conta logic)
-    processTransaction('deposit', 'cash', newReport.cash || 0, `Venda Cash: ${reportDateStr}`, 'Venda', `cash_${newReport.id}`, 'sales_report', user?.name || 'Sistema', reportDateStr);
-    processTransaction('deposit', 'tpa', (newReport.tpa || 0) + (newReport.transfer || 0), `Venda TPA/Transf: ${reportDateStr}`, 'Venda', `tpa_${newReport.id}`, 'sales_report', user?.name || 'Sistema', reportDateStr);
-    
-    // 2. Adjust "Total Levantado" (Main Account Transaction)
-    const newTotalLifted = newReport.totalLifted || 0;
+    const reportDateStr = (newReport.dateISO || newReport.date || '').split('T')[0];
+
+    // Calcula os novos valores do fecho editado
+    const newCash = newReport.cash ?? (newReport as any).financials?.cash ?? 0;
+    const newTpa = (newReport.tpa ?? 0) + (newReport.transfer ?? 0)
+      || ((newReport as any).financials?.ticket ?? 0) + ((newReport as any).financials?.transfer ?? 0);
+    const newTotalLifted = newCash + newTpa;
+
+    // Atualiza saldos de Cash e TPA diretamente (sem criar transação no histórico)
+    // Calcula a diferença em relação ao fecho anterior
+    const oldCash = oldReport.cash ?? (oldReport as any).financials?.cash ?? 0;
+    const oldTpa = (oldReport.tpa ?? 0) + (oldReport.transfer ?? 0)
+      || ((oldReport as any).financials?.ticket ?? 0) + ((oldReport as any).financials?.transfer ?? 0);
+
+    const cashDiff = newCash - oldCash;
+    const tpaDiff = newTpa - oldTpa;
+
+    if (cashDiff !== 0) setCashBalance(prev => prev + cashDiff);
+    if (tpaDiff !== 0) setTPABalance(prev => prev + tpaDiff);
+
+    // Apenas 1 transação na Conta Corrente — usa o mesmo referenceId para substituir
     if (newTotalLifted > 0) {
-      processTransaction('deposit', 'main', newTotalLifted, `Fecho Confirmado (${reportDateStr}) - Total Levantado`, 'Fecho de Caixa', newReport.id, 'day_closure', user?.name || 'Sistema', reportDateStr);
+      processTransaction(
+        'deposit',
+        'main',
+        newTotalLifted,
+        `Fecho Confirmado (${reportDateStr}) — Editado`,
+        'Fecho de Caixa',
+        newReport.id,          // mesmo ID → processTransaction reverte o antigo
+        'day_closure',
+        user?.name || 'Sistema',
+        reportDateStr
+      );
     }
-  }, [user, processTransaction]);
+  }, [user, processTransaction, setCashBalance, setTPABalance]);
 
   const revertStockFromReport = useCallback((report: SalesReport) => {
     if (!report.itemsSummary || !report.stockUpdated) return;

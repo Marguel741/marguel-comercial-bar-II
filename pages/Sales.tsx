@@ -509,7 +509,18 @@ const Sales: React.FC = () => {
   
   const isLocked = isDayLocked(reportDate);
   const isNotToday = reportDate !== todayISO;
-  const isReadOnly = isLocked || isNotToday || (!forceEditMode && (existingReport?.status !== undefined && existingReport.status !== ClosureStatus.ABERTO));
+
+  // Verifica se existe algum fecho confirmado num dia posterior a reportDate
+  const hasConfirmedClosureAfter = useMemo(() => {
+    return contextSalesReports.some(r => {
+      const rDate = (r as any).dateISO ? (r as any).dateISO.split('T')[0] : r.date;
+      return rDate > reportDate && r.status === ClosureStatus.FECHO_CONFIRMADO;
+    });
+  }, [contextSalesReports, reportDate]);
+
+  const isReadOnly = isLocked || 
+    hasConfirmedClosureAfter ||
+    (!forceEditMode && (existingReport?.status !== undefined && existingReport.status !== ClosureStatus.ABERTO));
 
   const showToast = (message: string) => {
     setToast({ show: true, message });
@@ -971,6 +982,7 @@ const Sales: React.FC = () => {
 
   const getCloseButtonText = () => {
     if (isNotToday) return 'Visualização';
+    if (hasConfirmedClosureAfter) return 'Dia Bloqueado (Fecho Posterior)';
     if (isLocked) return 'Dia Encerrado';
     if (calculatedData.hasStockError) return 'Erro de Stock';
     if (!isFinancialsConfirmed) return 'Confirmar Valores';

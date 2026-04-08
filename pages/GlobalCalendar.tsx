@@ -500,15 +500,27 @@ const GlobalCalendar: React.FC = () => {
                                <AlertCircle size={20} className="text-amber-500" /> Alertas de Auditoria
                            </h3>
                            <div className="space-y-3">
-                              {dayData.report?.discrepancy !== 0 && (
-                                 <div className="p-4 bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300 rounded-2xl border border-amber-100 dark:border-amber-800/30 flex items-center gap-3">
+                              {(() => {
+                                const discVal = 
+                                  (dayData.report as any)?.totals?.discrepancy ??
+                                  dayData.report?.discrepancy ??
+                                  0;
+                                if (discVal === 0) return null;
+                                const isShortage = discVal < 0;
+                                return (
+                                  <div className={`p-4 rounded-2xl border flex items-center gap-3 ${isShortage ? 'bg-red-50 dark:bg-red-900/20 border-red-100 dark:border-red-800/30 text-red-800 dark:text-red-300' : 'bg-green-50 dark:bg-green-900/20 border-green-100 dark:border-green-800/30 text-green-800 dark:text-green-300'}`}>
                                     <AlertTriangle size={20} className="shrink-0" />
                                     <div>
-                                        <p className="text-xs font-black uppercase">Quebra de Caixa</p>
-                                        <p className="text-sm font-bold">{formatKz(dayData.report?.discrepancy || 0)} detectados no fecho.</p>
+                                      <p className="text-xs font-black uppercase">
+                                        {isShortage ? 'Quebra de Caixa' : 'Sobra de Caixa'}
+                                      </p>
+                                      <p className="text-sm font-bold">
+                                        Divergência de {formatKz(Math.abs(discVal))} detectada no fecho.
+                                      </p>
                                     </div>
-                                 </div>
-                              )}
+                                  </div>
+                                );
+                              })()}
                               {dayData.inventory?.status === 'DIVERGENTE' && (
                                  <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-300 rounded-2xl border border-red-100 dark:border-red-800/30 flex items-center gap-3">
                                     <Package size={20} className="shrink-0" />

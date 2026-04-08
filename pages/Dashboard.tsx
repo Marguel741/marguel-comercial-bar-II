@@ -95,11 +95,12 @@ const Dashboard: React.FC = () => {
     : 0;
 
   const yesterdayCash = yesterdayReport 
-    ? (yesterdayReport.cash || yesterdayReport.financials?.cash || 0) 
+    ? (yesterdayReport.cash ?? (yesterdayReport as any).financials?.cash ?? 0)
     : 0;
 
   const yesterdayTPA = yesterdayReport 
-    ? (yesterdayReport.tpa || 0) + (yesterdayReport.transfer || 0) || (yesterdayReport.financials ? (yesterdayReport.financials.ticket || 0) + (yesterdayReport.financials.transfer || 0) : 0)
+    ? ((yesterdayReport.tpa ?? 0) + (yesterdayReport.transfer ?? 0)) ||
+      (((yesterdayReport as any).financials?.ticket ?? 0) + ((yesterdayReport as any).financials?.transfer ?? 0))
     : 0;
   // =====================================================================
 
