@@ -796,16 +796,11 @@ const Sales: React.FC = () => {
 
     setShowCloseModal(false);
 
-    // === PONTO CRÍTICO === 
-    // Se já existe relatório (edição ou fecho parcial anterior), MOSTRA O MODAL DE SEGUNDA CONFIRMAÇÃO
-    if (existingReport && existingReport.status !== ClosureStatus.ABERTO) {
-      setEditConfirmationData(newReport);
-      setShowConfirmEditModal(true);   // ← Só abre o modal, NÃO salva ainda
-      return;
-    }
-
-    // Para fecho novo (primeira vez) salva como parcial
+    // Salva como parcial (1º fecho ou edição)
     executeSync(newReport);
+    // Sempre pede segunda confirmação
+    setEditConfirmationData({ ...newReport, closedBy: user?.name || 'Vendedor' });
+    setShowConfirmEditModal(true);
   };
 
   const executeSync = async (reportData: any) => {
@@ -850,6 +845,7 @@ const Sales: React.FC = () => {
         
         setSyncState(prev => ({ ...prev, status: 'success' }));
         triggerHaptic('success');
+        showToast('Fecho realizado como parcial. Aguarda confirmação de outro responsável.');
 
         setTimeout(() => {
             setSyncState({ status: 'idle', currentStep: -1, completedSteps: [] });
@@ -866,11 +862,11 @@ const Sales: React.FC = () => {
 
   // Modal de Confirmação de Edição Final
   const ConfirmEditModal = () => {
-    const lastActor = editConfirmationData?.editedBy || editConfirmationData?.closedBy || editConfirmationData?.initiatedBy || 'Desconhecido';
+    const lastActor = editConfirmationData?.editedBy || editConfirmationData?.closedBy || 'Desconhecido';
+    const isSameUser = user?.name && user.name === lastActor;
     const isAdminOrOwner = user?.role === UserRole.PROPRIETARIO || user?.role === UserRole.ADMIN_GERAL;
-    const isDifferentUser = user?.name && lastActor !== user.name;
     
-    const canConfirm = isAdminOrOwner || isDifferentUser;
+    const canConfirm = isAdminOrOwner || (!isSameUser && lastActor !== 'Desconhecido');
     const isUnilateralAllowed = isAdminOrOwner;
 
     return (

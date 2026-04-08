@@ -1625,12 +1625,15 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       const itemsToDeduct = report.itemsSnapshot || report.itemsSummary || [];
       
       itemsToDeduct.forEach((item: any) => {
-        const p = products.find(prod => (item.productId && item.productId === prod.id) || item.id === prod.id || item.name === prod.name);
-        // Prioriza soldQty (do snapshot), fallback para qty (do summary)
+        const p = products.find(prod => 
+          (item.productId && item.productId === prod.id) || 
+          item.id === prod.id || 
+          item.name === prod.name
+        );
         const qty = item.soldQty ?? item.qty ?? 0;
         
         if (p && qty > 0) {
-          handleStockMovement(p.id, qty, 'SALE', confirmedBy, `Fecho Confirmado: ${reportDateStr}`, reportId);
+          handleStockMovement(p.id, qty, 'SALE', confirmedBy, `Fecho Confirmado: ${reportDateStr}`, `confirm_${reportId}_${p.id}`);
         }
       });
     }
