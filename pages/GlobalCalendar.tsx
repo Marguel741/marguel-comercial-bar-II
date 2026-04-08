@@ -424,7 +424,14 @@ const GlobalCalendar: React.FC = () => {
                                 <div className="flex justify-between items-center text-sm">
                                     <span className="text-slate-500 font-medium">Venda Bruta (Total Vendido)</span>
                                     <span className={`font-bold ${dayData.isConfirmed ? 'text-[#003366] dark:text-white' : 'text-amber-600 italic'}`}>
-                                        {dayData.isConfirmed ? formatKz(dayData.report?.totalLifted || 0) : 'Aguardando Confirmação'}
+                                        {dayData.isConfirmed 
+                                          ? formatKz(
+                                              (dayData.report as any)?.totals?.expected ||
+                                              (dayData.report as any)?.totals?.soldStock ||
+                                              dayData.report?.totalExpected ||
+                                              0
+                                            ) 
+                                          : 'Aguardando Confirmação'}
                                     </span>
                                 </div>
                                 <div className="flex justify-between items-center text-sm">
@@ -438,7 +445,13 @@ const GlobalCalendar: React.FC = () => {
                                 <div className="pt-4 border-t border-slate-200 dark:border-slate-700 flex justify-between items-center">
                                     <span className="text-slate-900 dark:text-white font-black uppercase text-xs">Total Levantado</span>
                                     <span className={`text-xl font-black ${dayData.isConfirmed ? 'text-[#003366] dark:text-white' : 'text-slate-400 italic'}`}>
-                                        {dayData.isConfirmed ? formatKz(dayData.report?.totalLifted || 0) : 'N/A'}
+                                        {dayData.isConfirmed 
+                                          ? formatKz(
+                                              dayData.report?.totalLifted ||
+                                              (dayData.report as any)?.totals?.lifted ||
+                                              0
+                                            ) 
+                                          : 'N/A'}
                                     </span>
                                 </div>
                                 <div className="flex justify-between items-center pt-2 border-t border-dashed border-slate-200 dark:border-slate-700">
@@ -576,6 +589,37 @@ const GlobalCalendar: React.FC = () => {
                      <div className="space-y-8 animate-slide-up">
                         {dayData.report ? (
                            <>
+                              {/* Total Vendido aparece primeiro */}
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                                 <div className="bg-[#003366] text-white p-5 rounded-3xl col-span-1 sm:col-span-1">
+                                   <p className="text-[10px] font-black uppercase opacity-60 mb-1">Total Vendido (Stock)</p>
+                                   <p className="text-xl font-black">
+                                     {formatKz(
+                                       (dayData.report as any)?.totals?.expected ||
+                                       (dayData.report as any)?.totals?.soldStock ||
+                                       dayData.report?.totalExpected ||
+                                       0
+                                     )}
+                                   </p>
+                                 </div>
+                                 <div className="bg-green-50 dark:bg-green-900/10 p-5 rounded-3xl">
+                                   <p className="text-[10px] font-black uppercase opacity-60 mb-1 text-green-700">Total Levantado</p>
+                                   <p className="text-xl font-black text-green-700">
+                                     {formatKz(dayData.report?.totalLifted || (dayData.report as any)?.totals?.lifted || 0)}
+                                   </p>
+                                 </div>
+                                 <div className="bg-red-50 dark:bg-red-900/10 p-5 rounded-3xl">
+                                   <p className="text-[10px] font-black uppercase opacity-60 mb-1 text-red-600">Almoço (Despesa Op.)</p>
+                                   <p className="text-xl font-black text-red-600">
+                                     {formatKz(
+                                       dayData.report?.lunchExpense ||
+                                       (dayData.report as any)?.financials?.lunch ||
+                                       0
+                                     )}
+                                   </p>
+                                 </div>
+                              </div>
+
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                  {[
                                      { label: 'Dinheiro (Cash)', value: dayData.report.cash, color: 'text-green-600', bg: 'bg-green-50' },
@@ -605,7 +649,9 @@ const GlobalCalendar: React.FC = () => {
                                           <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-800 transition-colors">
                                              <td className="px-6 py-4 font-bold text-sm text-slate-700 dark:text-slate-300">{item.name}</td>
                                              <td className="px-6 py-4 text-center font-black text-blue-600">{item.qty ?? item.soldQty ?? 0}</td>
-                                             <td className="px-6 py-4 text-right font-bold text-slate-900 dark:text-white">{formatKz(item.total)}</td>
+                                             <td className="px-6 py-4 text-right font-bold text-slate-900 dark:text-white">
+                                               {formatKz(item.revenue ?? item.total ?? 0)}
+                                             </td>
                                           </tr>
                                        ))}
                                     </tbody>

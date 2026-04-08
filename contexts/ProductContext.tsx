@@ -1430,17 +1430,25 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     if (lunchVal > 0 && isFinal && !report.lunchProcessed) {
       const dateKey = new Date(report.dateISO || report.date).toISOString().split('T')[0];
       const lunchRefId = `LUNCH_EXPENSE_${dateKey}`;
-      // Apenas cria o registo informativo — NÃO debita a conta corrente
-      registrarDespesaGlobal({
-        tipo: "DESPESA_OPERACIONAL",
-        origem: "CONTROLE_VENDAS",
-        descricao: `Almoço (${dateKey})`,
-        nota: `Débito informativo de fecho final (não afeta saldo).`,
-        valor: lunchVal,
-        usuario: report.closedBy || 'Sistema',
-        data_operacional: report.dateISO?.split('T')[0] || report.date,
-        referenceId: lunchRefId
-      });
+      // Registo APENAS informativo — NÃO passa por registrarDespesaGlobal
+      // para evitar que processTransaction debite a conta corrente
+      const existingLunch = expenses.find(e => e.id === lunchRefId);
+      if (!existingLunch) {
+        const lunchExpenseRecord: Expense = {
+          id: lunchRefId,
+          title: `Almoço (${dateKey})`,
+          amount: lunchVal,
+          category: 'DESPESA_OPERACIONAL',
+          date: dateKey,
+          timestamp: getSystemDate().getTime(),
+          user: report.closedBy || 'Sistema',
+          notes: 'Despesa operacional de fecho — apenas informativo, não debita conta corrente.',
+          origin: 'CONTROLE_VENDAS',
+          attachments: [],
+          isInformativeOnly: true   // flag para UI saber que não impacta saldo
+        };
+        setExpenses(prev => [lunchExpenseRecord, ...prev]);
+      }
     }
   };
 
@@ -1685,10 +1693,11 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       }
     }
 
-    // 5. REGISTO DE DESPESA DE ALMOÇO (apenas informativo — NÃO debita conta corrente)
-    const lunchExpense = (finalReport as any).lunchExpense ?? (finalReport as any).financials?.lunch ?? 0;
-    if (lunchExpense > 0 && !report.lunchProcessed) {
-      registrarAlmocoBlindado({ ...finalReport, lunchExpense } as SalesReport);
+    // 5. REGISTO DE DESPESA DE ALMOÇO — vem DEPOIS do fecho financeiro
+    // para garantir ordem correta no histórico de movimentos
+    const lunchVal = (finalReport as any).lunchExpense ?? (finalReport as any).financials?.lunch ?? 0;
+    if (lunchVal > 0 && !report.lunchProcessed) {
+      registrarAlmocoBlindado({ ...finalReport, lunchExpense: lunchVal } as SalesReport);
     }
 
     // 6. ATUALIZAÇÃO DE ESTADO E PERSISTÊNCIA IMEDIATA

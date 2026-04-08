@@ -229,7 +229,10 @@ const Expenses: React.FC = () => {
     );
   }, [expenses, reportSearch]);
 
-  const totalFiltered = filteredExpenses.reduce((acc, curr) => acc + curr.amount, 0);
+  const totalFiltered = filteredExpenses.reduce((acc, curr) => {
+    if (curr.isInformativeOnly) return acc;
+    return acc + curr.amount;
+  }, 0);
 
   // Lógica de Visualização do Modal (Compacto vs Completo)
   const isCompactMode = sidebarMode === 'mini'; // Se o menu está aberto (mini), modal é compacto
@@ -765,7 +768,16 @@ const Expenses: React.FC = () => {
                         filteredExpenses.map((ex) => (
                           <tr key={ex.id} className="hover:bg-slate-50 transition-colors">
                             <td className="p-4 text-slate-500 font-medium whitespace-nowrap">{formatDisplayDate(ex.date)}</td>
-                            <td className="p-4 font-bold text-[#003366]">{ex.title}</td>
+                            <td className="p-4 font-bold text-[#003366]">
+                              <div className="flex flex-col">
+                                {ex.title}
+                                {ex.isInformativeOnly && (
+                                  <span className="text-[10px] text-blue-500 font-black uppercase tracking-tighter">
+                                    Apenas Informativo
+                                  </span>
+                                )}
+                              </div>
+                            </td>
                             <td className="p-4">
                               <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-bold border border-slate-200">
                                 {ex.category}

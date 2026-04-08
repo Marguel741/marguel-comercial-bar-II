@@ -681,7 +681,30 @@ const AccountStatus: React.FC = () => {
               
               <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
                  <div className="space-y-3">
-                    {transactions.map((t) => (
+                    {[...transactions]
+                      .sort((a, b) => {
+                        // Ordena por operationalDay desc, depois por id desc (timestamp embutido no UUID v4 não é fiável,
+                        // mas as transações do mesmo dia devem mostrar fecho ANTES do almoço)
+                        // Usamos referenceType como desempate: day_closure vem antes de expense no mesmo dia
+                        const dateA = a.operationalDay || a.date.split(',')[0] || '';
+                        const dateB = b.operationalDay || b.date.split(',')[0] || '';
+                        if (dateB !== dateA) return dateB.localeCompare(dateA);
+                        
+                        // Mesmo dia: fecho de caixa aparece ANTES de despesas
+                        const priority: Record<string, number> = {
+                          'day_closure': 0,
+                          'sales_report': 1,
+                          'purchase': 2,
+                          'expense': 3,
+                          'withdrawal': 4,
+                          'deposit': 5,
+                          'reversal': 6,
+                        };
+                        const pa = priority[a.referenceType ?? ''] ?? 9;
+                        const pb = priority[b.referenceType ?? ''] ?? 9;
+                        return pa - pb;
+                      })
+                      .map((t) => (
                        <div 
                           key={t.id} 
                           onClick={() => { triggerHaptic('selection'); setSelectedTransaction(t); }}
@@ -886,8 +909,8 @@ const AccountStatus: React.FC = () => {
                           <div className="space-y-3">
                             <div className="grid grid-cols-2 gap-3">
                               <div className="bg-white dark:bg-slate-700 p-3 rounded-xl">
-                                <p className="text-[10px] text-slate-400 font-bold uppercase">Total Vendido</p>
-                                <p className="font-black text-green-600">{(report.totals?.lifted || report.totalLifted || 0).toLocaleString('pt-AO')} Kz</p>
+                                <p className="text-[10px] text-slate-400 font-bold uppercase">Total Levantado</p>
+                                <p className="font-black text-green-600">{(report.totalLifted || report.totals?.lifted || 0).toLocaleString('pt-AO')} Kz</p>
                               </div>
                               <div className="bg-white dark:bg-slate-700 p-3 rounded-xl">
                                 <p className="text-[10px] text-slate-400 font-bold uppercase">Divergência</p>
