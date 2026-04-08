@@ -69,18 +69,13 @@ export const getMockUsers = (): User[] => {
       const users = JSON.parse(saved) as User[];
       
       return users.map(u => {
-        // CORREÇÃO: Se você quer que mudanças no código reflitam no site atual,
-        // mas quer manter a capacidade de editar depois, use um merge inteligente.
-        
         const defaultPerms = DEFAULT_PERMISSIONS[u.role];
         
         return {
           ...u,
-          // Se o usuário for Proprietário ou Admin, garantimos que ele pegue os defaults 
-          // do código para evitar que ele se auto-bloqueie por erro no LocalStorage
-          permissions: (u.role === UserRole.PROPRIETARIO || u.role === UserRole.ADMIN_GERAL)
-            ? { ...defaultPerms } 
-            : (u.permissions || { ...defaultPerms })
+          // Garante que novas permissões adicionadas ao código (como sales_closure) 
+          // existam mesmo para usuários já salvos no LocalStorage, mantendo overrides manuais.
+          permissions: { ...defaultPerms, ...(u.permissions || {}) }
         };
       });
     } catch (e) {

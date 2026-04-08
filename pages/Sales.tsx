@@ -864,8 +864,9 @@ const Sales: React.FC = () => {
     const lastActor = editConfirmationData?.editedBy || editConfirmationData?.closedBy || 'Desconhecido';
     const isSameUser = user?.name && user.name === lastActor;
     const isAdminOrOwner = user?.role === UserRole.PROPRIETARIO || user?.role === UserRole.ADMIN_GERAL;
+    const hasClosurePermission = hasPermission(user, 'sales_closure');
     
-    const canConfirm = isAdminOrOwner || (!isSameUser && lastActor !== 'Desconhecido');
+    const canConfirm = hasClosurePermission && (!isSameUser || isAdminOrOwner);
     const isUnilateralAllowed = isAdminOrOwner;
 
     return (
@@ -1028,7 +1029,8 @@ const Sales: React.FC = () => {
     
     // Regra definitiva: Admin/Proprietário confirmam sempre. Outros apenas se forem utilizadores diferentes do autor ou após 24h.
     const lastActor = reportData.editedBy || reportData.closedBy || reportData.initiatedBy || 'Desconhecido';
-    const canConfirm = !isConfirmed && (isAdminOrOwner || (user?.name && lastActor !== user.name));
+    const hasClosurePermission = hasPermission(user, 'sales_closure');
+    const canConfirm = !isConfirmed && hasClosurePermission && (!( user?.name === lastActor) || isAdminOrOwner);
     const isUnilateralAllowed = isAdminOrOwner;
 
     const handleConfirmClose = async () => {
@@ -1209,15 +1211,28 @@ const Sales: React.FC = () => {
                        </div>
                      )}
 
-                     {isConfirmed && (
-                       <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-2xl border border-green-100 dark:border-green-800/50 flex items-center gap-3">
-                          <CheckCircle size={20} className="text-green-600" />
-                          <p className="text-sm font-bold text-green-700 dark:text-green-400">
-                             Fecho confirmado por {reportData.confirmedBy} em {reportData.confirmationTimestamp ? new Date(reportData.confirmationTimestamp).toLocaleString('pt-AO') : 'N/A'}
-                             {reportData.unilateralAdminConfirmation && ' (Intervenção Administrativa)'}
-                          </p>
+                     <div className="space-y-2 mt-2">
+                       <div className="p-3 bg-slate-50 dark:bg-slate-700/30 rounded-xl border border-slate-100 dark:border-slate-700 flex items-center gap-3">
+                         <Clock size={16} className="text-slate-400 shrink-0" />
+                         <p className="text-xs font-bold text-slate-600 dark:text-slate-400">
+                           <span className="text-slate-400 uppercase">1º Fecho: </span>
+                           {reportData.closedBy || 'Desconhecido'}
+                           {reportData.timestamp ? ` · ${new Date(reportData.timestamp).toLocaleTimeString('pt-AO', {hour:'2-digit', minute:'2-digit', second:'2-digit'})}` : ''}
+                           {reportData.generatedAt ? ` (${reportData.generatedAt})` : ''}
+                         </p>
                        </div>
-                     )}
+                       {isConfirmed && (
+                         <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-xl border border-green-100 dark:border-green-800/50 flex items-center gap-3">
+                           <CheckCircle size={16} className="text-green-600 shrink-0" />
+                           <p className="text-xs font-bold text-green-700 dark:text-green-400">
+                             <span className="uppercase">Confirmado: </span>
+                             {reportData.confirmedBy || 'Desconhecido'}
+                             {reportData.confirmationTimestamp ? ` · ${new Date(reportData.confirmationTimestamp).toLocaleTimeString('pt-AO', {hour:'2-digit', minute:'2-digit', second:'2-digit'})}` : ''}
+                             {reportData.unilateralAdminConfirmation ? ' (Admin)' : ''}
+                           </p>
+                         </div>
+                       )}
+                     </div>
                   </SoftCard>
 
                   {/* Detailed Breakdown Section */}

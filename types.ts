@@ -329,6 +329,11 @@ export interface SalesReport {
   confirmedBy?: string;
   confirmationTimestamp?: number;
   unilateralAdminConfirmation?: boolean;
+  processedFinancials?: boolean;
+  stockUpdated?: boolean;
+  lunchProcessed?: boolean;
+  isFinalClosure?: boolean;
+  type?: 'PARTIAL' | 'FINAL';
   
   // Extended fields for detailed reporting
   dateISO?: string;
@@ -359,11 +364,7 @@ export interface SalesReport {
     data: string;
     hora: number;
   };
-  processedFinancials?: boolean;
-  stockUpdated?: boolean;
   _deltaApplied?: boolean;
-  isFinalClosure?: boolean;
-  type?: 'PARTIAL' | 'FINAL';
 }
 
 export interface AuditLog {

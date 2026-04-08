@@ -1377,7 +1377,12 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
         attachments: []
       };
       
-      setExpenses(prev => [newExpense, ...prev]);
+      setExpenses(prev => {
+        if (data.referenceId && prev.some(e => e.id === data.referenceId)) {
+          return prev;
+        }
+        return [newExpense, ...prev];
+      });
       
       if (newExpense.amount > 0) {
         processTransaction(
@@ -1413,20 +1418,20 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   };
 
   const registrarAlmocoBlindado = (report: SalesReport) => {
-    if (report.lunchExpense > 0 && (report.isFinalClosure || report.type === 'FINAL')) {
-      // Normalização absoluta da data para evitar "21-03" vs "21/03"
+    const lunchVal = report.lunchExpense ?? (report as any).financials?.lunch ?? 0;
+    const isFinal = report.isFinalClosure || report.type === 'FINAL' || report.status === ClosureStatus.FECHO_CONFIRMADO;
+    if (lunchVal > 0 && isFinal && !report.lunchProcessed) {
       const dateKey = new Date(report.dateISO || report.date).toISOString().split('T')[0];
       const lunchRefId = `LUNCH_EXPENSE_${dateKey}`;
-
       registrarDespesaGlobal({
         tipo: "DESPESA_OPERACIONAL",
         origem: "CONTROLE_VENDAS",
         descricao: `Almoço (${dateKey})`,
         nota: `Débito automático de fecho final.`,
-        valor: report.lunchExpense,
-        usuario: report.closedBy,
-        data_operacional: report.date,
-        referenceId: lunchRefId // Chave imutável por dia
+        valor: lunchVal,
+        usuario: report.closedBy || 'Sistema',
+        data_operacional: report.dateISO?.split('T')[0] || report.date,
+        referenceId: lunchRefId
       });
     }
   };
@@ -1491,8 +1496,9 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
         return [finalReport as SalesReport, ...prev];
       });
 
-      if (finalReport.lunchExpense > 0) {
+      if (finalReport.lunchExpense > 0 && !finalReport.lunchProcessed) {
         registrarAlmocoBlindado(finalReport as SalesReport);
+        finalReport.lunchProcessed = true;
       }
 
       const action: PendingAction = {
@@ -1562,8 +1568,9 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       const updatedReport = salesReports.find(r => r.id === reportId);
       if (updatedReport) {
         const finalUpdatedReport = { ...updatedReport, ...updates };
-        if (finalUpdatedReport.lunchExpense > 0) {
+        if (finalUpdatedReport.lunchExpense > 0 && !finalUpdatedReport.lunchProcessed) {
           registrarAlmocoBlindado(finalUpdatedReport as SalesReport);
+          updates.lunchProcessed = true;
         }
       }
     } catch (error) {
@@ -1602,9 +1609,13 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   const confirmSalesReport = (reportId: string, confirmedBy: string, isUnilateral: boolean = false, reportData?: SalesReport) => {
     if (!checkPermission('sales_closure')) return;
 
-    // 1. Obter o relatório (priorizar reportData passado como argumento do Sales.tsx)
-    let report = reportData || salesReports.find(r => r.id === reportId);
+    // Sempre usa reportData se fornecido — ignora o estado stale do array
+    const report = reportData ?? salesReports.find(r => r.id === reportId);
     if (!report) return;
+
+    // Garante que processedFinancials e stockUpdated reflectem o estado ANTES da confirmação
+    const wasAlreadyProcessed = !reportData && (report.processedFinancials === true);
+    const wasStockUpdated = !reportData && (report.stockUpdated === true);
 
     const reportDateStr = report.dateISO || report.date;
 
@@ -1617,11 +1628,12 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       unilateralAdminConfirmation: isUnilateral,
       processedFinancials: true,   // Marcamos como processado para evitar duplicidade futura
       stockUpdated: true,          // Marcamos como atualizado
+      lunchProcessed: true,        // Marcamos almoço como processado
       isFinalClosure: true
     };
 
     // 3. DEDUÇÃO DE STOCK (Idempotente)
-    if (!report.stockUpdated) {
+    if (!wasStockUpdated && !report.stockUpdated) {
       const itemsToDeduct = report.itemsSnapshot || report.itemsSummary || [];
       
       itemsToDeduct.forEach((item: any) => {
@@ -1639,7 +1651,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
 
     // 4. PROCESSAMENTO FINANCEIRO (Idempotente)
-    if (!report.processedFinancials) {
+    if (!wasAlreadyProcessed && !report.processedFinancials) {
       // Usamos a lógica unificada de ajuste financeiro que já lida com reversão de duplicados
       const cash = (finalReport as any).cash ?? (finalReport as any).financials?.cash ?? 0;
       const tpa = (finalReport as any).tpa ?? (finalReport as any).financials?.ticket ?? 0;
@@ -1668,7 +1680,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     // 5. REGISTO DE DESPESA DE ALMOÇO (Idempotente via registrarAlmocoBlindado)
     const lunchExpense = (finalReport as any).lunchExpense ?? (finalReport as any).financials?.lunch ?? 0;
-    if (lunchExpense > 0) {
+    if (lunchExpense > 0 && !report.lunchProcessed) {
       registrarAlmocoBlindado({ ...finalReport, lunchExpense } as SalesReport);
     }
 
