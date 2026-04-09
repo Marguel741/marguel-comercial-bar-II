@@ -754,7 +754,7 @@ const Dashboard: React.FC = () => {
                     </div>
                 </div>
                 <h4 className="text-lg font-bold text-slate-800 dark:text-white pl-2">
-                    {yesterdayReport ? `${(yesterdayReport.cash || yesterdayReport.financials?.cash || 0).toLocaleString('pt-AO')} Kz` : '0 Kz'}
+                    {yesterdayReport ? `${(yesterdayReport.cash ?? (yesterdayReport as any).financials?.cash ?? 0).toLocaleString('pt-AO')} Kz` : '0 Kz'}
                 </h4>
             </div>
             <div className="bg-white dark:bg-[#0a192f] p-5 rounded-[2rem] shadow-sm relative overflow-hidden">
@@ -766,7 +766,7 @@ const Dashboard: React.FC = () => {
                     </div>
                 </div>
                 <h4 className="text-lg font-bold text-slate-800 dark:text-white pl-2">
-                    {yesterdayReport ? `${((yesterdayReport.tpa || 0) + (yesterdayReport.transfer || 0) || (yesterdayReport.financials ? (yesterdayReport.financials.ticket || 0) + (yesterdayReport.financials.transfer || 0) : 0)).toLocaleString('pt-AO')} Kz` : '0 Kz'}
+                    {yesterdayReport ? `${(((yesterdayReport.tpa ?? 0) + (yesterdayReport.transfer ?? 0)) || (((yesterdayReport as any).financials?.ticket ?? 0) + ((yesterdayReport as any).financials?.transfer ?? 0))).toLocaleString('pt-AO')} Kz` : '0 Kz'}
                 </h4>
             </div>
         </div>

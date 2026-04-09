@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { 
   ChevronLeft, ChevronRight, Calendar, DollarSign, ArrowUpRight, TrendingUp, 
   Lock, Unlock, FileText, ShoppingBag, Package, Wallet, CheckCircle, AlertTriangle, AlertCircle, Eye, X, Info, Clock,
-  Loader2, Wifi, WifiOff // Novos ícones para o status
+  Loader2, Wifi, WifiOff, Printer, BarChart2
 } from 'lucide-react';
 import { useProducts } from '../contexts/ProductContext';
 import { useLayout } from '../contexts/LayoutContext';
@@ -64,6 +64,11 @@ const GlobalCalendar: React.FC = () => {
   const [selectedDayDetail, setSelectedDayDetail] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'sales' | 'inventory' | 'finance' | 'purchases'>('overview');
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  
+  // Estados para o Modal de Impressão
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [printPeriod, setPrintPeriod] = useState<'day' | 'week' | 'month' | 'quarter' | 'year'>('day');
+  const [printDate, setPrintDate] = useState(formatDateISO(systemDate));
 
   useEffect(() => {
       const handleStatusChange = () => {
@@ -184,6 +189,172 @@ const GlobalCalendar: React.FC = () => {
     };
   }, [selectedDayDetail, salesMap, inventoryMap, purchases, expenses, transactions, priceHistory, isDayLocked, lockedDays, salesReports]);
 
+  const handlePrint = () => {
+    const reportHTML = buildReportHTML();
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(reportHTML);
+      printWindow.document.close();
+      // Aguarda um pouco para carregar estilos se houver, depois imprime
+      setTimeout(() => {
+        printWindow.print();
+      }, 500);
+    }
+  };
+
+  const buildReportHTML = () => {
+    // Determinar o intervalo de datas
+    const refDate = new Date(printDate + 'T12:00:00');
+    let startDate = new Date(refDate);
+    let endDate = new Date(refDate);
+
+    if (printPeriod === 'week') {
+      const day = refDate.getDay();
+      startDate.setDate(refDate.getDate() - day);
+      endDate.setDate(startDate.getDate() + 6);
+    } else if (printPeriod === 'month') {
+      startDate = new Date(refDate.getFullYear(), refDate.getMonth(), 1);
+      endDate = new Date(refDate.getFullYear(), refDate.getMonth() + 1, 0);
+    } else if (printPeriod === 'quarter') {
+      const quarter = Math.floor(refDate.getMonth() / 3);
+      startDate = new Date(refDate.getFullYear(), quarter * 3, 1);
+      endDate = new Date(refDate.getFullYear(), (quarter + 1) * 3, 0);
+    } else if (printPeriod === 'year') {
+      startDate = new Date(refDate.getFullYear(), 0, 1);
+      endDate = new Date(refDate.getFullYear(), 11, 31);
+    }
+
+    const startStr = formatDateISO(startDate);
+    const endStr = formatDateISO(endDate);
+
+    // Filtrar dados
+    const periodReports = getConfirmedSalesReports().filter(r => {
+      const d = (r as any).dateISO ? (r as any).dateISO.split('T')[0] : r.date;
+      return d >= startStr && d <= endStr;
+    });
+
+    const periodPurchases = purchases.filter(p => {
+      const d = cleanDate(p.date);
+      return d >= startStr && d <= endStr;
+    });
+
+    const periodExpenses = expenses.filter(e => {
+      const d = cleanDate(e.date);
+      return d >= startStr && d <= endStr;
+    });
+
+    // Totais
+    const totalSales = periodReports.reduce((acc, r) => acc + (r.totalLifted || (r as any).totals?.lifted || 0), 0);
+    const totalExpected = periodReports.reduce((acc, r) => acc + ((r as any).totals?.expected || (r as any).totals?.soldStock || r.totalExpected || 0), 0);
+    const totalPurchases = periodPurchases.reduce((acc, p) => acc + p.total, 0);
+    const totalExpenses = periodExpenses.reduce((acc, e) => acc + e.amount, 0);
+    const totalProfit = periodReports.reduce((acc, r) => acc + ((r as any).profit || (r as any).totals?.profit || 0), 0);
+
+    // Agrupar produtos vendidos
+    const productSummary: Record<string, { qty: number, revenue: number }> = {};
+    periodReports.forEach(r => {
+      const items = r.itemsSummary || (r as any).itemsSnapshot || [];
+      items.forEach((item: any) => {
+        if (!productSummary[item.name]) {
+          productSummary[item.name] = { qty: 0, revenue: 0 };
+        }
+        productSummary[item.name].qty += (item.qty ?? item.soldQty ?? 0);
+        productSummary[item.name].revenue += (item.revenue ?? item.total ?? 0);
+      });
+    });
+
+    const sortedProducts = Object.entries(productSummary)
+      .map(([name, data]) => ({ name, ...data }))
+      .sort((a, b) => b.revenue - a.revenue);
+
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Relatório Marguel - ${printPeriod.toUpperCase()}</title>
+        <style>
+          body { font-family: 'Inter', sans-serif; color: #1e293b; padding: 40px; line-height: 1.5; }
+          .header { text-align: center; margin-bottom: 40px; border-bottom: 2px solid #003366; padding-bottom: 20px; }
+          .header h1 { color: #003366; margin: 0; text-transform: uppercase; letter-spacing: 2px; }
+          .header p { margin: 5px 0; color: #64748b; font-weight: bold; }
+          .summary-grid { display: grid; grid-template-cols: repeat(2, 1fr); gap: 20px; margin-bottom: 40px; }
+          .card { padding: 20px; border-radius: 15px; border: 1px solid #e2e8f0; background: #f8fafc; }
+          .card h3 { margin: 0 0 10px 0; font-size: 12px; text-transform: uppercase; color: #64748b; }
+          .card p { margin: 0; font-size: 24px; font-weight: 900; color: #003366; }
+          .section { margin-bottom: 40px; }
+          .section h2 { font-size: 18px; text-transform: uppercase; border-left: 4px solid #003366; padding-left: 15px; margin-bottom: 20px; }
+          table { width: 100%; border-collapse: collapse; }
+          th { background: #f1f5f9; text-align: left; padding: 12px; font-size: 12px; text-transform: uppercase; color: #64748b; }
+          td { padding: 12px; border-bottom: 1px solid #f1f5f9; font-size: 14px; }
+          .text-right { text-align: right; }
+          .footer { text-align: center; margin-top: 60px; font-size: 10px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 20px; }
+          @media print {
+            body { padding: 0; }
+            .no-print { display: none; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>Marguel Group</h1>
+          <p>Relatório de Gestão - ${printPeriod === 'day' ? 'Diário' : printPeriod === 'week' ? 'Semanal' : printPeriod === 'month' ? 'Mensal' : printPeriod === 'quarter' ? 'Trimestral' : 'Anual'}</p>
+          <p>Período: ${startStr} até ${endStr}</p>
+        </div>
+
+        <div class="summary-grid">
+          <div class="card">
+            <h3>Total Faturado (Bruto)</h3>
+            <p>${formatKz(totalExpected)}</p>
+          </div>
+          <div class="card">
+            <h3>Total Levantado (Líquido)</h3>
+            <p>${formatKz(totalSales)}</p>
+          </div>
+          <div class="card">
+            <h3>Total de Compras</h3>
+            <p>${formatKz(totalPurchases)}</p>
+          </div>
+          <div class="card">
+            <h3>Total de Despesas</h3>
+            <p>${formatKz(totalExpenses)}</p>
+          </div>
+          <div class="card" style="grid-column: span 2; background: #003366; color: white;">
+            <h3 style="color: #94a3b8;">Lucro Estimado do Período</h3>
+            <p style="color: white; font-size: 32px;">${formatKz(totalProfit)}</p>
+          </div>
+        </div>
+
+        <div class="section">
+          <h2>Resumo de Vendas por Produto</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Produto</th>
+                <th class="text-right">Quantidade</th>
+                <th class="text-right">Total Faturado</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${sortedProducts.map(p => `
+                <tr>
+                  <td>${p.name}</td>
+                  <td class="text-right">${p.qty}</td>
+                  <td class="text-right">${formatKz(p.revenue)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="footer">
+          <p>Gerado em ${new Date().toLocaleString('pt-AO')} por ${user?.name || 'Sistema'}</p>
+          <p>Marguel Sistema de Gestão Interna &copy; 2026</p>
+        </div>
+      </body>
+      </html>
+    `;
+  };
+
   return (
     <div className="p-4 md:p-8 space-y-8 animate-fade-in pb-24 relative">
        
@@ -220,6 +391,17 @@ const GlobalCalendar: React.FC = () => {
               </button>
 
               <div className="flex items-center gap-4 bg-white dark:bg-slate-800 p-2 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
+                 <button 
+                    onClick={() => {
+                        triggerHaptic('selection');
+                        setIsPrintModalOpen(true);
+                    }}
+                    className="p-2 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-full text-blue-600 transition-colors"
+                    title="Gerar Relatório PDF/Impressão"
+                 >
+                    <Printer size={20} />
+                 </button>
+                 <div className="w-px h-6 bg-slate-100 dark:bg-slate-700 mx-1"></div>
                  <button onClick={() => handleNav(-1)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full text-slate-500 transition-colors"><ChevronLeft size={24}/></button>
                  <span className="font-bold text-lg text-[#003366] dark:text-white w-48 text-center capitalize">{monthName}</span>
                  <button onClick={() => handleNav(1)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full text-slate-500 transition-colors"><ChevronRight size={24}/></button>
@@ -318,6 +500,78 @@ const GlobalCalendar: React.FC = () => {
              </div>
           </div>
        </div>
+
+       {/* MODAL DE IMPRESSÃO / RELATÓRIO */}
+       {isPrintModalOpen && (
+           <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-fade-in" onClick={() => setIsPrintModalOpen(false)}>
+               <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-[40px] shadow-2xl overflow-hidden border border-white/20" onClick={e => e.stopPropagation()}>
+                   <div className="p-8 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
+                       <div className="flex items-center gap-3">
+                           <div className="w-12 h-12 rounded-2xl bg-blue-100 dark:bg-blue-900/30 text-blue-600 flex items-center justify-center">
+                               <Printer size={24} />
+                           </div>
+                           <div>
+                               <h3 className="text-xl font-black text-[#003366] dark:text-white uppercase">Relatórios</h3>
+                               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Gerar PDF para Impressão</p>
+                           </div>
+                       </div>
+                       <button onClick={() => setIsPrintModalOpen(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors">
+                           <X size={20} className="text-slate-400" />
+                       </button>
+                   </div>
+
+                   <div className="p-8 space-y-6">
+                       <div className="space-y-2">
+                           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Período do Relatório</label>
+                           <div className="grid grid-cols-3 gap-2">
+                               {[
+                                   { id: 'day', label: 'Dia' },
+                                   { id: 'week', label: 'Semana' },
+                                   { id: 'month', label: 'Mês' },
+                                   { id: 'quarter', label: 'Trimestre' },
+                                   { id: 'year', label: 'Ano' }
+                               ].map(p => (
+                                   <button
+                                       key={p.id}
+                                       onClick={() => setPrintPeriod(p.id as any)}
+                                       className={`py-3 rounded-2xl text-[10px] font-black uppercase transition-all border ${
+                                           printPeriod === p.id 
+                                           ? 'bg-[#003366] text-white border-[#003366] shadow-lg shadow-blue-900/20' 
+                                           : 'bg-slate-50 dark:bg-slate-800 text-slate-400 border-transparent hover:border-slate-200'
+                                       }`}
+                                   >
+                                       {p.label}
+                                   </button>
+                               ))}
+                           </div>
+                       </div>
+
+                       <div className="space-y-2">
+                           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Data de Referência</label>
+                           <input 
+                               type="date" 
+                               value={printDate}
+                               onChange={(e) => setPrintDate(e.target.value)}
+                               className="w-full p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border-none outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700 dark:text-white transition-all"
+                           />
+                       </div>
+
+                       <div className="pt-4">
+                           <button 
+                               onClick={() => {
+                                   triggerHaptic('success');
+                                   handlePrint();
+                               }}
+                               className="w-full py-5 bg-[#003366] text-white rounded-[24px] font-black uppercase tracking-[2px] shadow-xl shadow-blue-900/20 hover:opacity-90 active:scale-95 transition-all flex items-center justify-center gap-3"
+                           >
+                               <FileText size={20} />
+                               Gerar Relatório
+                           </button>
+                       </div>
+                   </div>
+               </div>
+           </div>
+       )}
 
        {/* MODAL DETALHADO (Mantido conforme original) */}
        {selectedDayDetail && dayData && (
