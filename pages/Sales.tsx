@@ -1081,9 +1081,9 @@ const Sales: React.FC = () => {
       <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-8 animate-fade-in pb-32">
           {/* Header do Relatório */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div className="ml-8">
-                  <h1 className="text-3xl font-black text-[#003366] dark:text-white uppercase tracking-tight">Relatório de Vendas</h1>
-                  <p className="text-slate-500 font-bold uppercase text-xs tracking-widest mt-1">
+              <div>
+                  <h1 className="text-3xl font-black text-[#003366] dark:text-white uppercase tracking-tight ml-8">Relatório de Vendas</h1>
+                  <p className="text-slate-500 font-bold uppercase text-xs tracking-widest mt-1 ml-8">
                       {reportData.displayDate} • Status: <span className={isConfirmed ? 'text-green-600' : 'text-amber-600'}>{reportData.status.replace(/_/g, ' ')}</span>
                   </p>
               </div>
