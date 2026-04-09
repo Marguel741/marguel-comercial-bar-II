@@ -26,7 +26,7 @@ import { FinanceProvider } from './contexts/FinanceContext';
 import { LayoutProvider } from './contexts/LayoutContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { SettingsProvider } from './contexts/SettingsContext';
-import { getMockUsers, saveMockUsers } from './src/services/mockUsers';
+import Login from './pages/Login';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode, permission: keyof UserPermissions }> = ({ children, permission }) => {
   const { user } = useAuth();
@@ -54,12 +54,11 @@ const AppContent: React.FC = () => {
         <ProductProvider>
           <FinanceProvider>
             <LayoutProvider>
-                <Router>
                   <div className="flex h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-300 overflow-hidden">
                     <Sidebar />
                     <div id="main-content" className="flex-1 overflow-y-auto custom-scrollbar relative">
                       <Routes>
-                        <Route path="/login" element={<Navigate to="/" />} />
+                        <Route path="/login" element={user ? <Navigate to="/" /> : <Login />} />
                         <Route path="/" element={<Dashboard />} />
                         <Route path="/access-denied" element={<AccessDenied />} />
                         
@@ -117,7 +116,7 @@ const AppContent: React.FC = () => {
                           </ProtectedRoute>
                         } />
 
-                        <Route path="/test-cycle" element={
+                        <Route path="/sandbox" element={
                           <ProtectedRoute permission="admin_global_admin">
                             <TestCycle />
                           </ProtectedRoute>
@@ -125,12 +124,10 @@ const AppContent: React.FC = () => {
                         
                         <Route path="/settings" element={<Settings />} />
                         
-                        <Route path="/generate-splash" element={<SplashGenerator />} />
                         <Route path="*" element={<Navigate to="/" />} />
                       </Routes>
                     </div>
                   </div>
-                </Router>
               </LayoutProvider>
             </FinanceProvider>
           </ProductProvider>
@@ -140,13 +137,15 @@ const AppContent: React.FC = () => {
 
 const App: React.FC = () => {
   return (
-    <AuditProvider>
-      <AuthProvider>
-        <ThemeProvider>
-          <AppContent />
-        </ThemeProvider>
-      </AuthProvider>
-    </AuditProvider>
+    <Router>
+      <AuditProvider>
+        <AuthProvider>
+          <ThemeProvider>
+            <AppContent />
+          </ThemeProvider>
+        </AuthProvider>
+      </AuditProvider>
+    </Router>
   );
 };
 

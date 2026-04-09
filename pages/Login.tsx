@@ -8,14 +8,16 @@ const Login: React.FC = () => {
   const { login, isLoading } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [usePin, setUsePin] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    const success = await login(email, password);
-    if (!success) setError('Usuário não encontrado ou não autorizado.');
+    const credential = usePin ? pin : password;
+    const success = await login(usePin ? '__PIN__' : email, credential);
+    if (!success) setError('Credenciais inválidas ou utilizador não autorizado.');
   };
 
   return (
@@ -52,6 +54,8 @@ const Login: React.FC = () => {
                   <input 
                     type="password"
                     maxLength={6}
+                    value={pin}
+                    onChange={e => setPin(e.target.value)}
                     placeholder="••••••"
                     className="w-full bg-slate-50 dark:bg-slate-900 border-none rounded-2xl py-4 pl-12 pr-4 soft-ui-inset focus:ring-2 focus:ring-[#003366] transition-all text-center text-2xl tracking-[1em] dark:text-white"
                   />
@@ -102,15 +106,18 @@ const Login: React.FC = () => {
           </form>
 
           <div className="mt-8 text-center">
-            <a href="#" className="text-sm font-medium text-slate-400 hover:text-[#003366] dark:hover:text-white">Esqueceu as credenciais?</a>
+            <button 
+              type="button"
+              onClick={() => alert('Contacte o administrador do sistema para recuperação de credenciais.')}
+              className="text-sm font-medium text-slate-400 hover:text-[#003366] dark:hover:text-white"
+            >
+              Esqueceu as credenciais?
+            </button>
           </div>
         </div>
         
         <div className="mt-8 text-center text-slate-400 text-xs space-y-1">
           <p>Sistema restrito apenas para pessoal autorizado.</p>
-          <div className="bg-slate-100 dark:bg-slate-800 p-2 rounded-lg inline-block text-[10px] text-slate-500">
-             <strong>Emails de Teste:</strong> admin@marguel.com, dono@marguel.com, gerente@marguel.com, efetivo@marguel.com, func@marguel.com, remoto@marguel.com
-          </div>
           <p className="mt-2">Marguel Comercial Bar &copy; {new Date().getFullYear()}</p>
         </div>
       </div>

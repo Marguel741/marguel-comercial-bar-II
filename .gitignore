@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Sensitive files and scripts
+scripts/
+public/assets/intro.mp4
+.env
+.env.local

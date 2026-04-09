@@ -49,7 +49,7 @@ const Sidebar: React.FC = () => {
     { to: '/expenses', icon: Wallet, label: 'Despesas', permission: 'expenses_view' as const },
     { to: '/account', icon: BarChart3, label: 'Estado da Conta', permission: 'finance_view' as const },
     { to: '/audit', icon: History, label: 'Auditoria Global', permission: 'audit_view' as const },
-    { to: '/test-cycle', icon: FlaskConical, label: 'Ciclo de Teste', permission: 'admin_global_admin' as const },
+    { to: '/sandbox', icon: FlaskConical, label: 'Ambiente Sandbox', permission: 'admin_global_admin' as const },
   ];
 
   const handleAppRefresh = () => {

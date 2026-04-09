@@ -127,8 +127,11 @@ const Settings: React.FC = () => {
   };
 
   const handleSync = () => {
-    // Mock sync
-    alert('Sincronização forçada iniciada...');
+    syncData().then(() => {
+      alert('Sincronização concluída com sucesso.');
+    }).catch(() => {
+      alert('Erro durante a sincronização. Verifique a ligação.');
+    });
   };
 
   return (

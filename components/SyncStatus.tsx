@@ -1,23 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Wifi, WifiOff, Loader2 } from 'lucide-react';
 import { useProducts } from '../contexts/ProductContext';
+import { useSettings } from '../contexts/SettingsContext';
 
 const SyncStatus: React.FC = () => {
   const { isSyncing, syncData } = useProducts();
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
-
-  useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
+  const { isOnline } = useSettings();
 
   return (
     <button 

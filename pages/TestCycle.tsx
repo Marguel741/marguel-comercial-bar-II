@@ -10,15 +10,16 @@ import {
   Trash2,
   Package,
   SkipForward,
-  Users
+  Users,
+  ArrowLeft
 } from 'lucide-react';
-import { motion } from 'motion/react';
 import SoftCard from '../components/SoftCard';
 import { useProducts } from '../contexts/ProductContext';
 import { useLayout } from '../contexts/LayoutContext';
 import { useAuth } from '../contexts/AuthContext';
 import { UserRole } from '../types';
 import { formatDateISO, formatDisplayDate } from '../src/utils';
+import { useNavigate } from 'react-router-dom';
 
 const TestCycle: React.FC = () => {
   const { 
@@ -33,7 +34,8 @@ const TestCycle: React.FC = () => {
     getSystemDate
   } = useProducts();
   const { triggerHaptic, sidebarMode } = useLayout();
-  const { user, switchUser } = useAuth();
+  const { user } = useAuth();
+  const navigate = useNavigate();
 
   // Logs locais apenas para feedback visual
   const [dailyLog, setDailyLog] = useState<string[]>([]);
@@ -66,76 +68,6 @@ const TestCycle: React.FC = () => {
       logAction(`⏩ Avançado para o dia seguinte.`);
   };
 
-  // ====================== TROCA DE UTILIZADOR (Ponto 9) ======================
-  const testUsers = [
-    { role: UserRole.PROPRIETARIO, name: 'Marguel (Dono)', emoji: '👑' },
-    { role: UserRole.ADMIN_GERAL, name: 'Admin Geral', emoji: '🛡️' },
-    { role: UserRole.GERENTE, name: 'Gerente', emoji: '📊' },
-    { role: UserRole.COLABORADOR_EFETIVO, name: 'Colaborador Efetivo', emoji: '🔧' },
-    { role: UserRole.FUNCIONARIO, name: 'Funcionário', emoji: '🧑💼' },
-  ];
-
-  const handleSwitchUser = (role: UserRole, name: string) => {
-    if (switchUser) {
-      switchUser(role, name);
-      triggerHaptic('success');
-      logAction(`🔄 Trocado para: ${name} (${role})`);
-    } else {
-      logAction("⚠️ switchUser não encontrado no AuthContext");
-    }
-  };
-  // ============================================================================
-
-  // --- SIMULAÇÃO DE AÇÕES RÁPIDAS (Usando agora a data GLOBAL via Contexto) ---
-  const simulateRandomSale = () => {
-    triggerHaptic('impact');
-    // 1. Pick a random product with stock
-    const availableProducts = products.filter(p => p.stock > 0);
-    if (availableProducts.length === 0) {
-        logAction("❌ Falha na Venda: Sem produtos com stock.");
-        return;
-    }
-    const product = availableProducts[Math.floor(Math.random() * availableProducts.length)];
-    
-    // 2. Determine random quantity (1 to 5)
-    const qty = Math.min(product.stock, Math.floor(Math.random() * 5) + 1);
-    const totalValue = qty * product.sellPrice;
-
-    // 3. Update Real Context Data (Uses System Date internally in processTransaction)
-    updateProduct(product.id, { stock: product.stock - qty });
-    processTransaction('deposit', 'main', totalValue, `[SIMULADOR] Venda de ${qty}x ${product.name}`);
-
-    logAction(`💰 Venda Simulada: ${qty}x ${product.name} (+${(totalValue || 0).toLocaleString()} Kz)`);
-  };
-
-  const simulateExpense = () => {
-    triggerHaptic('impact');
-    const amount = Math.floor(Math.random() * 10000) + 1000; // 1000 to 11000
-    
-    // Uses System Date internally
-    processTransaction('withdraw', 'main', amount, `[SIMULADOR] Despesa Diversa`);
-    
-    logAction(`💸 Despesa Simulada: Pagamento diverso (-${(amount || 0).toLocaleString()} Kz)`);
-  };
-
-  const simulatePurchase = () => {
-    triggerHaptic('impact');
-    // Pick random product
-    const product = products[Math.floor(Math.random() * products.length)];
-    const packQty = Math.floor(Math.random() * 3) + 1; // 1 to 3 packs
-    
-    // Uses System Date internally
-    addPurchase(
-        { [product.id]: packQty }, 
-        'Prices', 
-        'Simulador',
-        []
-    );
-    
-    const cost = packQty * product.buyPrice * (product.packSize || 1);
-    logAction(`📦 Compra Simulada: ${packQty} Packs de ${product.name} (-${(cost || 0).toLocaleString()} Kz)`);
-  };
-
   const resetToToday = () => {
       if(window.confirm("Voltar para a data real de hoje?")) {
           setSystemDate(new Date());
@@ -153,19 +85,26 @@ const TestCycle: React.FC = () => {
                     <FlaskConical size={32} className="text-amber-400" />
                 </div>
                 <div>
-                    <h2 className="text-2xl font-bold uppercase tracking-tighter">Máquina do Tempo / Simulador</h2>
+                    <h2 className="text-2xl font-bold uppercase tracking-tighter">Sandbox</h2>
                     <p className="text-blue-100 opacity-80 max-w-xl text-sm">
-                        Esta página controla a <strong className="text-white underline">Data do Sistema</strong>. 
-                        Ao alterar a data aqui, o Dashboard, Controle de Vendas, Despesas e Inventário se comportarão como se fosse esse dia.
+                        Esta página permite testar o comportamento do sistema em diferentes datas.
                     </p>
                 </div>
             </div>
-            <button onClick={resetToToday} className="whitespace-nowrap px-6 py-3 bg-amber-400 text-[#003366] font-black rounded-2xl hover:bg-amber-300 transition-all shadow-lg active:scale-95 uppercase text-xs tracking-widest">
-                Voltar para Hoje (Real)
-            </button>
+            <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 p-3 rounded-2xl">
+              <span className="text-xs font-bold text-amber-700 uppercase">
+                Modo Sandbox — Ações de escrita estão desactivadas
+              </span>
+              <button
+                onClick={() => navigate('/')}
+                className="px-4 py-2 bg-[#003366] text-white text-xs font-black rounded-xl hover:bg-[#004080] transition-all active:scale-95"
+              >
+                Sair do Sandbox
+              </button>
+            </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
             
             {/* COLUMN 1: TIME CONTROL */}
             <SoftCard className="space-y-6 border-t-4 border-blue-500 lg:col-span-1">
@@ -192,74 +131,12 @@ const TestCycle: React.FC = () => {
                 </button>
 
                 <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl text-xs text-blue-800 dark:text-blue-200">
-                    <strong>Dica:</strong> Defina a data aqui e vá até a página <em>Controle de Vendas</em> para fazer o fecho do dia selecionado.
+                    <strong>Dica:</strong> Defina a data aqui e vá até a página <em>Controle de Vendas</em> para ver o estado do sistema nesse dia.
                 </div>
             </SoftCard>
 
-            {/* COLUMN 2: QUICK ACTIONS */}
-            <SoftCard className="space-y-6 border-t-4 border-amber-500 lg:col-span-1">
-                <h3 className="font-bold text-slate-700 dark:text-white flex items-center gap-2">
-                    <Play size={20} className="text-amber-500" /> Ações Rápidas (Nesta Data)
-                </h3>
-                <p className="text-xs text-slate-500">Gera movimentações instantâneas na data selecionada acima.</p>
-
-                <div className="grid grid-cols-1 gap-3">
-                    <button onClick={simulateRandomSale} className="p-4 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 rounded-xl font-bold flex items-center gap-3 hover:bg-green-100 dark:hover:bg-green-900/40 transition-all text-left border border-green-100 dark:border-green-900/30">
-                        <div className="p-2 bg-white dark:bg-slate-800 rounded-lg shadow-sm"><ShoppingCart size={18} /></div>
-                        <div>
-                            <span className="block">Gerar Venda Aleatória</span>
-                            <span className="text-[10px] opacity-70 font-normal">Entra dinheiro no dia selecionado</span>
-                        </div>
-                    </button>
-
-                    <button onClick={simulatePurchase} className="p-4 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-xl font-bold flex items-center gap-3 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-all text-left border border-blue-100 dark:border-blue-900/30">
-                        <div className="p-2 bg-white dark:bg-slate-800 rounded-lg shadow-sm"><Package size={18} /></div>
-                        <div>
-                            <span className="block">Gerar Compra Aleatória</span>
-                            <span className="text-[10px] opacity-70 font-normal">Sai dinheiro do dia selecionado</span>
-                        </div>
-                    </button>
-
-                    <button onClick={simulateExpense} className="p-4 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-xl font-bold flex items-center gap-3 hover:bg-red-100 dark:hover:bg-red-900/40 transition-all text-left border border-red-100 dark:border-red-900/30">
-                        <div className="p-2 bg-white dark:bg-slate-800 rounded-lg shadow-sm"><ArrowDownLeft size={18} /></div>
-                        <div>
-                            <span className="block">Gerar Despesa Aleatória</span>
-                            <span className="text-[10px] opacity-70 font-normal">Pagamento operacional nesta data</span>
-                        </div>
-                    </button>
-                </div>
-            </SoftCard>
-
-            {/* === NOVA COLUNA: TROCA DE UTILIZADOR (Ponto 9) === */}
-            <SoftCard className="lg:col-span-1 border-t-4 border-purple-500 flex flex-col">
-              <h3 className="font-bold text-slate-700 dark:text-white flex items-center gap-2 mb-4">
-                <Users size={20} className="text-purple-500" /> Trocar Utilizador (Testes)
-              </h3>
-              <p className="text-xs text-slate-500 mb-6">Simule diferentes perfis sem sair da aplicação.</p>
-              
-              <div className="grid grid-cols-1 gap-3 flex-1 overflow-y-auto custom-scrollbar max-h-[400px]">
-                {testUsers.map((u) => (
-                  <button
-                    key={u.role}
-                    onClick={() => handleSwitchUser(u.role, u.name)}
-                    className="flex items-center gap-4 p-4 bg-white dark:bg-slate-800 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-2xl border border-slate-100 dark:border-slate-700 transition-all group"
-                  >
-                    <div className="w-10 h-10 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-2xl flex items-center justify-center text-2xl group-active:scale-110 transition-transform">
-                      {u.emoji}
-                    </div>
-                    <div className="flex-1 text-left">
-                      <p className="font-bold text-slate-800 dark:text-white leading-tight">{u.name}</p>
-                      <p className="text-[10px] font-medium text-purple-600 dark:text-purple-400">{u.role}</p>
-                    </div>
-                    <span className="text-[10px] bg-purple-100 dark:bg-purple-900/30 text-purple-600 px-2 py-1 rounded-xl font-bold">Trocar</span>
-                  </button>
-                ))}
-              </div>
-            </SoftCard>
-            {/* =================================================== */}
-
-            {/* COLUMN 3: LOG & HISTORY */}
-            <div className="space-y-6 lg:col-span-1">
+            {/* COLUMN 2: LOG & HISTORY */}
+            <div className="space-y-6 lg:col-span-2">
                 <SoftCard className="h-full flex flex-col border-t-4 border-slate-400">
                     <div className="flex items-center justify-between mb-4">
                         <h3 className="font-bold text-slate-700 dark:text-white flex items-center gap-2">

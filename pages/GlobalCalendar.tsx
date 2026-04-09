@@ -8,6 +8,7 @@ import {
 import { useProducts } from '../contexts/ProductContext';
 import { useLayout } from '../contexts/LayoutContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useSettings } from '../contexts/SettingsContext';
 import { UserRole, ClosureStatus } from '../types';
 import SoftCard from '../components/SoftCard';
 import { formatKz, roundKz, cleanDate, formatDateISO } from '../src/utils';
@@ -39,6 +40,7 @@ const GlobalCalendar: React.FC = () => {
   
   const { triggerHaptic } = useLayout();
   const { user } = useAuth();
+  const { isOnline } = useSettings();
   
   // Log page access
   useEffect(() => {
@@ -63,7 +65,6 @@ const GlobalCalendar: React.FC = () => {
 
   const [selectedDayDetail, setSelectedDayDetail] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'sales' | 'inventory' | 'finance' | 'purchases'>('overview');
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
   
   // Estados para o Modal de Impressão
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
@@ -71,19 +72,10 @@ const GlobalCalendar: React.FC = () => {
   const [printDate, setPrintDate] = useState(formatDateISO(systemDate));
 
   useEffect(() => {
-      const handleStatusChange = () => {
-          setIsOnline(navigator.onLine);
-          if (navigator.onLine && hasPendingChanges) {
-              syncData();
-          }
-      };
-      window.addEventListener('online', handleStatusChange);
-      window.addEventListener('offline', handleStatusChange);
-      return () => {
-          window.removeEventListener('online', handleStatusChange);
-          window.removeEventListener('offline', handleStatusChange);
-      };
-  }, [hasPendingChanges, syncData]);
+      if (isOnline && hasPendingChanges) {
+          syncData();
+      }
+  }, [isOnline, hasPendingChanges, syncData]);
 
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();

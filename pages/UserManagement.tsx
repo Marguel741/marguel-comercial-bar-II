@@ -7,7 +7,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useAudit } from '../contexts/AuditContext';
 import { useLayout } from '../contexts/LayoutContext';
 import { DEFAULT_PERMISSIONS } from '../src/utils/permissions';
-import { getMockUsers, saveMockUsers } from '../src/services/mockUsers';
+import { getUsers, saveUsers } from '../src/services/userStore';
 import { dispatchCustomEvent } from '../src/utils';
 
 const UserManagement: React.FC = () => {
@@ -19,7 +19,7 @@ const UserManagement: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
 
   useEffect(() => {
-    setUsers(getMockUsers());
+    setUsers(getUsers());
   }, []);
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -53,7 +53,7 @@ const UserManagement: React.FC = () => {
     const targetUser = users.find(u => u.id === id);
     const updated = users.map(u => u.id === id ? { ...u, isApproved: true } : u);
     setUsers(updated);
-    saveMockUsers(updated);
+    saveUsers(updated);
     addLog({
       action: 'APROVAR_UTILIZADOR',
       module: 'UTILIZADORES',
@@ -69,7 +69,7 @@ const UserManagement: React.FC = () => {
     const targetUser = users.find(u => u.id === id);
     const updated = users.map(u => u.id === id ? { ...u, isBanned: !u.isBanned } : u);
     setUsers(updated);
-    saveMockUsers(updated);
+    saveUsers(updated);
     const isBanned = updated.find(u => u.id === id)?.isBanned;
     triggerHaptic(isBanned ? 'warning' : 'success');
     addLog({
@@ -88,7 +88,7 @@ const UserManagement: React.FC = () => {
     const targetUser = users.find(u => u.id === id);
     const updated = users.map(u => u.id === id ? { ...u, role: newRole, permissions: DEFAULT_PERMISSIONS[newRole] } : u);
     setUsers(updated);
-    saveMockUsers(updated);
+    saveUsers(updated);
     addLog({
       action: 'ALTERAR_CARGO',
       module: 'UTILIZADORES',
@@ -132,7 +132,7 @@ const UserManagement: React.FC = () => {
     } : u);
     
     setUsers(updated);
-    saveMockUsers(updated);
+    saveUsers(updated);
     dispatchCustomEvent('mg_users_updated');
     
     addLog({
@@ -181,7 +181,7 @@ const UserManagement: React.FC = () => {
     
     const updated = users.map(u => u.id === editingUser.id ? { ...u, permissions: tempPermissions } : u);
     setUsers(updated);
-    saveMockUsers(updated);
+    saveUsers(updated);
     dispatchCustomEvent('mg_users_updated');
     
     addLog({

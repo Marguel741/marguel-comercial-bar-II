@@ -14,7 +14,7 @@ import Footer from '../components/Footer';
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
-  const { user, logout, switchUser } = useAuth();
+  const { user, logout } = useAuth();
   const { salesReports, systemDate, products, expenses, getConfirmedSalesReports } = useProducts();
   const { theme, setTheme } = useTheme();
   const { toggleSidebar } = useLayout();
@@ -47,28 +47,6 @@ const Dashboard: React.FC = () => {
   const [newAlertMsg, setNewAlertMsg] = useState('');
   const [newAlertType, setNewAlertType] = useState<'CRITICO' | 'SUAVE' | 'INFO' | 'SUCCESS'>('INFO');
   const [expandedNotificationIds, setExpandedNotificationIds] = useState<string[]>([]);
-  const [showUserSwitchModal, setShowUserSwitchModal] = useState(false);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-
-  const testUsers = [
-    { role: UserRole.PROPRIETARIO, name: 'Marguel (Dono)', emoji: '👑' },
-    { role: UserRole.ADMIN_GERAL, name: 'Admin Geral', emoji: '🛡️' },
-    { role: UserRole.GERENTE, name: 'Gerente', emoji: '💼' },
-    { role: UserRole.COLABORADOR_EFETIVO, name: 'Colaborador Efetivo', emoji: '🤝' },
-    { role: UserRole.FUNCIONARIO, name: 'Funcionário', emoji: '👤' },
-  ];
-
-  const handleSwitchUser = (role: UserRole, name: string) => {
-    const success = switchUser(role, name);
-    if (success) {
-      setShowUserSwitchModal(false);
-      setToastMessage(`Utilizador alterado para: ${name}`);
-      // A atualização é agora instantânea via contexto, sem reload.
-    } else {
-      setToastMessage(`Erro: Utilizador ${name} não encontrado.`);
-      setTimeout(() => setToastMessage(null), 3000);
-    }
-  };
 
   const isAdmin = user?.role === UserRole.ADMIN_GERAL || user?.role === UserRole.PROPRIETARIO;
 
@@ -410,16 +388,6 @@ const Dashboard: React.FC = () => {
                 title="Trocar Tema"
             >
                 {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
-            </button>
-
-            {/* Botão de Troca de Utilizador (Testes) */}
-            <button 
-                onClick={() => setShowUserSwitchModal(true)}
-                className="p-2 bg-[#003366] rounded-xl text-white hover:bg-[#004080] transition-colors active:scale-95 flex items-center gap-2"
-                title="Trocar Utilizador (Testes)"
-            >
-                <Users size={20} />
-                <span className="hidden md:inline text-xs font-bold">Testes</span>
             </button>
 
             <div className="relative">
@@ -902,71 +870,6 @@ const Dashboard: React.FC = () => {
                 })}
             </div>
         </div>
-
-        {/* Modal de Troca de Utilizador (Testes) */}
-        {showUserSwitchModal && (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-                <div className="bg-white dark:bg-[#0a192f] w-full max-w-md rounded-[2.5rem] shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden animate-scale-in">
-                    <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-900/50">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-[#003366] rounded-xl text-white">
-                                <Users size={20} />
-                            </div>
-                            <h3 className="text-xl font-bold text-slate-800 dark:text-white">Trocar Utilizador</h3>
-                        </div>
-                        <button 
-                            onClick={() => setShowUserSwitchModal(false)}
-                            className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-full text-slate-500 dark:text-slate-400 transition-colors"
-                        >
-                            <X size={24} />
-                        </button>
-                    </div>
-                    
-                    <div className="p-6 space-y-3 max-h-[60vh] overflow-y-auto custom-scrollbar">
-                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">Selecione um perfil para simular o acesso:</p>
-                        {testUsers.map((testUser) => (
-                            <button
-                                key={testUser.role}
-                                onClick={() => handleSwitchUser(testUser.role, testUser.name)}
-                                className="w-full flex items-center justify-between p-4 rounded-2xl border border-slate-100 dark:border-slate-800 hover:border-[#E3007E] dark:hover:border-[#E3007E] hover:bg-pink-50 dark:hover:bg-pink-900/10 transition-all group text-left"
-                            >
-                                <div className="flex items-center gap-4">
-                                    <span className="text-2xl">{testUser.emoji}</span>
-                                    <div>
-                                        <h4 className="font-bold text-slate-800 dark:text-white group-hover:text-[#E3007E] transition-colors">{testUser.name}</h4>
-                                        <p className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wider font-medium">{testUser.role}</p>
-                                    </div>
-                                </div>
-                                <div className="w-8 h-8 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-400 group-hover:bg-[#E3007E] group-hover:text-white transition-all">
-                                    <CheckCircle size={16} />
-                                </div>
-                            </button>
-                        ))}
-                    </div>
-                    
-                    <div className="p-6 bg-slate-50 dark:bg-slate-900/50 text-center">
-                        <button 
-                            onClick={() => setShowUserSwitchModal(false)}
-                            className="text-sm font-bold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white transition-colors"
-                        >
-                            Cancelar
-                        </button>
-                    </div>
-                </div>
-            </div>
-        )}
-
-        {/* Toast Notification */}
-        {toastMessage && (
-            <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[110] animate-bounce-in">
-                <div className="bg-[#003366] text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 border-2 border-white/10 backdrop-blur-md">
-                    <div className="bg-green-500 rounded-full p-1">
-                        <CheckCircle size={16} />
-                    </div>
-                    <span className="text-sm font-bold">{toastMessage}</span>
-                </div>
-            </div>
-        )}
 
         {/* Footer */}
         <Footer />
