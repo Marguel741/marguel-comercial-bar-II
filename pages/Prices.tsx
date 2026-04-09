@@ -210,13 +210,33 @@ const Prices: React.FC = () => {
     const product = products.find(p => p.id === productId);
     if (!product) return;
 
-    setEditingPrices(prev => {
-      const current = prev[productId]?.isPromoActive !== undefined ? prev[productId].isPromoActive : !!product.isPromoActive;
-      return {
-        ...prev,
-        [productId]: { ...prev[productId], isPromoActive: !current }
-      };
-    });
+    // Estado actual (prioriza o que está em edição local, senão usa o do produto)
+    const currentState = editingPrices[productId]?.isPromoActive !== undefined
+      ? editingPrices[productId].isPromoActive
+      : !!(product.isPromoActive || product.isMixMatchActive);
+    const newState = !currentState;
+
+    // 1. Actualiza estado local de edição
+    setEditingPrices(prev => ({
+      ...prev,
+      [productId]: { ...prev[productId], isPromoActive: newState }
+    }));
+
+    // 2. Persiste imediatamente no produto — sem esperar pelo botão Guardar
+    const immediateUpdates: Partial<Product> = {
+      isPromoActive:    newState,
+      hasMixMatch:      newState,
+      isMixMatchActive: newState,
+      isMixMatch:       newState,
+      // Quando desactiva, zera TODOS os valores para que Sales/DirectService
+      // não leiam resíduos antigos via mixMatchQty/mixMatchPrice
+      ...(newState === false
+        ? { promoQty: 0, promoPrice: 0, mixMatchQty: 0, mixMatchPrice: 0 }
+        : {}
+      ),
+    };
+    updateProduct(productId, immediateUpdates);
+    showToast(newState ? 'Mix & Match activado!' : 'Mix & Match desactivado!');
   };
 
   const handlePackPriceChange = (productId: string, packSize: number, packPriceStr: string) => {

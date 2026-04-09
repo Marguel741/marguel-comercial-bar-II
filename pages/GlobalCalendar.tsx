@@ -510,7 +510,7 @@ const GlobalCalendar: React.FC = () => {
                             <div className="overflow-hidden">
                                {report.status === ClosureStatus.FECHO_CONFIRMADO ? (
                                   <p className="text-[9px] font-black text-[#003366] dark:text-blue-400 truncate">
-                                     {roundKz(report.totalLifted / 1000)}k
+                                     {roundKz((report.totalLifted || 0) / 1000)}k
                                   </p>
                                ) : (
                                   <p className="text-[7px] font-bold text-amber-600 dark:text-amber-400 leading-tight">
