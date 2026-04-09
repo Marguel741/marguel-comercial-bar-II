@@ -235,6 +235,29 @@ const Prices: React.FC = () => {
     const currentProduct = products.find(p => p.id === productId);
     if (!updates || !currentProduct) return;
 
+    // Regista no histórico de preços
+    if (updates.sell !== undefined) {
+      const newSellPrice = parseFloat(updates.sell.replace(',', '.'));
+      if (!isNaN(newSellPrice) && newSellPrice !== currentProduct.sellPrice) {
+        const historyEntry: PriceHistoryLog = {
+          id: Date.now().toString(),
+          productId,
+          productName,
+          date: new Date().toISOString().split('T')[0],
+          oldSell: currentProduct.sellPrice,
+          newSell: newSellPrice,
+          oldBuy: currentProduct.buyPrice,
+          newBuy: updates.buy !== undefined ? parseFloat(updates.buy.replace(',', '.')) : currentProduct.buyPrice,
+          changedBy: user?.name || 'Sistema'
+        };
+        setPriceHistory(prev => {
+          const updated = [historyEntry, ...prev];
+          localStorage.setItem('mg_price_history', JSON.stringify(updated));
+          return updated;
+        });
+      }
+    }
+
     const finalUpdates: Partial<Product> = {
       buyPrice: updates.buy !== undefined ? parseFloat(updates.buy.replace(',', '.')) : undefined,
       sellPrice: updates.sell !== undefined ? parseFloat(updates.sell.replace(',', '.')) : undefined,
@@ -243,10 +266,12 @@ const Prices: React.FC = () => {
       isPromoActive: updates.isPromoActive,
       // Novos campos solicitados para Bug #13
       hasMixMatch: updates.isPromoActive !== undefined ? updates.isPromoActive : currentProduct.hasMixMatch,
-      mixMatchQty: updates.promoQty !== undefined ? parseFloat(updates.promoQty.replace(',', '.')) : currentProduct.mixMatchQty,
-      mixMatchPrice: updates.promoPrice !== undefined ? parseFloat(updates.promoPrice.replace(',', '.')) : currentProduct.mixMatchPrice,
+      mixMatchQty: updates.promoQty !== undefined ? parseFloat((updates.promoQty || '0').replace(',', '.')) : currentProduct.mixMatchQty,
+      mixMatchPrice: updates.promoPrice !== undefined ? parseFloat((updates.promoPrice || '0').replace(',', '.')) : currentProduct.mixMatchPrice,
       isMixMatchActive: updates.isPromoActive !== undefined ? updates.isPromoActive : currentProduct.isMixMatchActive,
       isMixMatch: updates.isPromoActive !== undefined ? updates.isPromoActive : currentProduct.isMixMatch,
+      // Quando se desactiva, limpar também promoQty e promoPrice para não aparecer em Sales/DirectService
+      ...(updates.isPromoActive === false ? { promoQty: 0, promoPrice: 0 } : {}),
       discountAmount: updates.promoPrice 
         ? (currentProduct.sellPrice * (currentProduct.promoQty || 1) - parseFloat(updates.promoPrice.replace(',', '.'))) 
         : 0
@@ -1194,11 +1219,13 @@ const Prices: React.FC = () => {
                         <h3 className="text-xl font-black text-[#003366] dark:text-white">Resumo da Proposta</h3>
                         <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">{formatDisplayDate(formatDateISO(getSystemDate()))}</p>
                       </div>
-                      <img 
-                        src="/logo_marguel_oficial.png" 
-                        alt="Marguel Logo" 
-                        className="h-12 w-auto opacity-80 object-contain" 
-                      />
+                     <div className="flex flex-col items-center">
+                       <div className="relative flex items-center justify-center">
+                         <span className="font-sans font-black text-3xl tracking-tighter text-[#E3007E] relative z-10" style={{ filter: 'drop-shadow(0 0 12px rgba(227, 0, 126, 0.4))' }}>MG</span>
+                         <div className="absolute inset-0 blur-xl bg-[#E3007E]/10 rounded-full animate-pulse"></div>
+                       </div>
+                       <div className="w-10 h-[1px] bg-[#E3007E]/50 mt-0.5 shadow-[0_0_5px_rgba(227,0,126,0.2)]"></div>
+                     </div>
                     </div>
 
                     <div className="space-y-4">

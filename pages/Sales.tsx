@@ -1082,8 +1082,8 @@ const Sales: React.FC = () => {
           {/* Header do Relatório */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
-                  <h1 className="text-3xl font-black text-[#003366] dark:text-white uppercase tracking-tight">Relatório de Vendas</h1>
-                  <p className="text-slate-500 font-bold uppercase text-xs tracking-widest mt-1">
+                  <h1 className="text-3xl font-black text-[#003366] dark:text-white uppercase tracking-tight ml-8">Relatório de Vendas</h1>
+                  <p className="text-slate-500 font-bold uppercase text-xs tracking-widest mt-1 ml-8">
                       {reportData.displayDate} • Status: <span className={isConfirmed ? 'text-green-600' : 'text-amber-600'}>{reportData.status.replace(/_/g, ' ')}</span>
                   </p>
               </div>
@@ -1096,12 +1096,6 @@ const Sales: React.FC = () => {
                       <Edit3 size={16} /> Forçar Edição
                     </button>
                   )}
-                  <button 
-                    onClick={() => { window.print(); triggerHaptic('selection'); }}
-                    className="p-3 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-2xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 transition-all shadow-sm flex items-center gap-2 font-bold text-xs uppercase"
-                  >
-                    <Printer size={16} /> Imprimir
-                  </button>
               </div>
           </div>
 

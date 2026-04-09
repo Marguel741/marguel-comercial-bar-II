@@ -337,6 +337,17 @@ const Inventory: React.FC = () => {
       };
       addInventoryLog(newLog); // Context Action
 
+      // Notificação para Admin/Proprietário via título do documento (sem backend real)
+      if (hasDiscrepancy) {
+        const notifMsg = `[Marguel] Divergência em contagem por ${user?.name || 'Utilizador'}: ${discrepancies.map(d => `${d.name} (${d.diff})`).join(', ')}. Motivo: ${justificationText}`;
+        // Persistir notificação para ser lida por utilizadores com permissão de admin na próxima sessão
+        try {
+          const pending = JSON.parse(localStorage.getItem('mg_pending_notifications') || '[]');
+          pending.push({ id: Date.now().toString(), message: notifMsg, timestamp: Date.now(), type: 'DIVERGENCIA_INVENTARIO', read: false, targetRoles: ['ADMIN_GERAL', 'PROPRIETARIO'] });
+          localStorage.setItem('mg_pending_notifications', JSON.stringify(pending));
+        } catch {}
+      }
+
       triggerHaptic('success');
       showToast(navigator.onLine ? 'Sincronizado com Sucesso' : 'Salvo localmente (Offline)');
 
@@ -614,9 +625,7 @@ const Inventory: React.FC = () => {
              <p>Gestão de stock e património</p>
              {isLocked ? (
                 <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded font-bold flex items-center gap-1"><Lock size={10} /> Dia Bloqueado</span>
-             ) : (
-                <span className="text-xs bg-slate-200 px-2 py-0.5 rounded text-slate-600 font-bold">Hoje (Sis): {formatDisplayDate(formatDateISO(systemDate))}</span>
-             )}
+             ) : null}
           </div>
         </div>
         <div className="flex flex-1 items-center justify-center md:justify-end gap-2 w-full md:w-auto">
@@ -1749,9 +1758,11 @@ const Inventory: React.FC = () => {
               <ul className="list-disc list-inside font-bold text-slate-700 dark:text-slate-300">
                 <li>Administrador Geral</li>
                 <li>Proprietário</li>
-                <li>Chat Geral</li>
               </ul>
-              <p className="mt-4 italic">Motivo: {justificationText}</p>
+              <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-100 dark:border-amber-800">
+                <p className="text-xs font-bold text-amber-700 dark:text-amber-400 uppercase mb-1">Motivo:</p>
+                <p className="text-sm italic text-slate-700 dark:text-slate-300">{justificationText}</p>
+              </div>
             </div>
             <button 
               onClick={() => setShowDivergenceAlert(false)}

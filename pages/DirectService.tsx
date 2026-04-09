@@ -22,14 +22,10 @@ const DirectService: React.FC = () => {
   const { 
     products, 
     categories, 
-    updateProduct, 
-    processTransaction, 
-    addSalesReport, 
     isDayLocked, 
     systemDate, 
     getSystemDate, 
-    addAuditLog,
-    handleStockMovement
+    addAuditLog
   } = useProducts();
   const { triggerHaptic, sidebarMode } = useLayout();
   const { user } = useAuth();
@@ -355,12 +351,7 @@ const DirectService: React.FC = () => {
         // 2. Save to IndexedDB
         await dbAddSale(newSale);
         
-        // 3. Update Stock via handleStockMovement (This will throw if stock is insufficient or day is locked)
-        for (const item of newSale.items) {
-            handleStockMovement(item.productId, item.qty, 'SALE', user?.name || 'Sistema', 'Venda Direta', newSale.id);
-        }
-
-        // 4. Update local state only after successful stock update
+        // 3. Update local state (DirectService é isolado — não afecta stock nem conta corrente)
         setDirectSales(prev => [newSale, ...prev]);
         setCart({});
         setShowCheckout(false);
@@ -428,18 +419,6 @@ const DirectService: React.FC = () => {
       };
       await dbAddSale(reversalSale);
       setDirectSales(prev => [reversalSale, ...prev]);
-
-      // 3. Reverse Stock
-      sale.items.forEach(item => {
-          handleStockMovement(
-              item.productId, 
-              item.qty, 
-              'PURCHASE', // Returning stock is like a purchase/entry
-              user?.name || 'Sistema', 
-              `Estorno de Venda: ${sale.id}`,
-              reversalSale.id
-          );
-      });
 
       setNetworkToast({
           show: true,

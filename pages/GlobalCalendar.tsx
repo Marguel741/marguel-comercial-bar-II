@@ -191,15 +191,40 @@ const GlobalCalendar: React.FC = () => {
 
   const handlePrint = () => {
     const reportHTML = buildReportHTML();
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(reportHTML);
-      printWindow.document.close();
-      // Aguarda um pouco para carregar estilos se houver, depois imprime
-      setTimeout(() => {
-        printWindow.print();
-      }, 500);
+    const blob = new Blob([reportHTML], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    
+    const periodLabel = printPeriod === 'day' ? 'Diário'
+      : printPeriod === 'week' ? 'Semanal'
+      : printPeriod === 'month' ? 'Mensal'
+      : printPeriod === 'quarter' ? 'Trimestral'
+      : 'Anual';
+    
+    const refDate = new Date(printDate + 'T12:00:00');
+    let periodStr = '';
+    if (printPeriod === 'day') periodStr = printDate;
+    else if (printPeriod === 'week') {
+      const dow = refDate.getDay();
+      const mon = new Date(refDate); mon.setDate(refDate.getDate() - (dow === 0 ? 6 : dow - 1));
+      const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+      periodStr = `${mon.toLocaleDateString('pt-AO')}_${sun.toLocaleDateString('pt-AO')}`;
+    } else if (printPeriod === 'month') {
+      periodStr = refDate.toLocaleDateString('pt-AO', { month: 'long', year: 'numeric' });
+    } else if (printPeriod === 'quarter') {
+      const q = Math.floor(refDate.getMonth() / 3) + 1;
+      periodStr = `${q}T_${refDate.getFullYear()}`;
+    } else {
+      periodStr = refDate.getFullYear().toString();
     }
+    
+    a.href = url;
+    a.download = `Marguel Mobile Relatório de Gestão (${periodLabel}) (${periodStr}).html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setIsPrintModalOpen(false);
   };
 
   const buildReportHTML = () => {
@@ -296,7 +321,7 @@ const GlobalCalendar: React.FC = () => {
       </head>
       <body>
         <div class="header">
-          <h1>Marguel Group</h1>
+          <h1>Marguel Sistema De Gestão Interna</h1>
           <p>Relatório de Gestão - ${printPeriod === 'day' ? 'Diário' : printPeriod === 'week' ? 'Semanal' : printPeriod === 'month' ? 'Mensal' : printPeriod === 'quarter' ? 'Trimestral' : 'Anual'}</p>
           <p>Período: ${startStr} até ${endStr}</p>
         </div>
