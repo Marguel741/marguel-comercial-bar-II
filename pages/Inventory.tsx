@@ -34,7 +34,8 @@ const Inventory: React.FC = () => {
     syncData,
     getSystemDate,
     handleStockMovement,
-    stockOperationHistory
+    stockOperationHistory,
+    addNotification
   } = useProducts();
   const { user } = useAuth();
   const { sidebarMode, triggerHaptic } = useLayout();
@@ -328,6 +329,7 @@ const Inventory: React.FC = () => {
       const hasDiscrepancy = discrepancies.length > 0;
       const newLog: InventoryLog = {
           id: generateUUID(),
+          timestamp: getSystemDate().getTime(),
           date: formatDateISO(systemDate),
           performedBy: user?.name || 'Desconhecido',
           totalItems: (Object.values(countValues) as number[]).reduce((a, b) => a + b, 0),
@@ -339,13 +341,19 @@ const Inventory: React.FC = () => {
 
       // Notificação para Admin/Proprietário via título do documento (sem backend real)
       if (hasDiscrepancy) {
-        const notifMsg = `[Marguel] Divergência em contagem por ${user?.name || 'Utilizador'}: ${discrepancies.map(d => `${d.name} (${d.diff})`).join(', ')}. Motivo: ${justificationText}`;
-        // Persistir notificação para ser lida por utilizadores com permissão de admin na próxima sessão
-        try {
-          const pending = JSON.parse(localStorage.getItem('mg_pending_notifications') || '[]');
-          pending.push({ id: Date.now().toString(), message: notifMsg, timestamp: Date.now(), type: 'DIVERGENCIA_INVENTARIO', read: false, targetRoles: ['ADMIN_GERAL', 'PROPRIETARIO'] });
-          localStorage.setItem('mg_pending_notifications', JSON.stringify(pending));
-        } catch {}
+        addNotification({
+          type: 'DIVERGENCIA_INVENTARIO',
+          title: '⚠️ Divergência em Contagem Mensal',
+          message: `Divergência detectada por ${user?.name || 'Utilizador'} em ${new Date().toLocaleString('pt-AO')}`,
+          details: {
+            performedBy: user?.name || 'Desconhecido',
+            date: formatDateISO(systemDate),
+            time: new Date().toLocaleTimeString('pt-AO', { hour: '2-digit', minute: '2-digit' }),
+            discrepancies: discrepancies.map(d => `${d.name}: ${d.diff} un`).join(', '),
+            justification: justificationText
+          },
+          targetRoles: ['ADMIN_GERAL', 'PROPRIETARIO']
+        });
       }
 
       triggerHaptic('success');

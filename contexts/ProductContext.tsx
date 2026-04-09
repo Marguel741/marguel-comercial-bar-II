@@ -145,6 +145,10 @@ interface ProductContextType {
   handleStockMovement: (productId: string, quantity: number, type: 'SALE' | 'PURCHASE' | 'ADJUSTMENT', performedBy: string, reason: string, referenceId?: string) => void;
   runSystemDiagnostic: () => void;
   ignoreLockedDayWithoutClosure: (dateStr: string) => void;
+  notifications: any[];
+  addNotification: (notif: any) => void;
+  markNotificationRead: (id: string) => void;
+  clearNotifications: () => void;
 }
 
 const ProductContext = createContext<ProductContextType | undefined>(undefined);
@@ -202,6 +206,41 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       return saved ? JSON.parse(saved) : [];
     } catch { return []; }
   });
+
+  // ── NOTIFICAÇÕES ─────────────────────────────────────────────────────────
+  const [notifications, setNotifications] = useState<any[]>(() => {
+    try {
+      const saved = localStorage.getItem('mg_pending_notifications');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+
+  const addNotification = useCallback((notif: Omit<any, 'id' | 'timestamp' | 'read'>) => {
+    const newNotif = {
+      ...notif,
+      id: generateUUID(),
+      timestamp: Date.now(),
+      read: false
+    };
+    setNotifications(prev => {
+      const updated = [newNotif, ...prev];
+      localStorage.setItem('mg_pending_notifications', JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
+  const markNotificationRead = useCallback((id: string) => {
+    setNotifications(prev => {
+      const updated = prev.map(n => n.id === id ? { ...n, read: true } : n);
+      localStorage.setItem('mg_pending_notifications', JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
+  const clearNotifications = useCallback(() => {
+    setNotifications([]);
+    localStorage.removeItem('mg_pending_notifications');
+  }, []);
 
   useEffect(() => { localStorage.setItem('mg_locked_days', JSON.stringify(lockedDays)); }, [lockedDays]);
 
@@ -2067,7 +2106,8 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     addCard, updateCard, deleteCard, resetTestData,
     runSystemDiagnostic,
     isSyncing, hasPendingChanges, syncData, handleStockMovement,
-    ignoreLockedDayWithoutClosure
+    ignoreLockedDayWithoutClosure,
+    notifications, addNotification, markNotificationRead, clearNotifications,
   }), [
     products, categories, purchases, currentBalance, savingsBalance, cashBalance, tpaBalance, cards, transactions, salesReports, 
     expenses, expenseCategories, inventoryHistory, priceHistory, lockedDays, systemDate,
@@ -2089,7 +2129,8 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     addCard, updateCard, deleteCard, resetTestData,
     runSystemDiagnostic,
     isSyncing, hasPendingChanges, syncData, handleStockMovement,
-    ignoreLockedDayWithoutClosure
+    ignoreLockedDayWithoutClosure,
+    notifications, addNotification, markNotificationRead, clearNotifications
   ]);
 
   useEffect(() => {

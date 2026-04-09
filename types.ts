@@ -248,6 +248,7 @@ export interface StockOperationLog {
 
 export interface InventoryLog {
   id: string;
+  timestamp?: number;
   date: string;
   performedBy: string;
   totalItems: number;

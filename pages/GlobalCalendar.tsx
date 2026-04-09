@@ -789,7 +789,11 @@ const GlobalCalendar: React.FC = () => {
                                             <div className="flex justify-between items-center text-sm">
                                                 <span className="text-slate-500 font-medium">Hora</span>
                                                 <span className="font-bold text-[#003366] dark:text-white">
-                                                    {new Date(parseInt(dayData.inventory.id)).toLocaleTimeString('pt-AO', { hour: '2-digit', minute: '2-digit' })}
+                                                    {(() => {
+                                                      const ts = (dayData.inventory as any).timestamp || parseInt(dayData.inventory.id);
+                                                      const d = new Date(ts);
+                                                      return isNaN(d.getTime()) ? '--:--' : d.toLocaleTimeString('pt-AO', { hour: '2-digit', minute: '2-digit' });
+                                                    })()}
                                                 </span>
                                             </div>
                                         </div>
@@ -1117,8 +1121,11 @@ const GlobalCalendar: React.FC = () => {
                                           <div className="flex items-center justify-between pt-4 mt-4 border-t border-slate-200 dark:border-slate-700">
                                               <div className="flex items-center gap-2 text-[10px] text-slate-400 font-bold uppercase">
                                                   <Clock size={12} />
-                                                  {/* Assuming ID is timestamp if no generatedAt is present in InventoryLog */}
-                                                  {new Date(parseInt(dayData.inventory.id)).toLocaleTimeString('pt-AO', { hour: '2-digit', minute: '2-digit' })}
+                                                  {(() => {
+                                                    const ts = (dayData.inventory as any).timestamp || parseInt(dayData.inventory.id);
+                                                    const d = new Date(ts);
+                                                    return isNaN(d.getTime()) ? '--:--' : d.toLocaleTimeString('pt-AO', { hour: '2-digit', minute: '2-digit' });
+                                                  })()}
                                               </div>
                                               <div className="text-[10px] text-slate-400 font-bold uppercase">
                                                   Realizado por: {dayData.inventory.performedBy}
