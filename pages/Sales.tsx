@@ -860,6 +860,8 @@ const Sales: React.FC = () => {
             setSyncState({ status: 'idle', currentStep: -1, completedSteps: [] });
             setForceEditMode(false); // Redirect to report view after successful closure
             setViewHistoryReport(null); // Clear history view if any
+            setEditConfirmationData(null);   // Limpa dados residuais de edições anteriores
+            setShowConfirmEditModal(false);  // Garante que o modal não fica em estado aberto
             pageTopRef.current?.scrollIntoView({ behavior: 'smooth' });
         }, 1500);
     } catch (error: any) {
@@ -871,6 +873,9 @@ const Sales: React.FC = () => {
 
   // Modal de Confirmação de Edição Final
   const ConfirmEditModal = () => {
+    // Guarda dupla: sem dados válidos, nunca renderiza nada
+    if (!showConfirmEditModal || !editConfirmationData?.id) return null;
+
     const lastActor = editConfirmationData?.editedBy || editConfirmationData?.closedBy || 'Desconhecido';
     const isSameUser = user?.name && user.name === lastActor;
     const isAdminOrOwner = user?.role === UserRole.PROPRIETARIO || user?.role === UserRole.ADMIN_GERAL;
@@ -880,7 +885,7 @@ const Sales: React.FC = () => {
     const isUnilateralAllowed = isAdminOrOwner;
 
     return (
-      showConfirmEditModal && (
+      (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[300] flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-white dark:bg-slate-800 rounded-[40px] p-10 w-full max-w-lg shadow-2xl border border-slate-100 dark:border-slate-700 text-center relative">
             <button onClick={() => setShowConfirmEditModal(false)} className="absolute top-6 right-6 p-2 text-slate-400 hover:text-red-500 transition-colors">
