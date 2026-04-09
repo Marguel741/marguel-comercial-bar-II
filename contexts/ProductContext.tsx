@@ -1562,9 +1562,11 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
           // Se já estava confirmado, precisamos ajustar o financeiro se os valores mudaram
           if (existingReport.status === ClosureStatus.FECHO_CONFIRMADO && existingReport.processedFinancials) {
             adjustFinancialsForReport(existingReport, finalReport as SalesReport);
-            // Mantém o status como confirmado
-            finalReport.status = ClosureStatus.FECHO_CONFIRMADO;
-            (finalReport as any).processedFinancials = true;
+            // Mantém o status e flags do relatório EXISTENTE — não deixa addSalesReport
+            // promover ou alterar o status de um relatório já confirmado.
+            finalReport.status = existingReport.status;
+            (finalReport as any).processedFinancials = existingReport.processedFinancials;
+            (finalReport as any).stockUpdated = existingReport.stockUpdated;
           }
 
           const updated = [...prev];
@@ -1690,6 +1692,14 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     // Sempre usa reportData se fornecido — ignora o estado stale do array
     const report = reportData ?? salesReports.find(r => r.id === reportId);
     if (!report) return;
+
+    // ✅ GUARDA ANTI-CICLO: Se já está confirmado, recusa silenciosamente.
+    // Isto quebra qualquer ciclo de re-confirmação, independentemente da origem.
+    const liveReport = salesReports.find(r => r.id === reportId);
+    if (liveReport?.status === ClosureStatus.FECHO_CONFIRMADO && liveReport?.processedFinancials) {
+      console.warn(`[confirmSalesReport] Bloqueado: Relatório ${reportId} já foi confirmado.`);
+      return;
+    }
 
     // Garante que processedFinancials e stockUpdated reflectem o estado ANTES da confirmação
     const wasAlreadyProcessed = !reportData && (report.processedFinancials === true);

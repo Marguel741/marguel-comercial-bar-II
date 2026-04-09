@@ -807,10 +807,9 @@ const Sales: React.FC = () => {
 
     setShowCloseModal(false);
 
-    // Salva como parcial e só abre modal após guardar
-    setEditConfirmationData({ ...newReport, closedBy: user?.name || 'Vendedor' });
+    // ✅ CORRECTO: Guarda APENAS como parcial. Sem abrir modal de confirmação.
+    // A confirmação final é um acto MANUAL e SEPARADO, feito pelo relatório.
     await executeSync(newReport);
-    setShowConfirmEditModal(true);
   };
 
   const executeSync = async (reportData: any) => {
@@ -923,6 +922,15 @@ const Sales: React.FC = () => {
                 disabled={!canConfirm}
                 onClick={async () => {
                   if (!editConfirmationData?.id) return;
+
+                  // GUARDA DE SEGURANÇA: Só confirma se o relatório ainda estiver em estado parcial.
+                  // Isso impede que uma segunda chamada acidental confirme um relatório já confirmado.
+                  const currentReport = salesReports.find(r => r.id === editConfirmationData.id);
+                  if (currentReport?.status === ClosureStatus.FECHO_CONFIRMADO) {
+                    showToast("Este fecho já foi confirmado anteriormente.");
+                    setShowConfirmEditModal(false);
+                    return;
+                  }
 
                   const finalReport = {
                     ...editConfirmationData,
