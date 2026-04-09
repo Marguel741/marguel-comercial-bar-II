@@ -133,12 +133,13 @@ export interface PriceHistoryLog {
   id: string;
   productId: string;
   productName: string;
-  oldBuy: number;
-  newBuy: number;
-  oldSell: number;
-  newSell: number;
+  oldBuyPrice: number;
+  newBuyPrice: number;
+  oldSellPrice: number;
+  newSellPrice: number;
   changedBy: string;
   date: string;
+  timestamp: number;
 }
 
 export interface SavedProposal {

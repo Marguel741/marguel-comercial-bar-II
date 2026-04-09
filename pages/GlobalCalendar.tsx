@@ -190,21 +190,15 @@ const GlobalCalendar: React.FC = () => {
   }, [selectedDayDetail, salesMap, inventoryMap, purchases, expenses, transactions, priceHistory, isDayLocked, lockedDays, salesReports]);
 
   const handlePrint = () => {
-    const reportHTML = buildReportHTML();
-    const blob = new Blob([reportHTML], { type: 'text/html;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    
-    const periodLabel = printPeriod === 'day' ? 'Diário'
+    const periodLabel = printPeriod === 'day' ? 'Diario'
       : printPeriod === 'week' ? 'Semanal'
       : printPeriod === 'month' ? 'Mensal'
       : printPeriod === 'quarter' ? 'Trimestral'
       : 'Anual';
-    
+
     const refDate = new Date(printDate + 'T12:00:00');
-    let periodStr = '';
-    if (printPeriod === 'day') periodStr = printDate;
-    else if (printPeriod === 'week') {
+    let periodStr = printDate;
+    if (printPeriod === 'week') {
       const dow = refDate.getDay();
       const mon = new Date(refDate); mon.setDate(refDate.getDate() - (dow === 0 ? 6 : dow - 1));
       const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
@@ -214,20 +208,24 @@ const GlobalCalendar: React.FC = () => {
     } else if (printPeriod === 'quarter') {
       const q = Math.floor(refDate.getMonth() / 3) + 1;
       periodStr = `${q}T_${refDate.getFullYear()}`;
-    } else {
+    } else if (printPeriod === 'year') {
       periodStr = refDate.getFullYear().toString();
     }
-    
-    a.href = url;
-    a.download = `Marguel Mobile Relatório de Gestão (${periodLabel}) (${periodStr}).html`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+    const filename = `Marguel - Relatorio de Gestao (${periodLabel}) (${periodStr}).pdf`;
+    const reportHTML = buildReportHTML(filename);
+
+    const win = window.open('', '_blank');
+    if (!win) {
+      alert('Activa as popups para este site para gerar o PDF.');
+      return;
+    }
+    win.document.write(reportHTML);
+    win.document.close();
     setIsPrintModalOpen(false);
   };
 
-  const buildReportHTML = () => {
+  const buildReportHTML = (pdfFilename: string = 'Marguel-Relatorio.pdf') => {
     // Determinar o intervalo de datas
     const refDate = new Date(printDate + 'T12:00:00');
     let startDate = new Date(refDate);
@@ -294,32 +292,39 @@ const GlobalCalendar: React.FC = () => {
 
     return `
       <!DOCTYPE html>
-      <html>
+      <html lang="pt">
       <head>
-        <title>Relatório Marguel - ${printPeriod.toUpperCase()}</title>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Relatorio Marguel - ${printPeriod.toUpperCase()}</title>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
         <style>
-          body { font-family: 'Inter', sans-serif; color: #1e293b; padding: 40px; line-height: 1.5; }
+          body { font-family: Arial, sans-serif; color: #1e293b; padding: 40px; line-height: 1.5; margin: 0; }
+          #loading { position: fixed; inset: 0; background: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 9999; font-family: Arial, sans-serif; }
+          #loading p { color: #003366; font-weight: 900; font-size: 16px; margin-top: 16px; letter-spacing: 2px; text-transform: uppercase; }
+          .spinner { width: 48px; height: 48px; border: 5px solid #e2e8f0; border-top-color: #003366; border-radius: 50%; animation: spin 0.8s linear infinite; }
+          @keyframes spin { to { transform: rotate(360deg); } }
           .header { text-align: center; margin-bottom: 40px; border-bottom: 2px solid #003366; padding-bottom: 20px; }
-          .header h1 { color: #003366; margin: 0; text-transform: uppercase; letter-spacing: 2px; }
-          .header p { margin: 5px 0; color: #64748b; font-weight: bold; }
+          .header h1 { color: #003366; margin: 0; text-transform: uppercase; letter-spacing: 2px; font-size: 20px; }
+          .header p { margin: 5px 0; color: #64748b; font-weight: bold; font-size: 13px; }
           .summary-grid { display: grid; grid-template-cols: repeat(2, 1fr); gap: 20px; margin-bottom: 40px; }
-          .card { padding: 20px; border-radius: 15px; border: 1px solid #e2e8f0; background: #f8fafc; }
-          .card h3 { margin: 0 0 10px 0; font-size: 12px; text-transform: uppercase; color: #64748b; }
-          .card p { margin: 0; font-size: 24px; font-weight: 900; color: #003366; }
+          .card { padding: 20px; border-radius: 12px; border: 1px solid #e2e8f0; background: #f8fafc; }
+          .card h3 { margin: 0 0 10px 0; font-size: 11px; text-transform: uppercase; color: #64748b; }
+          .card p { margin: 0; font-size: 22px; font-weight: 900; color: #003366; }
+          .card-dark { background: #003366; border-color: #003366; grid-column: span 2; }
+          .card-dark h3 { color: #94a3b8; }
+          .card-dark p { color: #ffffff; font-size: 28px; }
           .section { margin-bottom: 40px; }
-          .section h2 { font-size: 18px; text-transform: uppercase; border-left: 4px solid #003366; padding-left: 15px; margin-bottom: 20px; }
+          .section h2 { font-size: 15px; text-transform: uppercase; border-left: 4px solid #003366; padding-left: 15px; margin-bottom: 20px; color: #003366; }
           table { width: 100%; border-collapse: collapse; }
-          th { background: #f1f5f9; text-align: left; padding: 12px; font-size: 12px; text-transform: uppercase; color: #64748b; }
-          td { padding: 12px; border-bottom: 1px solid #f1f5f9; font-size: 14px; }
+          th { background: #f1f5f9; text-align: left; padding: 10px 12px; font-size: 11px; text-transform: uppercase; color: #64748b; }
+          td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; font-size: 13px; }
           .text-right { text-align: right; }
           .footer { text-align: center; margin-top: 60px; font-size: 10px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 20px; }
-          @media print {
-            body { padding: 0; }
-            .no-print { display: none; }
-          }
         </style>
       </head>
       <body>
+      <div id="report-content">
         <div class="header">
           <h1>Marguel Sistema De Gestão Interna</h1>
           <p>Relatório de Gestão - ${printPeriod === 'day' ? 'Diário' : printPeriod === 'week' ? 'Semanal' : printPeriod === 'month' ? 'Mensal' : printPeriod === 'quarter' ? 'Trimestral' : 'Anual'}</p>
@@ -343,9 +348,9 @@ const GlobalCalendar: React.FC = () => {
             <h3>Total de Despesas</h3>
             <p>${formatKz(totalExpenses)}</p>
           </div>
-          <div class="card" style="grid-column: span 2; background: #003366; color: white;">
-            <h3 style="color: #94a3b8;">Lucro Estimado do Período</h3>
-            <p style="color: white; font-size: 32px;">${formatKz(totalProfit)}</p>
+          <div class="card card-dark">
+            <h3>Lucro Estimado do Período</h3>
+            <p>${formatKz(totalProfit)}</p>
           </div>
         </div>
 
@@ -373,8 +378,32 @@ const GlobalCalendar: React.FC = () => {
 
         <div class="footer">
           <p>Gerado em ${new Date().toLocaleString('pt-AO')} por ${user?.name || 'Sistema'}</p>
-          <p>Marguel Sistema de Gestão Interna &copy; 2026</p>
+          <p>Marguel Sistema de Gestao Interna &copy; 2026</p>
         </div>
+      </div><!-- fim #report-content -->
+
+      <!-- Overlay de loading -->
+      <div id="loading">
+        <div class="spinner"></div>
+        <p>A gerar PDF...</p>
+      </div>
+
+      <script>
+        window.addEventListener('load', function() {
+          var element = document.getElementById('report-content');
+          var opt = {
+            margin: [10, 10, 10, 10],
+            filename: '${pdfFilename}',
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true, letterRendering: true },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+          };
+          html2pdf().set(opt).from(element).save().then(function() {
+            document.getElementById('loading').style.display = 'none';
+            window.close();
+          });
+        });
+      </script>
       </body>
       </html>
     `;

@@ -235,20 +235,21 @@ const Prices: React.FC = () => {
     const currentProduct = products.find(p => p.id === productId);
     if (!updates || !currentProduct) return;
 
-    // Regista no histórico de preços
+    // Regista no histórico de preços (corrigido com campos reais)
     if (updates.sell !== undefined) {
       const newSellPrice = parseFloat(updates.sell.replace(',', '.'));
       if (!isNaN(newSellPrice) && newSellPrice !== currentProduct.sellPrice) {
         const historyEntry: PriceHistoryLog = {
-          id: Date.now().toString(),
+          id: generateUUID(),
           productId,
           productName,
-          date: new Date().toISOString().split('T')[0],
-          oldSell: currentProduct.sellPrice,
-          newSell: newSellPrice,
-          oldBuy: currentProduct.buyPrice,
-          newBuy: updates.buy !== undefined ? parseFloat(updates.buy.replace(',', '.')) : currentProduct.buyPrice,
-          changedBy: user?.name || 'Sistema'
+          date: formatDateISO(getSystemDate()),
+          oldSellPrice: currentProduct.sellPrice,
+          newSellPrice: newSellPrice,
+          oldBuyPrice: currentProduct.buyPrice,
+          newBuyPrice: updates.buy !== undefined ? parseFloat(updates.buy.replace(',', '.')) : currentProduct.buyPrice,
+          changedBy: user?.name || 'Sistema',
+          timestamp: Date.now()
         };
         setPriceHistory(prev => {
           const updated = [historyEntry, ...prev];
@@ -264,14 +265,22 @@ const Prices: React.FC = () => {
       promoQty: updates.promoQty !== undefined ? parseFloat(updates.promoQty.replace(',', '.')) : undefined,
       promoPrice: updates.promoPrice !== undefined ? parseFloat(updates.promoPrice.replace(',', '.')) : undefined,
       isPromoActive: updates.isPromoActive,
-      // Novos campos solicitados para Bug #13
+      // Correção completa do Mix & Match (agora desativa corretamente em todas as páginas)
       hasMixMatch: updates.isPromoActive !== undefined ? updates.isPromoActive : currentProduct.hasMixMatch,
       mixMatchQty: updates.promoQty !== undefined ? parseFloat((updates.promoQty || '0').replace(',', '.')) : currentProduct.mixMatchQty,
       mixMatchPrice: updates.promoPrice !== undefined ? parseFloat((updates.promoPrice || '0').replace(',', '.')) : currentProduct.mixMatchPrice,
       isMixMatchActive: updates.isPromoActive !== undefined ? updates.isPromoActive : currentProduct.isMixMatchActive,
       isMixMatch: updates.isPromoActive !== undefined ? updates.isPromoActive : currentProduct.isMixMatch,
-      // Quando se desactiva, limpar também promoQty e promoPrice para não aparecer em Sales/DirectService
-      ...(updates.isPromoActive === false ? { promoQty: 0, promoPrice: 0 } : {}),
+      // Quando desativa, limpa todos os campos para que não apareça em Sales / DirectService
+      ...(updates.isPromoActive === false ? { 
+        promoQty: 0, 
+        promoPrice: 0,
+        mixMatchQty: 0,
+        mixMatchPrice: 0,
+        hasMixMatch: false,
+        isMixMatchActive: false,
+        isMixMatch: false 
+      } : {}),
       discountAmount: updates.promoPrice 
         ? (currentProduct.sellPrice * (currentProduct.promoQty || 1) - parseFloat(updates.promoPrice.replace(',', '.'))) 
         : 0
