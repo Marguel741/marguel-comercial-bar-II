@@ -20,6 +20,11 @@ const UserManagement: React.FC = () => {
 
   useEffect(() => {
     setUsers(getUsers());
+
+    // Listener para actualizações em tempo real
+    const handleUpdate = () => setUsers(getUsers());
+    window.addEventListener('mg_users_updated', handleUpdate);
+    return () => window.removeEventListener('mg_users_updated', handleUpdate);
   }, []);
 
   const [searchTerm, setSearchTerm] = useState('');

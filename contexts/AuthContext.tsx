@@ -2,11 +2,14 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { User, UserRole } from '../types';
 import { getUsers, saveUsers } from '../src/services/userStore';
+import { DEFAULT_PERMISSIONS } from '../src/utils/permissions';
 import { useAudit } from './AuditContext';
 
 interface AuthContextType {
   user: User | null;
   login: (email: string, pass: string) => Promise<boolean>;
+  loginByPin: (pin: string) => Promise<boolean>;
+  register: (data: { name: string; email: string; pin: string; phoneNumber?: string }) => Promise<{ success: boolean; message: string }>;
   logout: () => void;
   isLoading: boolean;
   refreshUser: () => void;
@@ -38,8 +41,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (found) {
           setUser(found);
         } else {
-          // Utilizador não encontrado — requer novo login
-          localStorage.removeItem('mg_user');
+          localStorage.removeItem('mg_user'); // Utilizador não existe — requer login
         }
       } catch (e) {
         localStorage.removeItem('mg_user');
@@ -47,12 +49,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
     setIsLoading(false);
 
-    // Corrigir dependência stale no listener
+    // Corrigir closure stale no listener
     const handleUsersUpdated = () => {
       const freshUsers = getUsers();
       setUser(prev => {
         if (!prev) return null;
-        return freshUsers.find(u => u.id === prev.id) || prev;
+        return freshUsers.find(u => u.id === prev.id) || null;
       });
     };
     window.addEventListener('mg_users_updated', handleUsersUpdated);
@@ -70,15 +72,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const login = useCallback(async (email: string, pass: string) => {
     setIsLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 800));
+    await new Promise(resolve => setTimeout(resolve, 600));
     
     const users = getUsers();
-    let foundUser = users.find(u => u.email.toLowerCase() === email.toLowerCase());
-    
-    // Suporte para login apenas por PIN (lookup por PIN)
-    if (email === '__PIN__') {
-      foundUser = users.find(u => u.pin === pass);
-    }
+    const foundUser = users.find(u => u.email.toLowerCase() === email.toLowerCase());
     
     if (foundUser && foundUser.isApproved && !foundUser.isBanned && foundUser.pin === pass) {
         const updatedUser = { 
@@ -88,16 +85,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             hour: '2-digit', minute: '2-digit'
           }) 
         };
-        const updatedUsers = users.map(u => u.id === foundUser.id ? updatedUser : u);
-        saveUsers(updatedUsers);
+        const allUsers = users.map(u => u.id === foundUser.id ? updatedUser : u);
+        saveUsers(allUsers);
         localStorage.setItem('mg_user', JSON.stringify(updatedUser));
         setUser(updatedUser);
         
         addLog({
           action: 'LOGIN',
           module: 'UTILIZADORES',
-          description: `Utilizador ${foundUser.name} (${foundUser.role}) iniciou sessão`,
-          entityId: foundUser.id,
+          description: `Utilizador ${updatedUser.name} (${updatedUser.role}) iniciou sessão`,
+          entityId: updatedUser.id,
           previousValue: null,
           newValue: 'LOGGED_IN'
         }, updatedUser);
@@ -108,6 +105,64 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setIsLoading(false);
     return false;
   }, [addLog]);
+
+  // Login por PIN — novo
+  const loginByPin = useCallback(async (pin: string) => {
+    setIsLoading(true);
+    await new Promise(resolve => setTimeout(resolve, 600));
+    const users = getUsers();
+    const foundUser = users.find(u => u.pin === pin && u.isApproved && !u.isBanned);
+    if (foundUser) {
+      const updatedUser = {
+        ...foundUser,
+        lastLogin: new Date().toLocaleString('pt-AO', {
+          day: '2-digit', month: '2-digit', year: 'numeric',
+          hour: '2-digit', minute: '2-digit'
+        })
+      };
+      saveUsers(users.map(u => u.id === foundUser.id ? updatedUser : u));
+      localStorage.setItem('mg_user', JSON.stringify(updatedUser));
+      setUser(updatedUser);
+      addLog({ action: 'LOGIN', module: 'UTILIZADORES',
+        description: `Utilizador ${updatedUser.name} iniciou sessão via PIN`,
+        entityId: updatedUser.id, previousValue: null, newValue: 'LOGGED_IN_PIN'
+      }, updatedUser);
+      setIsLoading(false);
+      return true;
+    }
+    setIsLoading(false);
+    return false;
+  }, [addLog]);
+
+  // Registo de novo utilizador
+  const register = useCallback(async (data: {
+    name: string; email: string; pin: string; phoneNumber?: string
+  }) => {
+    const users = getUsers();
+    const exists = users.find(u => u.email.toLowerCase() === data.email.toLowerCase());
+    if (exists) return { success: false, message: 'Este email já está registado.' };
+    if (data.pin.length < 4) return { success: false, message: 'O PIN deve ter pelo menos 4 dígitos.' };
+
+    const newUser: User = {
+      id: `usr_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+      name: data.name,
+      email: data.email,
+      pin: data.pin,
+      role: UserRole.FUNCIONARIO,
+      isApproved: false, // Aguarda aprovação
+      isBanned: false,
+      permissions: DEFAULT_PERMISSIONS[UserRole.FUNCIONARIO],
+      createdAt: new Date().toLocaleDateString('pt-AO'),
+      lastLogin: '',
+      phoneNumber: data.phoneNumber || '',
+      secondaryPhoneNumber: '',
+      associatedEmail: data.email,
+      status: 'Ativo'
+    };
+
+    saveUsers([...users, newUser]);
+    return { success: true, message: 'Conta criada. Aguarda aprovação do administrador.' };
+  }, []);
 
   const logout = useCallback(() => {
     if (user) {
@@ -152,11 +207,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const value = React.useMemo(() => ({ 
     user, 
     login, 
+    loginByPin,
+    register,
     logout, 
     isLoading, 
     refreshUser,
     updateUser
-  }), [user, isLoading, login, logout, refreshUser, updateUser]);
+  }), [user, isLoading, login, loginByPin, register, logout, refreshUser, updateUser]);
 
   return (
     <AuthContext.Provider value={value}>

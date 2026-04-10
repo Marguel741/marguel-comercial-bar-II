@@ -68,10 +68,9 @@ const Sidebar: React.FC = () => {
 
   const handleLogout = () => {
     triggerHaptic('warning');
-    if (window.confirm("Deseja realmente sair?")) {
-      logout();
-      navigate('/login');
-    }
+    // Sem window.confirm — não funciona em PWA/iOS standalone
+    logout();
+    navigate('/login');
   };
 
   const filteredNavItems = navItems.filter(item => {

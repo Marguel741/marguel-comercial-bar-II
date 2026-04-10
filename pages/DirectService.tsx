@@ -3,6 +3,7 @@ import { Search, ShoppingCart, Plus, Minus, Trash2, CheckCircle, Wallet, CreditC
 import { useProducts } from '../contexts/ProductContext';
 import { useLayout } from '../contexts/LayoutContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useSettings } from '../contexts/SettingsContext';
 import SoftCard from '../components/SoftCard';
 import { dbAddSale, dbGetAllSales, dbUpdateSale, dbDeleteSale, DirectSale } from '../src/services/db';
 import { processSync, serverTimeOffset } from '../src/services/syncService';
@@ -29,6 +30,7 @@ const DirectService: React.FC = () => {
   } = useProducts();
   const { triggerHaptic, sidebarMode } = useLayout();
   const { user } = useAuth();
+  const { isOnline } = useSettings();
 
   const isAdminOrOwner = user?.role === 'PROPRIETARIO' || user?.role === 'ADMIN_GERAL';
 
@@ -51,7 +53,6 @@ const DirectService: React.FC = () => {
   }, [products]);
   
   // Offline / Sync State
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isSyncing, setIsSyncing] = useState(false);
   const [deviceId, setDeviceId] = useState('');
   const [networkToast, setNetworkToast] = useState<{show: boolean, message: string, type: 'success' | 'warning'}>({ show: false, message: '', type: 'success' });
@@ -114,39 +115,22 @@ const DirectService: React.FC = () => {
 
   // Network Listeners & Auto-Sync
   useEffect(() => {
-      let timeoutId: NodeJS.Timeout;
-
-      const handleOnline = () => {
-          setIsOnline(true);
-          setNetworkToast({
-              show: true,
-              message: "Conexão restabelecida. Tentando sincronizar...",
-              type: 'success'
-          });
-          if (timeoutId) clearTimeout(timeoutId);
-          timeoutId = setTimeout(() => setNetworkToast(prev => ({ ...prev, show: false })), 5000);
-      };
-
-      const handleOffline = () => {
-          setIsOnline(false);
-          setNetworkToast({
-              show: true,
-              message: "Você está offline. As vendas serão armazenadas localmente.",
-              type: 'warning'
-          });
-          if (timeoutId) clearTimeout(timeoutId);
-          timeoutId = setTimeout(() => setNetworkToast(prev => ({ ...prev, show: false })), 5000);
-      };
-
-      window.addEventListener('online', handleOnline);
-      window.addEventListener('offline', handleOffline);
-
-      return () => {
-          window.removeEventListener('online', handleOnline);
-          window.removeEventListener('offline', handleOffline);
-          if (timeoutId) clearTimeout(timeoutId);
-      };
-  }, []);
+    if (isOnline) {
+      setNetworkToast({
+        show: true,
+        message: "Conexão restabelecida. Tentando sincronizar...",
+        type: 'success'
+      });
+    } else {
+      setNetworkToast({
+        show: true,
+        message: "Você está offline. As vendas serão armazenadas localmente.",
+        type: 'warning'
+      });
+    }
+    const timer = setTimeout(() => setNetworkToast(prev => ({ ...prev, show: false })), 5000);
+    return () => clearTimeout(timer);
+  }, [isOnline]);
 
   const syncPendingSales = useCallback(async (isManual = false) => {
       if (isSyncing) return; // Sync Lock
@@ -190,7 +174,13 @@ const DirectService: React.FC = () => {
       }
   }, [directSales, isSyncing]);
 
-  // Auto-sync Effect - Disabled to focus on manual user actions
+  // Auto-sync Effect — reactivado
+  useEffect(() => {
+    if (isOnline && directSales.some(s => s.statusSync === 'pending')) {
+      const timer = setTimeout(() => syncPendingSales(), 2000); // 2s após ficar online
+      return () => clearTimeout(timer);
+    }
+  }, [isOnline, directSales, syncPendingSales]);
   
   // Filtering
   const filteredProducts = useMemo(() => {

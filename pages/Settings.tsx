@@ -100,6 +100,11 @@ const Settings: React.FC = () => {
   };
 
   const handleUpdatePin = async () => {
+    // Verificar se o PIN actual está correcto
+    if (user?.pin && pinForm.current !== user.pin) {
+      setPinStatus({ type: 'error', message: 'PIN actual incorrecta' });
+      return;
+    }
     if (pinForm.new !== pinForm.confirm) {
       setPinStatus({ type: 'error', message: 'Os novos PINs não coincidem' });
       return;
@@ -109,11 +114,18 @@ const Settings: React.FC = () => {
       return;
     }
     
-    // In a real app we would verify current PIN
     const success = await updateUser({ pin: pinForm.new });
     if (success) {
       setPinStatus({ type: 'success', message: 'PIN alterado com sucesso' });
       setPinForm({ current: '', new: '', confirm: '' });
+      
+      // Guardar associação biométrica actualizada
+      const savedBio = localStorage.getItem('mg_biometric_user');
+      if (savedBio) {
+        const bio = JSON.parse(savedBio);
+        localStorage.setItem('mg_biometric_user', JSON.stringify({ ...bio, pin: pinForm.new }));
+      }
+      
       setTimeout(() => setPinStatus(null), 3000);
     }
   };
@@ -129,7 +141,7 @@ const Settings: React.FC = () => {
   const handleSync = () => {
     syncData()
       .then(() => alert('Sincronização concluída com sucesso.'))
-      .catch(() => alert('Erro na sincronização. Verifique a ligação à internet.'));
+      .catch(() => alert('Erro na sincronização. Verifique a ligação.'));
   };
 
   return (
