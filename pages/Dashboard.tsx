@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Menu, Plus, ArrowUpDown, FileText, Calculator, Wallet, CreditCard, Package, TrendingDown, Clock, Box, TrendingUp, ChevronDown, ChevronUp, X, AlertTriangle, CheckCircle, LogOut, Settings, Moon, Sun, Monitor, User as UserIcon, Maximize2, Minimize2, Users } from 'lucide-react';
+import { Bell, Menu, Plus, ArrowUpDown, FileText, Calculator, Wallet, CreditCard, Package, TrendingDown, Clock, Box, TrendingUp, ChevronDown, ChevronUp, X, AlertTriangle, CheckCircle, LogOut, Settings, Moon, Sun, Monitor, User as UserIcon, Maximize2, Minimize2 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useAuth } from '../contexts/AuthContext';
 import { useProducts } from '../contexts/ProductContext';

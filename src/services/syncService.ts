@@ -5,9 +5,9 @@ export let serverTimeOffset = 0;
 // const API_URL = 'https://api.example.com/v1/sales/sync'; // Placeholder for real API
 
 export const processSync = async (sales: DirectSale[]): Promise<DirectSale[]> => {
-    // 1. Simulate Server Time Capture (In real API, use response headers)
-    const serverNow = Date.now(); 
-    serverTimeOffset = serverNow - Date.now();
+    // Offset real seria calculado com o tempo da resposta do servidor
+    // Por agora, mantemos 0 — será corrigido quando houver API real
+    serverTimeOffset = 0;
 
     const results: DirectSale[] = [];
 

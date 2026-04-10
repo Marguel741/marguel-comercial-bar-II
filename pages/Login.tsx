@@ -15,8 +15,16 @@ const Login: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    const credential = usePin ? pin : password;
-    const success = await login(usePin ? '__PIN__' : email, credential);
+    let success = false;
+    if (usePin) {
+      // Login por PIN: procura utilizador pelo PIN
+      const { getUsers } = await import('../src/services/userStore');
+      const users = getUsers();
+      const found = users.find(u => u.pin === pin && u.isApproved && !u.isBanned);
+      if (found) success = await login(found.email, pin);
+    } else {
+      success = await login(email, password);
+    }
     if (!success) setError('Credenciais inválidas ou utilizador não autorizado.');
   };
 
@@ -58,6 +66,7 @@ const Login: React.FC = () => {
                     onChange={e => setPin(e.target.value)}
                     placeholder="••••••"
                     className="w-full bg-slate-50 dark:bg-slate-900 border-none rounded-2xl py-4 pl-12 pr-4 soft-ui-inset focus:ring-2 focus:ring-[#003366] transition-all text-center text-2xl tracking-[1em] dark:text-white"
+                    autoComplete="one-time-code"
                   />
                 </div>
               </div>
@@ -108,8 +117,8 @@ const Login: React.FC = () => {
           <div className="mt-8 text-center">
             <button 
               type="button"
-              onClick={() => alert('Contacte o administrador do sistema para recuperação de credenciais.')}
-              className="text-sm font-medium text-slate-400 hover:text-[#003366] dark:hover:text-white"
+              onClick={() => alert('Para recuperação de credenciais, contacte o administrador do sistema.')}
+              className="text-sm font-medium text-slate-400 hover:text-[#003366] dark:hover:text-white transition-colors"
             >
               Esqueceu as credenciais?
             </button>

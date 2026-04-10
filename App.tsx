@@ -11,9 +11,8 @@ import AccountStatus from './pages/AccountStatus';
 import UserManagement from './pages/UserManagement';
 import DirectService from './pages/DirectService';
 import GlobalCalendar from './pages/GlobalCalendar';
-import SplashGenerator from './pages/SplashGenerator';
 import Audit from './pages/Audit';
-import TestCycle from './pages/TestCycle';
+import Sandbox from './pages/Sandbox';
 import Settings from './pages/Settings';
 import AccessDenied from './pages/AccessDenied';
 import Sidebar from './components/Sidebar';
@@ -49,6 +48,8 @@ const AppContent: React.FC = () => {
   // NOVA TRAVA: Se o AuthContext ainda está lendo o localStorage, não renderiza os Providers filhos
   if (isLoading) return <div className="h-screen w-screen flex items-center justify-center bg-slate-900 text-white font-black tracking-tighter text-2xl animate-pulse">Carregando permissões...</div>;
 
+  if (!user) return <Login />;
+
   return (
     <SettingsProvider>
         <ProductProvider>
@@ -58,7 +59,7 @@ const AppContent: React.FC = () => {
                     <Sidebar />
                     <div id="main-content" className="flex-1 overflow-y-auto custom-scrollbar relative">
                       <Routes>
-                        <Route path="/login" element={user ? <Navigate to="/" /> : <Login />} />
+                        <Route path="/login" element={<Navigate to="/" replace />} />
                         <Route path="/" element={<Dashboard />} />
                         <Route path="/access-denied" element={<AccessDenied />} />
                         
@@ -118,7 +119,7 @@ const AppContent: React.FC = () => {
 
                         <Route path="/sandbox" element={
                           <ProtectedRoute permission="admin_global_admin">
-                            <TestCycle />
+                            <Sandbox />
                           </ProtectedRoute>
                         } />
                         

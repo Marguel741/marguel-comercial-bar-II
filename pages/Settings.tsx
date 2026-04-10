@@ -127,11 +127,9 @@ const Settings: React.FC = () => {
   };
 
   const handleSync = () => {
-    syncData().then(() => {
-      alert('Sincronização concluída com sucesso.');
-    }).catch(() => {
-      alert('Erro durante a sincronização. Verifique a ligação.');
-    });
+    syncData()
+      .then(() => alert('Sincronização concluída com sucesso.'))
+      .catch(() => alert('Erro na sincronização. Verifique a ligação à internet.'));
   };
 
   return (

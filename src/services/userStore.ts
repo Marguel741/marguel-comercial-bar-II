@@ -1,13 +1,16 @@
 // src/services/userStore.ts
 import { User, UserRole } from '../../types';
 import { DEFAULT_PERMISSIONS } from '../utils/permissions';
-import { generateUUID } from '../utils';
 
 const STORAGE_KEY = 'mg_users';
 
+// IDs fixos para garantir consistência entre sessões
+const OWNER_ID = 'usr_proprietario_marguel_001';
+const ADMIN_ID = 'usr_admin_geral_001';
+
 const INITIAL_USERS: User[] = [
   {
-    id: generateUUID(),
+    id: OWNER_ID,
     name: 'Proprietário Marguel',
     username: 'marguel',
     email: 'dono@marguel.com',
@@ -24,7 +27,7 @@ const INITIAL_USERS: User[] = [
     status: 'Ativo'
   },
   {
-    id: generateUUID(),
+    id: ADMIN_ID,
     name: 'Admin Geral',
     username: 'admin',
     email: 'admin@marguel.com',

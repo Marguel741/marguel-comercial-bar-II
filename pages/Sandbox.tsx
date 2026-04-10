@@ -1,16 +1,11 @@
 import React, { useState } from 'react';
 import { 
   Calendar, 
-  Play, 
-  ShoppingCart, 
-  ArrowDownLeft, 
   CheckCircle, 
   History, 
   FlaskConical,
   Trash2,
-  Package,
   SkipForward,
-  Users,
   ArrowLeft
 } from 'lucide-react';
 import SoftCard from '../components/SoftCard';
@@ -21,25 +16,21 @@ import { UserRole } from '../types';
 import { formatDateISO, formatDisplayDate } from '../src/utils';
 import { useNavigate } from 'react-router-dom';
 
-const TestCycle: React.FC = () => {
+const Sandbox: React.FC = () => {
   const { 
-    products, 
-    updateProduct, 
-    processTransaction, 
-    addPurchase,
     salesReports,
     systemDate, // Data GLOBAL
     setSystemDate, // Setter GLOBAL
     resetTestData,
     getSystemDate
   } = useProducts();
-  const { triggerHaptic, sidebarMode } = useLayout();
+  const { triggerHaptic } = useLayout();
   const { user } = useAuth();
   const navigate = useNavigate();
 
   // Logs locais apenas para feedback visual
   const [dailyLog, setDailyLog] = useState<string[]>([]);
-  const [resetStep, setResetStep] = useState(0);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
   
   // Format Date for Display
   const dateStr = formatDateISO(systemDate);
@@ -69,14 +60,30 @@ const TestCycle: React.FC = () => {
   };
 
   const resetToToday = () => {
-      if(window.confirm("Voltar para a data real de hoje?")) {
-          setSystemDate(new Date());
-          logAction("🔄 Data do sistema sincronizada com tempo real.");
-      }
+    setSystemDate(new Date());
+    triggerHaptic('success');
+    logAction("🔄 Data do sistema sincronizada com tempo real.");
   };
 
   return (
     <div className="p-4 md:p-8 space-y-8 animate-fade-in pb-32">
+        
+        {/* Banner Sandbox */}
+        <div className="flex items-center justify-between p-4 bg-amber-50 dark:bg-amber-900/20 border-2 border-amber-400 rounded-2xl">
+          <div className="flex items-center gap-3">
+            <FlaskConical size={20} className="text-amber-600" />
+            <div>
+              <p className="font-black text-amber-800 dark:text-amber-300 text-sm uppercase">Ambiente Sandbox</p>
+              <p className="text-xs text-amber-600 dark:text-amber-400">Modo leitura — nenhuma acção aqui altera dados reais</p>
+            </div>
+          </div>
+          <button
+            onClick={() => navigate('/')}
+            className="flex items-center gap-2 px-4 py-2 bg-[#003366] text-white text-xs font-black rounded-xl active:scale-95 transition-all"
+          >
+            <ArrowLeft size={14} /> Sair do Sandbox
+          </button>
+        </div>
         
         {/* WARNING HEADER */}
         <div className="bg-[#003366] border-l-8 border-amber-400 text-white p-6 rounded-2xl shadow-xl flex flex-col md:flex-row items-center justify-between gap-4">
@@ -99,7 +106,7 @@ const TestCycle: React.FC = () => {
                 onClick={() => navigate('/')}
                 className="px-4 py-2 bg-[#003366] text-white text-xs font-black rounded-xl hover:bg-[#004080] transition-all active:scale-95"
               >
-                Sair do Sandbox
+                Voltar à minha conta
               </button>
             </div>
         </div>
@@ -143,25 +150,11 @@ const TestCycle: React.FC = () => {
                             <History size={20} className="text-slate-400" /> Log de Eventos (Sessão)
                         </h3>
                         <button 
-                            onClick={() => {
-                                if (resetStep === 0) {
-                                    setResetStep(1);
-                                    triggerHaptic('warning');
-                                } else {
-                                    resetTestData();
-                                    setResetStep(0);
-                                    logAction("🧹 Sistema resetado para o estado inicial.");
-                                }
-                            }}
-                            onMouseLeave={() => setResetStep(0)}
-                            className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${
-                                resetStep === 1 
-                                ? 'bg-red-500 text-white animate-pulse' 
-                                : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-red-500'
-                            }`}
+                            onClick={() => setShowResetConfirm(true)}
+                            className="bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-red-500 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-2"
                         >
                             <Trash2 size={12} />
-                            {resetStep === 1 ? 'Confirmar Limpeza?' : 'Limpar Dados'}
+                            Limpar Dados
                         </button>
                     </div>
                     <div className="flex-1 bg-slate-50 dark:bg-slate-900 rounded-xl p-4 overflow-y-auto custom-scrollbar max-h-[400px] border border-slate-100 dark:border-slate-700 font-mono text-xs space-y-2">
@@ -205,8 +198,41 @@ const TestCycle: React.FC = () => {
             </div>
         </div>
 
+        {/* Reset Confirmation Modal */}
+        {showResetConfirm && (
+          <div className="fixed inset-0 bg-black/60 z-[150] flex items-center justify-center p-4 backdrop-blur-sm">
+            <div className="bg-white dark:bg-slate-800 rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl border border-white/20 dark:border-slate-700 animate-scale-in">
+              <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full flex items-center justify-center mx-auto mb-6">
+                <Trash2 size={32} />
+              </div>
+              <p className="font-black text-2xl text-[#003366] dark:text-white mb-4 tracking-tighter">Confirmar Limpeza?</p>
+              <p className="text-slate-500 dark:text-slate-400 text-sm mb-8 leading-relaxed">
+                Todos os dados do sistema serão apagados. Esta acção é irreversível e o sistema voltará ao estado inicial.
+              </p>
+              <div className="flex gap-4">
+                <button 
+                  onClick={() => setShowResetConfirm(false)} 
+                  className="flex-1 py-4 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold rounded-2xl hover:bg-slate-200 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={() => { 
+                    resetTestData(); 
+                    setShowResetConfirm(false); 
+                    logAction("🧹 Sistema resetado para o estado inicial.");
+                    triggerHaptic('impact');
+                  }} 
+                  className="flex-1 py-4 bg-red-500 text-white font-bold rounded-2xl shadow-lg shadow-red-200 dark:shadow-none hover:bg-red-600 transition-all"
+                >
+                  Limpar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
     </div>
   );
 };
 
-export default TestCycle;
+export default Sandbox;

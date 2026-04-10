@@ -37,23 +37,23 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const found = users.find(u => u.id === parsed.id);
         if (found) {
           setUser(found);
-          setIsLoading(false);
         } else {
-          setUser(users[0] || null);
-          setIsLoading(false);
+          // Utilizador não encontrado — requer novo login
+          localStorage.removeItem('mg_user');
         }
       } catch (e) {
-        setUser(users[0] || null);
-        setIsLoading(false);
+        localStorage.removeItem('mg_user');
       }
-    } else {
-      setUser(users[0] || null); // Default to first user (Admin)
-      setIsLoading(false);
     }
-    
-    // Listen for user updates to refresh current session
+    setIsLoading(false);
+
+    // Corrigir dependência stale no listener
     const handleUsersUpdated = () => {
-        refreshUser();
+      const freshUsers = getUsers();
+      setUser(prev => {
+        if (!prev) return null;
+        return freshUsers.find(u => u.id === prev.id) || prev;
+      });
     };
     window.addEventListener('mg_users_updated', handleUsersUpdated);
     return () => window.removeEventListener('mg_users_updated', handleUsersUpdated);
@@ -70,7 +70,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const login = useCallback(async (email: string, pass: string) => {
     setIsLoading(true);
-    // Simulate API delay
     await new Promise(resolve => setTimeout(resolve, 800));
     
     const users = getUsers();
@@ -82,8 +81,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
     
     if (foundUser && foundUser.isApproved && !foundUser.isBanned && foundUser.pin === pass) {
-        // Guardar lastLogin real
-        const updatedUser = { ...foundUser, lastLogin: new Date().toLocaleString('pt-AO') };
+        const updatedUser = { 
+          ...foundUser, 
+          lastLogin: new Date().toLocaleString('pt-AO', {
+            day: '2-digit', month: '2-digit', year: 'numeric',
+            hour: '2-digit', minute: '2-digit'
+          }) 
+        };
         const updatedUsers = users.map(u => u.id === foundUser.id ? updatedUser : u);
         saveUsers(updatedUsers);
         localStorage.setItem('mg_user', JSON.stringify(updatedUser));
@@ -96,7 +100,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           entityId: foundUser.id,
           previousValue: null,
           newValue: 'LOGGED_IN'
-        }, foundUser);
+        }, updatedUser);
         setIsLoading(false);
         return true;
     }
@@ -124,16 +128,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (!user) return false;
     
     const users = getUsers();
-    const updatedUsers = users.map(u => {
-      if (u.id === user.id) {
-        return { ...u, ...updates };
-      }
-      return u;
-    });
+    const updatedUsers = users.map(u => u.id === user.id ? { ...u, ...updates } : u);
     
     saveUsers(updatedUsers);
+    const updatedUser = updatedUsers.find(u => u.id === user.id)!;
+    setUser(updatedUser);
+    localStorage.setItem('mg_user', JSON.stringify(updatedUser));
     
-    // Log PIN change specifically if it happened
     if (updates.pin) {
       addLog({
         action: 'USER_PIN_CHANGED',

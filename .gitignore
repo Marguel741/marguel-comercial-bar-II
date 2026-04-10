@@ -28,3 +28,4 @@ scripts/
 public/assets/intro.mp4
 .env
 .env.local
+src/services/mockUsers.ts
