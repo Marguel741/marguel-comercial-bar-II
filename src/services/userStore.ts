@@ -5,8 +5,8 @@ import { DEFAULT_PERMISSIONS } from '../utils/permissions';
 const STORAGE_KEY = 'mg_users';
 
 // IDs fixos — nunca mudam entre sessões
-const OWNER_ID = 'usr_proprietario_001';
-const ADMIN_ID = 'usr_admin_001';
+const OWNER_ID = 'usr_proprietario_marguel_001';
+const ADMIN_ID = 'usr_admin_geral_001';
 
 const INITIAL_USERS: User[] = [
   {

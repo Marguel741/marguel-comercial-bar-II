@@ -174,13 +174,14 @@ const DirectService: React.FC = () => {
       }
   }, [directSales, isSyncing]);
 
-  // Auto-sync Effect — reactivado
+  // Auto-sync Effect
   useEffect(() => {
-    if (isOnline && directSales.some(s => s.statusSync === 'pending')) {
-      const timer = setTimeout(() => syncPendingSales(), 2000); // 2s após ficar online
-      return () => clearTimeout(timer);
-    }
-  }, [isOnline, directSales, syncPendingSales]);
+    if (!isOnline) return;
+    const pending = directSales.filter(s => s.statusSync === 'pending');
+    if (pending.length === 0) return;
+    const timer = setTimeout(() => syncPendingSales(), 1500);
+    return () => clearTimeout(timer);
+  }, [isOnline, directSales.filter(s => s.statusSync === 'pending').length, syncPendingSales]);
   
   // Filtering
   const filteredProducts = useMemo(() => {

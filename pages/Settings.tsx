@@ -54,6 +54,7 @@ const Settings: React.FC = () => {
   } = useProducts();
 
   const [isDiagnosing, setIsDiagnosing] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   // Account State
   const [isEditingAccount, setIsEditingAccount] = useState(false);
@@ -100,9 +101,8 @@ const Settings: React.FC = () => {
   };
 
   const handleUpdatePin = async () => {
-    // Verificar se o PIN actual está correcto
     if (user?.pin && pinForm.current !== user.pin) {
-      setPinStatus({ type: 'error', message: 'PIN actual incorrecta' });
+      setPinStatus({ type: 'error', message: 'PIN actual incorrecto' });
       return;
     }
     if (pinForm.new !== pinForm.confirm) {
@@ -131,17 +131,13 @@ const Settings: React.FC = () => {
   };
 
   const handleClearCache = () => {
-    if (window.confirm('Tem certeza que deseja limpar todos os dados locais? A aplicação será reiniciada.')) {
-      localStorage.clear();
-      // indexedDB.deleteDatabase(...) if needed
-      window.location.reload();
-    }
+    setShowClearConfirm(true);
   };
 
   const handleSync = () => {
     syncData()
-      .then(() => alert('Sincronização concluída com sucesso.'))
-      .catch(() => alert('Erro na sincronização. Verifique a ligação.'));
+      .then(() => alert('Sincronização concluída.'))
+      .catch(() => alert('Erro na sincronização.'));
   };
 
   return (
@@ -316,17 +312,35 @@ const Settings: React.FC = () => {
               <p className="text-[10px] text-slate-400 italic">Bloqueia a sessão após inatividade prolongada.</p>
             </div>
 
-            <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800">
-              <div className="flex items-center gap-2">
-                <Fingerprint size={16} className="text-slate-400" />
-                <span className="text-sm font-bold text-slate-700 dark:text-slate-200">Autenticação Biométrica</span>
+            <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-800">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-bold text-slate-800 dark:text-white text-sm">Autenticação Biométrica</p>
+                  <p className="text-xs text-slate-500 mt-0.5">Impressão digital / Face ID</p>
+                </div>
+                <button
+                  onClick={async () => {
+                    if (!window.PublicKeyCredential) {
+                      alert('Biometria não suportada neste dispositivo.');
+                      return;
+                    }
+                    // Registar biometria — associa PIN actual ao dispositivo
+                    localStorage.setItem('mg_biometric_user', JSON.stringify({
+                      email: user?.email,
+                      pin: user?.pin
+                    }));
+                    setBiometricEnabled(true);
+                    alert('Biometria activada. Na próxima vez que entrar, use a impressão digital ou Face ID.');
+                  }}
+                  className={`px-4 py-2 rounded-xl font-bold text-sm transition-all ${
+                    biometricEnabled
+                      ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                      : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300 hover:bg-slate-200'
+                  }`}
+                >
+                  {biometricEnabled ? '✓ Activa' : 'Activar'}
+                </button>
               </div>
-              <button 
-                onClick={() => setBiometricEnabled(!biometricEnabled)}
-                className={`w-10 h-5 rounded-full transition-all relative ${biometricEnabled ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-700'}`}
-              >
-                <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${biometricEnabled ? 'left-6' : 'left-1'}`}></div>
-              </button>
             </div>
           </div>
         </SoftCard>
@@ -667,6 +681,22 @@ const Settings: React.FC = () => {
           </div>
         )}
       </AnimatePresence>
+
+      {showClearConfirm && (
+        <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-800 rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl">
+            <p className="font-black text-xl text-[#003366] dark:text-white mb-4">Limpar dados locais?</p>
+            <p className="text-slate-500 text-sm mb-6">A aplicação será reiniciada. Esta acção é irreversível.</p>
+            <div className="flex gap-4">
+              <button onClick={() => setShowClearConfirm(false)}
+                className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 text-slate-600 font-bold rounded-2xl">Cancelar</button>
+              <button onClick={() => { localStorage.clear(); window.location.reload(); }}
+                className="flex-1 py-3 bg-red-500 text-white font-bold rounded-2xl">Limpar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Footer />
     </div>
   );

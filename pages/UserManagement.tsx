@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Shield, User as UserIcon, CheckCircle, XCircle, AlertTriangle, MoreVertical, Ban, Eye, EyeOff, DollarSign, Lock, ShoppingCart, Package, Wallet, ShoppingBag, Save, RefreshCw } from 'lucide-react';
+import { Search, Filter, Shield, User as UserIcon, CheckCircle, XCircle, AlertTriangle, MoreVertical, Ban, Eye, EyeOff, DollarSign, Lock, ShoppingCart, Package, Wallet, ShoppingBag, Save, RefreshCw, Trash2 } from 'lucide-react';
 import SoftCard from '../components/SoftCard';
 import { User, UserRole, UserPermissions } from '../types';
 import { useAuth } from '../contexts/AuthContext';
@@ -46,6 +46,7 @@ const UserManagement: React.FC = () => {
   // Track modified users to show save button
   const [modifiedUsers, setModifiedUsers] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<{ show: boolean, message: string }>({ show: false, message: '' });
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
   const showToast = (message: string) => {
     setToast({ show: true, message });
@@ -86,6 +87,27 @@ const UserManagement: React.FC = () => {
       newValue: isBanned ? 'BANNED' : 'ACTIVE'
     }, currentUser);
     showToast(isBanned ? 'Usuário banido!' : 'Banimento removido!');
+  };
+
+  const handleDeleteUser = (id: string) => {
+    const targetUser = users.find(u => u.id === id);
+    if (!targetUser) return;
+    // Proteger proprietário e admin padrão
+    if (targetUser.id === 'usr_proprietario_marguel_001' || targetUser.id === 'usr_admin_geral_001') {
+      showToast('Não é possível eliminar as contas de sistema predefinidas.');
+      return;
+    }
+    triggerHaptic('warning');
+    const updated = users.filter(u => u.id !== id);
+    setUsers(updated);
+    saveUsers(updated);
+    addLog({
+      action: 'ELIMINAR_UTILIZADOR', module: 'UTILIZADORES',
+      description: `Utilizador ${targetUser.name} eliminado por ${currentUser?.name}`,
+      entityId: id, previousValue: targetUser, newValue: null
+    }, currentUser);
+    showToast(`Utilizador ${targetUser.name} eliminado.`);
+    setDeleteConfirm(null);
   };
 
   const handleRoleChange = (id: string, newRole: UserRole) => {
@@ -413,6 +435,15 @@ const UserManagement: React.FC = () => {
                   >
                     {u.isBanned ? 'Remover Ban' : 'Banir Usuário'}
                   </button>
+
+                  <button
+                    onClick={() => setDeleteConfirm(u.id)}
+                    disabled={isMe}
+                    className="p-2 rounded-xl bg-red-50 dark:bg-red-900/20 text-red-500 hover:bg-red-100 transition-colors disabled:opacity-50"
+                    title="Eliminar utilizador"
+                  >
+                    <Trash2 size={16} />
+                  </button>
                 </div>
               </div>
             </SoftCard>
@@ -692,6 +723,28 @@ const UserManagement: React.FC = () => {
                 >
                   <Save size={18} /> Salvar Alterações
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* DELETE CONFIRMATION MODAL */}
+        {deleteConfirm && (
+          <div className="fixed inset-0 bg-black/60 z-[200] flex items-center justify-center p-4 backdrop-blur-sm">
+            <div className="bg-white dark:bg-slate-800 rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl">
+              <div className="w-14 h-14 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Trash2 size={24} className="text-red-500" />
+              </div>
+              <p className="font-black text-xl text-[#003366] dark:text-white mb-2">Eliminar Utilizador?</p>
+              <p className="text-slate-500 text-sm mb-2">
+                <strong>{users.find(u => u.id === deleteConfirm)?.name}</strong>
+              </p>
+              <p className="text-slate-400 text-xs mb-6">Esta acção é irreversível. Todos os dados do utilizador serão apagados.</p>
+              <div className="flex gap-4">
+                <button onClick={() => setDeleteConfirm(null)}
+                  className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold rounded-2xl">Cancelar</button>
+                <button onClick={() => handleDeleteUser(deleteConfirm)}
+                  className="flex-1 py-3 bg-red-500 text-white font-bold rounded-2xl shadow-lg">Eliminar</button>
               </div>
             </div>
           </div>
