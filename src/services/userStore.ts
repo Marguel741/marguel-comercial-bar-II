@@ -1,12 +1,16 @@
-// src/services/userStore.ts
+// ============================================================
+// src/services/userStore.ts — VERSÃO FINAL COMPLETA
+// IDs FIXOS — nunca mudam entre deploys (biometria funciona)
+// Colar directamente no GitHub: seleccionar tudo e substituir
+// ============================================================
 import { User, UserRole } from '../../types';
 import { DEFAULT_PERMISSIONS } from '../utils/permissions';
 
 const STORAGE_KEY = 'mg_users';
 
-// IDs fixos — nunca mudam entre sessões
-const OWNER_ID = 'usr_proprietario_marguel_001';
-const ADMIN_ID = 'usr_admin_geral_001';
+// IDs permanentes — NÃO alterar nunca (biometria depende destes IDs)
+export const OWNER_ID = 'usr_marguel_proprietario_master';
+export const ADMIN_ID = 'usr_marguel_admin_geral';
 
 const INITIAL_USERS: User[] = [
   {
@@ -19,12 +23,12 @@ const INITIAL_USERS: User[] = [
     isApproved: true,
     isBanned: false,
     permissions: DEFAULT_PERMISSIONS[UserRole.PROPRIETARIO],
-    createdAt: new Date().toLocaleDateString('pt-AO'),
+    createdAt: '01/01/2025',
     lastLogin: '',
     phoneNumber: '',
     secondaryPhoneNumber: '',
     associatedEmail: 'dono@marguel.com',
-    status: 'Ativo'
+    status: 'Ativo',
   },
   {
     id: ADMIN_ID,
@@ -36,13 +40,13 @@ const INITIAL_USERS: User[] = [
     isApproved: true,
     isBanned: false,
     permissions: DEFAULT_PERMISSIONS[UserRole.ADMIN_GERAL],
-    createdAt: new Date().toLocaleDateString('pt-AO'),
+    createdAt: '01/01/2025',
     lastLogin: '',
     phoneNumber: '',
     secondaryPhoneNumber: '',
     associatedEmail: 'admin@marguel.com',
-    status: 'Ativo'
-  }
+    status: 'Ativo',
+  },
 ];
 
 export const getUsers = (): User[] => {
@@ -50,10 +54,14 @@ export const getUsers = (): User[] => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
     }
-  } catch {}
-  // Primeira vez — inicializa com utilizadores padrão
+  } catch {
+    // localStorage corrompido — reiniciar
+  }
+  // Primeira vez ou dados corrompidos — usar utilizadores iniciais
   localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_USERS));
   return INITIAL_USERS;
 };
