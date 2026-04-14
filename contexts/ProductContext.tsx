@@ -1110,7 +1110,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
           setProducts(prevProducts => { const updated = prevProducts.map(p => p.id === id ? { ...p, ...otherUpdates } : p); localStorage.setItem('mg_products', JSON.stringify(updated)); return updated; });
         }
       } else {
-        setProducts(prevProducts => { const updated = prevProducts.map(p => p.id === id ? { ...p, ...updates } : p); localStorage.setItem('mg_products', JSON.stringify(updated)); return updated; });;
+        setProducts(prevProducts => { const updated = prevProducts.map(p => p.id === id ? { ...p, ...updates } : p); localStorage.setItem('mg_products', JSON.stringify(updated)); return updated; });
       }
       
       addAuditLog({
