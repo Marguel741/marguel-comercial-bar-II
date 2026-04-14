@@ -1107,10 +1107,10 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
         // Não precisamos atualizar o stock aqui pois o handleStockMovement já o fará via setProducts
         const { stock, ...otherUpdates } = updates;
         if (Object.keys(otherUpdates).length > 0) {
-          setProducts(prevProducts => prevProducts.map(p => p.id === id ? { ...p, ...otherUpdates } : p));
+          setProducts(prevProducts => { const updated = prevProducts.map(p => p.id === id ? { ...p, ...otherUpdates } : p); localStorage.setItem('mg_products', JSON.stringify(updated)); return updated; });
         }
       } else {
-        setProducts(prevProducts => prevProducts.map(p => p.id === id ? { ...p, ...updates } : p));
+        setProducts(prevProducts => { const updated = prevProducts.map(p => p.id === id ? { ...p, ...otherUpdates } : p); localStorage.setItem('mg_products', JSON.stringify(updated)); return updated; });;
       }
       
       addAuditLog({
