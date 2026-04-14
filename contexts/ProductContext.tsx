@@ -2096,7 +2096,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   }, [isDayLocked, salesReports, addAuditLog]);
 
   const value = useMemo(() => ({
-    products, categories, purchases, currentBalance, savingsBalance, cashBalance, tpaBalance, cards, transactions, salesReports, 
+    products: products.filter(p => !p.isArchived), categories, purchases, currentBalance, savingsBalance, cashBalance, tpaBalance, cards, transactions, salesReports, 
     expenses, expenseCategories, inventoryHistory, priceHistory, lockedDays, systemDate,
     getSystemDate, setSystemDate, unlockDay, lockDay, isDayLocked, checkDayLock,
     addExpense, deleteExpense, updateExpense,
