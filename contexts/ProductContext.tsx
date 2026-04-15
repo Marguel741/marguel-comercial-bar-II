@@ -1,4 +1,6 @@
 
+import { db } from '../src/firebase';
+import { doc, setDoc, getDoc, collection, getDocs, onSnapshot } from 'firebase/firestore';
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from 'react';
 import { Product, PurchaseRecord, Transaction, SalesReport, Expense, InventoryLog, PriceHistoryLog, Equipment, Card, StockOperationLog, AuditLog, ClosureStatus, ExpenseCategory, UserPermissions, UserRole } from '../types';
 import { useAuth } from './AuthContext';
@@ -297,7 +299,26 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       return Array.isArray(parsed) ? parsed : INITIAL_PRODUCTS;
     } catch { return INITIAL_PRODUCTS; }
   });
-
+// FIREBASE: Carregar produtos da nuvem ao iniciar
+useEffect(() => {
+  const unsubscribe = onSnapshot(
+    collection(db, 'products'),
+    (snapshot) => {
+      if (!snapshot.empty) {
+        const firestoreProducts = snapshot.docs.map(doc => ({
+          ...doc.data() as Product,
+          id: doc.id
+        }));
+        setProducts(firestoreProducts);
+        localStorage.setItem('mg_products', JSON.stringify(firestoreProducts));
+      }
+    },
+    (error) => {
+      console.error('Erro Firebase:', error);
+    }
+  );
+  return () => unsubscribe();
+}, []);
   const [categories, setCategories] = useState<string[]>(INITIAL_CATEGORIES);
 
   const [expenseCategories, setExpenseCategories] = useState<ExpenseCategory[]>(() => {
@@ -1092,7 +1113,14 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   };
 
-  const updateProduct = (id: string, updates: Partial<Product>) => {
+ const saveProductToFirebase = async (product: Product) => {
+  try {
+    await setDoc(doc(db, 'products', product.id), product);
+  } catch (error) {
+    console.error('Erro ao guardar no Firebase:', error);
+        }
+   
+   const updateProduct = (id: string, updates: Partial<Product>) => {
     try {
       if (!checkPermission('inventory_product_edit')) return;
       validateAction('UPDATE_PRODUCT', { price: updates.sellPrice });
@@ -1113,7 +1141,10 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
         setProducts(prevProducts => { const updated = prevProducts.map(p => p.id === id ? { ...p, ...updates } : p); localStorage.setItem('mg_products', JSON.stringify(updated)); return updated; });
       }
       
-      addAuditLog({
+     // FIREBASE: Guardar alteração na nuvem
+const updatedProduct = { ...product, ...updates };
+saveProductToFirebase(updatedProduct);
+     addAuditLog({
         action: 'EDITAR_PRODUTO',
         module: 'INVENTARIO',
         entityId: id,
