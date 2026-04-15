@@ -359,36 +359,22 @@ if (success) {
             </div>
 
             <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-800">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-bold text-slate-800 dark:text-white text-sm">Autenticação Biométrica</p>
-                  <p className="text-xs text-slate-500 mt-0.5">Impressão digital / Face ID</p>
-                </div>
-                <button
-                  onClick={async () => {
-                    if (!window.PublicKeyCredential) {
-                      alert('Biometria não suportada neste dispositivo.');
-                      return;
-                    }
-                    // Registar biometria — associa PIN actual ao dispositivo
-                    localStorage.setItem('mg_biometric_user', JSON.stringify({
-                      email: user?.email,
-                      pin: user?.pin
-                    }));
-                    setBiometricEnabled(true);
-                    alert('Biometria activada. Na próxima vez que entrar, use a impressão digital ou Face ID.');
-                  }}
-                  className={`px-4 py-2 rounded-xl font-bold text-sm transition-all ${
-                    biometricEnabled
-                      ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                      : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300 hover:bg-slate-200'
-                  }`}
-                >
-                  {biometricEnabled ? '✓ Activa' : 'Activar'}
-                </button>
-              </div>
-            </div>
-          </div>
+  <div className="flex items-center justify-between">
+    <div>
+      <p className="font-bold text-slate-800 dark:text-white text-sm flex items-center gap-2">
+        <Fingerprint size={16} className="text-[#E3007E]" />
+        Autenticação Biométrica
+      </p>
+      <p className="text-xs text-slate-400 mt-0.5">
+        {biometricEnabled ? 'Activa — podes entrar com impressão digital ou Face ID' : 'Inactiva — activa para entrar sem digitar o PIN'}
+      </p>
+    </div>
+    <button
+      onClick={biometricEnabled ? () => {
+        localStorage.removeItem('mg_biometric_user');
+        setBiometricEnabled(false);
+        alert('Biometria desactivada.');
+      } : handleActivateBiometrics}
         </SoftCard>
 
         {/* 3. APARÊNCIA */}
