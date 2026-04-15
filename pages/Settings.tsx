@@ -115,30 +115,76 @@ const Settings: React.FC = () => {
     }
     
     const success = await updateUser({ pin: pinForm.new });
-    if (success) {
-      setPinStatus({ type: 'success', message: 'PIN alterado com sucesso' });
-      setPinForm({ current: '', new: '', confirm: '' });
-      
-      // Guardar associação biométrica actualizada
-      const savedBio = localStorage.getItem('mg_biometric_user');
-      if (savedBio) {
-        const bio = JSON.parse(savedBio);
-        localStorage.setItem('mg_biometric_user', JSON.stringify({ ...bio, pin: pinForm.new }));
-      }
-      
-      setTimeout(() => setPinStatus(null), 3000);
-    }
+if (success) {
+  setPinStatus({ type: 'success', message: 'PIN alterado com sucesso' });
+  setPinForm({ current: '', new: '', confirm: '' });
+  setTimeout(() => setPinStatus(null), 3000);
+}
   };
 
   const handleClearCache = () => {
     setShowClearConfirm(true);
   };
 
-  const handleSync = () => {
-    syncData()
-      .then(() => alert('Sincronização concluída.'))
-      .catch(() => alert('Erro na sincronização.'));
+  const handleActivateBiometrics = async () => {
+    if (!window.PublicKeyCredential || !user) {
+      alert('Biometria não suportada neste dispositivo.');
+      return;
+    }
+    if (!window.isSecureContext) {
+      alert('A biometria requer uma ligação segura (HTTPS). O site já está em HTTPS — se vires este erro, tenta limpar a cache do browser.');
+      return;
+    }
+    try {
+      const challenge = crypto.getRandomValues(new Uint8Array(32));
+      const credential = (await navigator.credentials.create({
+        publicKey: {
+          challenge,
+          rp: { name: 'Marguel SGI', id: window.location.hostname },
+          user: {
+            id: new TextEncoder().encode(user.id),
+            name: user.email,
+            displayName: user.name,
+          },
+          pubKeyCredParams: [
+            { alg: -7, type: 'public-key' },
+            { alg: -257, type: 'public-key' },
+          ],
+          authenticatorSelection: {
+            authenticatorAttachment: 'platform',
+            userVerification: 'required',
+          },
+          timeout: 60000,
+        },
+      })) as PublicKeyCredential;
+
+      if (credential) {
+        const rawId = Array.from(new Uint8Array(credential.rawId));
+        localStorage.setItem('mg_biometric_user', JSON.stringify({
+          email: user.email,
+          pin: user.pin,
+          userId: user.id,
+          credId: rawId,
+        }));
+        setBiometricEnabled(true);
+        alert('✅ Biometria configurada com sucesso! Na próxima vez que entrar, pode usar a impressão digital ou Face ID.');
+      }
+    } catch (err: any) {
+      if (err?.name === 'NotAllowedError') {
+        alert('❌ Operação cancelada ou bloqueada. Tenta novamente.');
+      } else if (err?.name === 'NotSupportedError') {
+        alert('❌ Este dispositivo não suporta biometria de plataforma.');
+      } else {
+        alert('❌ Erro ao configurar biometria. Certifica-te que tens um bloqueio de ecrã activo.');
+      }
+    }
   };
+  
+  const handleSync = () => {
+  syncData()
+    .then(() => alert('Sincronização concluída com sucesso.'))
+    .catch(() => alert('Erro na sincronização. Verifique a ligação à internet e tente novamente.'));
+};
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-8 pb-20">
