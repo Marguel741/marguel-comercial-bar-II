@@ -1118,7 +1118,9 @@ useEffect(() => {
     await setDoc(doc(db, 'products', product.id), product);
   } catch (error) {
     console.error('Erro ao guardar no Firebase:', error);
-        };
+  }
+};
+
    
    const updateProduct = (id: string, updates: Partial<Product>) => {
     try {
