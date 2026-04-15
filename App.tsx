@@ -1,7 +1,3 @@
-// ============================================================
-// App.tsx — VERSÃO FINAL COMPLETA
-// Colar directamente no GitHub: seleccionar tudo e substituir
-// ============================================================
 import React, { useState } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import SplashScreen from './components/SplashScreen';
@@ -33,6 +29,104 @@ import { LayoutProvider } from './contexts/LayoutContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { SettingsProvider } from './contexts/SettingsContext';
 
+// ── ERROR BOUNDARY ────────────────────────────────────────────
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { error: Error | null; errorInfo: React.ErrorInfo | null }
+> {
+  state = { error: null, errorInfo: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    this.setState({ errorInfo });
+    console.error('ErrorBoundary capturou:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{
+          padding: 24,
+          background: '#fff',
+          minHeight: '100vh',
+          fontFamily: 'monospace'
+        }}>
+          <div style={{
+            background: '#003366',
+            color: '#E3007E',
+            padding: '12px 20px',
+            borderRadius: 12,
+            marginBottom: 20,
+            fontSize: 22,
+            fontWeight: 900,
+            letterSpacing: -1
+          }}>
+            🔴 ERRO NO SISTEMA — MG
+          </div>
+          <div style={{
+            background: '#fff0f0',
+            border: '2px solid #ff4444',
+            borderRadius: 12,
+            padding: 16,
+            marginBottom: 16
+          }}>
+            <strong style={{ color: '#cc0000' }}>Mensagem:</strong>
+            <pre style={{ margin: '8px 0 0', whiteSpace: 'pre-wrap', color: '#cc0000', fontSize: 14 }}>
+              {(this.state.error as Error).message}
+            </pre>
+          </div>
+          <div style={{
+            background: '#f5f5f5',
+            border: '1px solid #ddd',
+            borderRadius: 12,
+            padding: 16,
+            marginBottom: 16
+          }}>
+            <strong>Stack:</strong>
+            <pre style={{ margin: '8px 0 0', whiteSpace: 'pre-wrap', fontSize: 11, color: '#333' }}>
+              {(this.state.error as Error).stack}
+            </pre>
+          </div>
+          {this.state.errorInfo && (
+            <div style={{
+              background: '#f5f5f5',
+              border: '1px solid #ddd',
+              borderRadius: 12,
+              padding: 16,
+              marginBottom: 24
+            }}>
+              <strong>Componente:</strong>
+              <pre style={{ margin: '8px 0 0', whiteSpace: 'pre-wrap', fontSize: 11, color: '#333' }}>
+                {(this.state.errorInfo as React.ErrorInfo).componentStack}
+              </pre>
+            </div>
+          )}
+          <button
+            onClick={() => window.location.reload()}
+            style={{
+              background: '#003366',
+              color: 'white',
+              border: 'none',
+              borderRadius: 12,
+              padding: '12px 24px',
+              fontWeight: 900,
+              fontSize: 14,
+              cursor: 'pointer'
+            }}
+          >
+            🔄 Recarregar App
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+// ─────────────────────────────────────────────────────────────
+
 const ProtectedRoute: React.FC<{
   children: React.ReactNode;
   permission: keyof UserPermissions;
@@ -47,12 +141,10 @@ const AppContent: React.FC = () => {
   const [showSplash, setShowSplash] = useState(true);
   const { user, isLoading } = useAuth();
 
-  // 1. Splash de entrada
   if (showSplash) {
     return <SplashScreen onComplete={() => setShowSplash(false)} />;
   }
 
-  // 2. A carregar sessão — spinner animado com logo MG
   if (isLoading) {
     return (
       <div className="h-screen w-screen flex items-center justify-center bg-[#001A33]">
@@ -72,7 +164,6 @@ const AppContent: React.FC = () => {
     );
   }
 
-  // 3. Sem utilizador → fluxo de autenticação
   if (!user) {
     return (
       <Router>
@@ -87,7 +178,6 @@ const AppContent: React.FC = () => {
     );
   }
 
-  // 4. Utilizador banido
   if (user.isBanned) {
     return (
       <Router>
@@ -98,7 +188,6 @@ const AppContent: React.FC = () => {
     );
   }
 
-  // 5. Utilizador aguarda aprovação
   if (!user.isApproved) {
     return (
       <Router>
@@ -109,7 +198,6 @@ const AppContent: React.FC = () => {
     );
   }
 
-  // 6. Utilizador autenticado e aprovado → app completa
   return (
     <SettingsProvider>
       <ProductProvider>
@@ -118,102 +206,23 @@ const AppContent: React.FC = () => {
             <Router>
               <div className="flex h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-300 overflow-hidden">
                 <Sidebar />
-                <div
-                  id="main-content"
-                  className="flex-1 overflow-y-auto custom-scrollbar relative"
-                >
+                <div id="main-content" className="flex-1 overflow-y-auto custom-scrollbar relative">
                   <Routes>
-                    {/* Login redireciona para início quando já autenticado */}
                     <Route path="/login" element={<Navigate to="/" replace />} />
                     <Route path="/register" element={<Navigate to="/" replace />} />
-
-                    {/* Rotas principais */}
                     <Route path="/" element={<Dashboard />} />
                     <Route path="/access-denied" element={<AccessDenied />} />
-
-                    <Route
-                      path="/direct-service"
-                      element={
-                        <ProtectedRoute permission="direct_service_view">
-                          <DirectService />
-                        </ProtectedRoute>
-                      }
-                    />
-                    <Route
-                      path="/calendar"
-                      element={
-                        <ProtectedRoute permission="calendar_view">
-                          <GlobalCalendar />
-                        </ProtectedRoute>
-                      }
-                    />
-                    <Route
-                      path="/sales"
-                      element={
-                        <ProtectedRoute permission="sales_view">
-                          <Sales />
-                        </ProtectedRoute>
-                      }
-                    />
-                    <Route
-                      path="/inventory"
-                      element={
-                        <ProtectedRoute permission="inventory_view">
-                          <Inventory />
-                        </ProtectedRoute>
-                      }
-                    />
-                    <Route
-                      path="/prices"
-                      element={
-                        <ProtectedRoute permission="prices_view">
-                          <Prices />
-                        </ProtectedRoute>
-                      }
-                    />
-                    <Route
-                      path="/expenses"
-                      element={
-                        <ProtectedRoute permission="expenses_view">
-                          <Expenses />
-                        </ProtectedRoute>
-                      }
-                    />
-                    <Route
-                      path="/account"
-                      element={
-                        <ProtectedRoute permission="finance_view">
-                          <AccountStatus />
-                        </ProtectedRoute>
-                      }
-                    />
-                    <Route
-                      path="/users"
-                      element={
-                        <ProtectedRoute permission="admin_users_view">
-                          <UserManagement />
-                        </ProtectedRoute>
-                      }
-                    />
-                    <Route
-                      path="/audit"
-                      element={
-                        <ProtectedRoute permission="audit_view">
-                          <Audit />
-                        </ProtectedRoute>
-                      }
-                    />
-                    <Route
-                      path="/sandbox"
-                      element={
-                        <ProtectedRoute permission="admin_global_admin">
-                          <Sandbox />
-                        </ProtectedRoute>
-                      }
-                    />
+                    <Route path="/direct-service" element={<ProtectedRoute permission="direct_service_view"><DirectService /></ProtectedRoute>} />
+                    <Route path="/calendar" element={<ProtectedRoute permission="calendar_view"><GlobalCalendar /></ProtectedRoute>} />
+                    <Route path="/sales" element={<ProtectedRoute permission="sales_view"><Sales /></ProtectedRoute>} />
+                    <Route path="/inventory" element={<ProtectedRoute permission="inventory_view"><Inventory /></ProtectedRoute>} />
+                    <Route path="/prices" element={<ProtectedRoute permission="prices_view"><Prices /></ProtectedRoute>} />
+                    <Route path="/expenses" element={<ProtectedRoute permission="expenses_view"><Expenses /></ProtectedRoute>} />
+                    <Route path="/account" element={<ProtectedRoute permission="finance_view"><AccountStatus /></ProtectedRoute>} />
+                    <Route path="/users" element={<ProtectedRoute permission="admin_users_view"><UserManagement /></ProtectedRoute>} />
+                    <Route path="/audit" element={<ProtectedRoute permission="audit_view"><Audit /></ProtectedRoute>} />
+                    <Route path="/sandbox" element={<ProtectedRoute permission="admin_global_admin"><Sandbox /></ProtectedRoute>} />
                     <Route path="/settings" element={<Settings />} />
-
-                    {/* Catch-all */}
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>
                 </div>
@@ -227,13 +236,15 @@ const AppContent: React.FC = () => {
 };
 
 const App: React.FC = () => (
-  <AuditProvider>
-    <AuthProvider>
-      <ThemeProvider>
-        <AppContent />
-      </ThemeProvider>
-    </AuthProvider>
-  </AuditProvider>
+  <ErrorBoundary>
+    <AuditProvider>
+      <AuthProvider>
+        <ThemeProvider>
+          <AppContent />
+        </ThemeProvider>
+      </AuthProvider>
+    </AuditProvider>
+  </ErrorBoundary>
 );
 
 export default App;
