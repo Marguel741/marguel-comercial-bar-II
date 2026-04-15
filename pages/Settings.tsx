@@ -369,7 +369,7 @@ if (success) {
         {biometricEnabled ? 'Activa — podes entrar com impressão digital ou Face ID' : 'Inactiva — activa para entrar sem digitar o PIN'}
       </p>
     </div>
-    <button
+<button
       onClick={biometricEnabled ? () => {
         localStorage.removeItem('mg_biometric_user');
         setBiometricEnabled(false);
