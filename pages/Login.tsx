@@ -62,53 +62,7 @@ const Login: React.FC = () => {
     }
   };
 
-  const handleBiometric = async () => {
-    const saved = localStorage.getItem('mg_biometric_user');
-    if (!saved) {
-      setError(
-        'Nenhuma conta associada à biometria. Active a biometria nas Definições primeiro.'
-      );
-      return;
-    }
-
-    try {
-      const { credId, pin: savedPin } = JSON.parse(saved);
-
-      // Usar o credId guardado para que o Android encontre a chave certa
-      const allowCredentials = credId
-        ? [{ id: Uint8Array.from(credId), type: 'public-key' as const }]
-        : [];
-
-      const credential = await navigator.credentials.get({
-        publicKey: {
-          challenge: crypto.getRandomValues(new Uint8Array(32)),
-          rpId: window.location.hostname,
-          allowCredentials,
-          userVerification: 'required',
-          timeout: 60000,
-        },
-      } as CredentialRequestOptions);
-
-      if (credential) {
-        const ok = await loginByPin(savedPin);
-        if (ok) {
-          navigate('/');
-        } else {
-          setError(
-            'Autenticação biométrica bem-sucedida mas conta não encontrada. Tente com email e senha.'
-          );
-        }
-      }
-    } catch (err: any) {
-      if (err?.name === 'NotAllowedError') {
-        setError('Biometria cancelada.');
-      } else {
-        setError(
-          'Erro na autenticação biométrica. Tente com email e senha.'
-        );
-      }
-    }
-  };
+  const handleBiometric = async () => { const saved = localStorage.getItem('mg_biometric_user'); if (!saved) { setError('Biometria não configurada. Vai às Definições → Segurança → Activar Biometria.'); return; } let bioData: { email: string; pin: string; userId: string; credId: number[] }; try { bioData = JSON.parse(saved); } catch { setError('Dados biométricos corrompidos. Reactiva a biometria nas Definições.'); localStorage.removeItem('mg_biometric_user'); return; } if (!bioData.credId || !Array.isArray(bioData.credId) || bioData.credId.length === 0) { setError('Chave biométrica inválida. Reactiva a biometria nas Definições.'); localStorage.removeItem('mg_biometric_user'); return; } try { // Reconstruir o Uint8Array a partir do array de números guardado const credentialId = new Uint8Array(bioData.credId); const credential = await navigator.credentials.get({ publicKey: { challenge: crypto.getRandomValues(new Uint8Array(32)), rpId: window.location.hostname, allowCredentials: [ { id: credentialId, type: 'public-key', }, ], userVerification: 'required', timeout: 60000, }, } as CredentialRequestOptions); if (credential) { const ok = await loginByPin(bioData.pin); if (ok) { navigate('/'); } else { setError('Biometria válida mas conta não encontrada ou PIN alterado. Usa email e senha e reactiva a biometria nas Definições.'); } } } catch (err: any) { console.error('Erro biometria login:', err); if (err?.name === 'NotAllowedError') { setError('Biometria cancelada.'); } else if (err?.name === 'InvalidStateError') { setError('Chave biométrica expirada. Reactiva a biometria nas Definições.'); localStorage.removeItem('mg_biometric_user'); } else { setError('Erro na biometria. Usa email e senha.'); } } };
 
   const handleForgotCredentials = () => {
     alert(
