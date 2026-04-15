@@ -117,6 +117,9 @@ const Login: React.FC = () => {
   }
 };
 
+  const handleForgotCredentials = () => {
+    alert('Para recuperação de credenciais, contacte o Administrador do sistema.');
+  };
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-900">
       {/* Header com gradiente azul + logo MG rosa (igual ao Sidebar) */}
