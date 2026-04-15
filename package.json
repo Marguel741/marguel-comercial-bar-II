@@ -11,6 +11,7 @@
     "start": "npx serve -s dist -l ${PORT:-8080}"
   },
   "dependencies": {
+    "firebase": "^11.0.0",
     "@google/genai": "^1.46.0",
     "lucide-react": "^0.563.0",
     "motion": "^12.36.0",
