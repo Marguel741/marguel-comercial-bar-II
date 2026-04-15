@@ -1,3 +1,4 @@
+// Marguel SGI - serviço de sincronização
 import { DirectSale } from './db';
 
 export let serverTimeOffset = 0;
