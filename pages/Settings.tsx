@@ -385,8 +385,8 @@ if (success) {
     </button>
   </div>
 </div>
+          </div>
         </SoftCard>
-
         {/* 3. APARÊNCIA */}
         <SoftCard>
           <div className="flex items-center gap-3 mb-6">
