@@ -2244,6 +2244,13 @@ saveProductToFirebase(updatedProduct);
     notifications, addNotification, markNotificationRead, clearNotifications
   ]);
 
+  // FIREBASE: Sincronizar automaticamente ao iniciar
+useEffect(() => {
+  if (isOnline) {
+    syncData();
+  }
+}, []); // eslint-disable-line react-hooks/exhaustive-deps
+  
   useEffect(() => {
     const syncInterval = setInterval(() => {
       if (navigator.onLine && !isSyncing) {
