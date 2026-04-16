@@ -32,7 +32,8 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   });
 
   const [biometricEnabled, setBiometricEnabledState] = useState<boolean>(() => {
-    return localStorage.getItem('biometric_enabled') === 'true';
+    return localStorage.getItem('biometric_enabled') === 'true' || 
+       !!localStorage.getItem('mg_biometric_user');
   });
 
   const [uiEffectsEnabled, setUiEffectsEnabledState] = useState<boolean>(() => {
