@@ -91,10 +91,11 @@ const UserManagement: React.FC = () => {
   const handleDeleteUser = (id: string) => {
     const targetUser = users.find(u => u.id === id);
     if (!targetUser) return;
-    // CORRECTO — IDs actuais do userStore.ts:
-if (targetUser.id === 'usr_marguel_proprietario_master' || 
-    targetUser.id === 'usr_marguel_admin_geral')
-      return;
+
+    if (targetUser.id === 'usr_marguel_proprietario_master' || 
+    targetUser.id === 'usr_marguel_admin_geral') {
+  showToast('Não é possível eliminar as contas de sistema predefinidas.');
+  return;
     }
     triggerHaptic('warning');
     const updated = users.filter(u => u.id !== id);
