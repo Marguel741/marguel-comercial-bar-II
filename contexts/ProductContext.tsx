@@ -869,6 +869,43 @@ useEffect(() => {
     stockOperationHistory, currentBalance, savingsBalance, cashBalance, 
     tpaBalance, cards, transactions, salesReports
   ]);
+
+  // FIREBASE: Guardar dados na nuvem sempre que mudam
+  useEffect(() => {
+    if (!isOnline) return;
+    const saveToFirestore = async () => {
+      try {
+        const dataToSave: Record<string, any> = {
+          mg_expenses: expenses,
+          mg_purchases: purchases,
+          mg_transactions: transactions,
+          mg_sales_reports: salesReports,
+          mg_inventory_history: inventoryHistory,
+          mg_stock_operation_history: stockOperationHistory,
+          mg_cards: cards,
+          mg_current_balance: currentBalance,
+          mg_savings_balance: savingsBalance,
+          mg_cash_balance: cashBalance,
+          mg_tpa_balance: tpaBalance,
+        };
+        for (const [chave, valor] of Object.entries(dataToSave)) {
+          await setDoc(doc(db, 'localdata', chave), {
+            chave,
+            dados: JSON.stringify(valor),
+            actualizadoEm: new Date().toISOString()
+          });
+        }
+      } catch (e) {
+        console.warn('Erro ao guardar no Firestore:', e);
+      }
+    };
+    const timer = setTimeout(saveToFirestore, 3000);
+    return () => clearTimeout(timer);
+  }, [
+    expenses, purchases, transactions, salesReports,
+    inventoryHistory, stockOperationHistory, cards,
+    currentBalance, savingsBalance, cashBalance, tpaBalance, isOnline
+  ]);
   
   const lockDay = (dateStr: string, performedBy: string) => {
     const cleanTarget = cleanDate(dateStr);
