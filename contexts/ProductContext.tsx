@@ -1854,19 +1854,50 @@ saveProductToFirebase(updatedProduct);
   };
 
   const syncData = useCallback(async () => {
-    if (!isOnline || isSyncing) return;
-    
-    setIsSyncing(true);
-    try {
-      // Lógica de fetch...
-      await new Promise(resolve => setTimeout(resolve, 1500)); 
-      setHasPendingChanges(false);
-    } catch (error) {
-      console.error("Erro na sincronização:", error);
-    } finally {
-      setIsSyncing(false); // GARANTE que libera o lock mesmo em erro
+  if (!isOnline || isSyncing) return;
+  setIsSyncing(true);
+  try {
+    const keysToSync = [
+      { firestore: 'mg_expenses', setter: setExpenses, isArray: true },
+      { firestore: 'mg_purchases', setter: setPurchases, isArray: true },
+      { firestore: 'mg_transactions', setter: setTransactions, isArray: true },
+      { firestore: 'mg_sales_reports', setter: setSalesReports, isArray: true },
+      { firestore: 'mg_inventory_history', setter: setInventoryHistory, isArray: true },
+      { firestore: 'mg_stock_operation_history', setter: setStockOperationHistory, isArray: true },
+      { firestore: 'mg_cards', setter: setCards, isArray: true },
+      { firestore: 'mg_current_balance', setter: setCurrentBalance, isArray: false },
+      { firestore: 'mg_savings_balance', setter: setSavingsBalance, isArray: false },
+      { firestore: 'mg_cash_balance', setter: setCashBalance, isArray: false },
+      { firestore: 'mg_tpa_balance', setter: setTPABalance, isArray: false },
+    ];
+
+    for (const { firestore, setter, isArray } of keysToSync) {
+      try {
+        const chaveSegura = firestore.replace(/[^a-zA-Z0-9_-]/g, '_');
+        const snap = await getDoc(doc(db, 'localdata', chaveSegura));
+        if (snap.exists()) {
+          const dados = snap.data().dados;
+          const parsed = JSON.parse(dados);
+          if (isArray && Array.isArray(parsed)) {
+            (setter as any)(parsed);
+            localStorage.setItem(firestore, dados);
+          } else if (!isArray) {
+            (setter as any)(parseFloat(dados) || 0);
+            localStorage.setItem(firestore, dados);
+          }
+        }
+      } catch (e) {
+        console.warn('Erro ao sincronizar', firestore, e);
+      }
     }
-  }, [isOnline, isSyncing]);
+    setHasPendingChanges(false);
+    console.log('Sincronização concluída.');
+  } catch (error) {
+    console.error('Erro na sincronização:', error);
+  } finally {
+    setIsSyncing(false);
+  }
+}, [isOnline, isSyncing]);
 
   const addEquipment = (equipment: Omit<Equipment, 'id' | 'prevQty'>) => {
     try {
