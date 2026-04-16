@@ -876,6 +876,7 @@ useEffect(() => {
     const saveToFirestore = async () => {
       try {
         const dataToSave: Record<string, any> = {
+          mg_products: products,
           mg_expenses: expenses,
           mg_purchases: purchases,
           mg_transactions: transactions,
@@ -902,7 +903,7 @@ useEffect(() => {
     const timer = setTimeout(saveToFirestore, 3000);
     return () => clearTimeout(timer);
   }, [
-    expenses, purchases, transactions, salesReports,
+    products, expenses, purchases, transactions, salesReports,
     inventoryHistory, stockOperationHistory, cards,
     currentBalance, savingsBalance, cashBalance, tpaBalance, isOnline
   ]);
@@ -1895,6 +1896,7 @@ saveProductToFirebase(updatedProduct);
   setIsSyncing(true);
   try {
     const keysToSync = [
+      { firestore: 'mg_products', setter: setProducts, isArray: true },
       { firestore: 'mg_expenses', setter: setExpenses, isArray: true },
       { firestore: 'mg_purchases', setter: setPurchases, isArray: true },
       { firestore: 'mg_transactions', setter: setTransactions, isArray: true },
