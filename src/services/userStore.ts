@@ -1,16 +1,15 @@
-// ============================================================
-// src/services/userStore.ts — VERSÃO FINAL COMPLETA
-// IDs FIXOS — nunca mudam entre deploys (biometria funciona)
-// Colar directamente no GitHub: seleccionar tudo e substituir
-// ============================================================
+// src/services/userStore.ts — SEM localStorage, usa Firestore directamente
+import { db } from '../firebase';
+import {
+  collection, doc, getDoc, getDocs, setDoc, deleteDoc, onSnapshot
+} from 'firebase/firestore';
 import { User, UserRole } from '../../types';
 import { DEFAULT_PERMISSIONS } from '../utils/permissions';
 
-const STORAGE_KEY = 'mg_users';
-
-// IDs permanentes — NÃO alterar nunca (biometria depende destes IDs)
 export const OWNER_ID = 'usr_marguel_proprietario_master';
 export const ADMIN_ID = 'usr_marguel_admin_geral';
+
+const USERS_COLLECTION = 'users';
 
 const INITIAL_USERS: User[] = [
   {
@@ -49,24 +48,46 @@ const INITIAL_USERS: User[] = [
   },
 ];
 
-export const getUsers = (): User[] => {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
-      }
+// Inicializar utilizadores no Firestore se não existirem
+export const initUsers = async (): Promise<void> => {
+  for (const user of INITIAL_USERS) {
+    const ref = doc(db, USERS_COLLECTION, user.id);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) {
+      await setDoc(ref, user);
     }
-  } catch {
-    // localStorage corrompido — reiniciar
   }
-  // Primeira vez ou dados corrompidos — usar utilizadores iniciais
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_USERS));
-  return INITIAL_USERS;
 };
 
-export const saveUsers = (users: User[]): void => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(users));
+// Ler todos os utilizadores do Firestore
+export const getUsers = async (): Promise<User[]> => {
+  const snap = await getDocs(collection(db, USERS_COLLECTION));
+  if (snap.empty) {
+    await initUsers();
+    return INITIAL_USERS;
+  }
+  return snap.docs.map(d => d.data() as User);
+};
+
+// Guardar um utilizador no Firestore
+export const saveUser = async (user: User): Promise<void> => {
+  await setDoc(doc(db, USERS_COLLECTION, user.id), user);
   window.dispatchEvent(new Event('mg_users_updated'));
+};
+
+// Guardar lista completa de utilizadores no Firestore
+export const saveUsers = async (users: User[]): Promise<void> => {
+  for (const user of users) {
+    await setDoc(doc(db, USERS_COLLECTION, user.id), user);
+  }
+  window.dispatchEvent(new Event('mg_users_updated'));
+};
+
+// Observar mudanças em tempo real
+export const onUsersSnapshot = (
+  callback: (users: User[]) => void
+): (() => void) => {
+  return onSnapshot(collection(db, USERS_COLLECTION), (snap) => {
+    callback(snap.docs.map(d => d.data() as User));
+  });
 };
