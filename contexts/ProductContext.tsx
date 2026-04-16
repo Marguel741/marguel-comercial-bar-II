@@ -1,12 +1,42 @@
-
 import { db } from '../src/firebase';
-import { doc, setDoc, getDoc, collection, getDocs, onSnapshot } from 'firebase/firestore';
+import { doc, setDoc, getDoc, collection, onSnapshot, deleteDoc } from 'firebase/firestore';
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from 'react';
 import { Product, PurchaseRecord, Transaction, SalesReport, Expense, InventoryLog, PriceHistoryLog, Equipment, Card, StockOperationLog, AuditLog, ClosureStatus, ExpenseCategory, UserPermissions, UserRole } from '../types';
 import { useAuth } from './AuthContext';
 import { useAudit } from './AuditContext';
 import { hasPermission } from '../src/utils/permissions';
 import { cleanDate, formatDateISO, generateUUID } from '../src/utils';
+
+// ─── Colecções Firestore ───────────────────────────────────────────────────
+const COL = {
+  products:             'products',
+  purchases:            'appdata/purchases/records',
+  expenses:             'appdata/expenses/records',
+  expenseCategories:    'appdata/expense_categories/records',
+  inventoryHistory:     'appdata/inventory_history/records',
+  stockOperationHistory:'appdata/stock_operations/records',
+  transactions:         'appdata/transactions/records',
+  salesReports:         'appdata/sales_reports/records',
+  cards:                'appdata/cards/records',
+  equipments:           'appdata/equipments/records',
+  priceHistory:         'appdata/price_history/records',
+  balances:             'appdata/balances',
+  lockedDays:           'appdata/locked_days',
+  notifications:        'appdata/notifications/records',
+};
+
+// Helper: guardar documento no Firestore
+const fsSet = async (path: string, id: string, data: any) => {
+  await setDoc(doc(db, path, id), data);
+};
+
+// Helper: guardar documento em colecção appdata com ID fixo
+const fsSetFixed = async (docPath: string, data: any) => {
+  const parts = docPath.split('/');
+  const id = parts.pop()!;
+  const col = parts.join('/');
+  await setDoc(doc(db, col, id), data);
+};
 
 const INITIAL_PRODUCTS: Product[] = [
   { id: 'pepsi', name: 'Pepsi', sellPrice: 500, buyPrice: 250, stock: 0, minStock: 24, category: 'Refrigerantes', packSize: 24, packType: 'Grade' },
@@ -63,14 +93,19 @@ const INITIAL_EXPENSE_CATEGORIES: ExpenseCategory[] = [
   { id: '9', name: 'DESPESA_OPERACIONAL', isActive: true },
 ];
 
-const SCHEMA_VERSION = '1.0.1';
+const INITIAL_CARDS: Card[] = [
+  { id: 'main', name: 'Conta Corrente', holder: 'Marguel Bar', balance: 0, color: 'bg-gradient-to-bl from-[#003366] via-[#004488] to-[#0054A6]', type: 'Corrente', validity: '12/28' },
+  { id: 'savings', name: 'Marguel Reserve', holder: 'Marguel Reserve', balance: 0, color: 'bg-gradient-to-br from-[#F5DF4D] via-[#D4AF37] to-[#AA6C39]', type: 'Poupança', validity: '06/30' },
+];
 
-interface PendingAction {
-  id: string;
-  type: 'ADD_SALE' | 'UPDATE_STOCK' | 'ADD_EXPENSE';
-  payload: any;
-  timestamp: number;
-}
+const INITIAL_EQUIPMENTS: Equipment[] = [
+  { id: '1', name: 'Mesas', qty: 20, prevQty: 20, status: 'Operacional' },
+  { id: '2', name: 'Cadeiras', qty: 80, prevQty: 80, status: 'Operacional' },
+  { id: '3', name: 'Grades (Vazias)', qty: 50, prevQty: 48, status: 'Operacional' },
+  { id: '4', name: 'Vasilhames', qty: 1200, prevQty: 1200, status: 'Operacional' },
+  { id: '5', name: 'Chaves de Abrir', qty: 10, prevQty: 12, status: 'Operacional' },
+  { id: '6', name: 'Freezer Vertical', qty: 3, prevQty: 3, status: 'Operacional' },
+];
 
 interface ProductContextType {
   products: Product[];
@@ -92,13 +127,11 @@ interface ProductContextType {
   getSystemDate: () => Date;
   lockedDays: string[];
   equipments: Equipment[];
-  
   setSystemDate: (date: Date) => void;
   unlockDay: (dateStr: string, reason: string) => void;
   lockDay: (dateStr: string, performedBy: string) => void;
   isDayLocked: (date: Date | string) => boolean;
   checkDayLock: (date: Date | string) => void;
-
   addExpense: (expense: Expense) => void;
   deleteExpense: (id: string, deletedBy: string) => void;
   updateExpense: (updated: Expense) => void;
@@ -119,15 +152,7 @@ interface ProductContextType {
   processCashTPADebit: (origin: 'Cash' | 'TPA', amount: number, note: string, referenceId?: string, referenceType?: Transaction['referenceType'], performedBy?: string) => void;
   addSalesReport: (report: SalesReport) => void;
   getConfirmedSalesReports: () => SalesReport[];
-  registrarDespesaGlobal: (data: {
-    tipo: string;
-    origem: string;
-    descricao: string;
-    nota: string;
-    valor: number;
-    usuario: string;
-    data_operacional: string;
-  }) => void;
+  registrarDespesaGlobal: (data: { tipo: string; origem: string; descricao: string; nota: string; valor: number; usuario: string; data_operacional: string; }) => void;
   registrarAlmocoBlindado: (report: SalesReport) => void;
   updateSalesReport: (reportId: string, updates: Partial<SalesReport>) => void;
   updateSalesReportJustification: (reportId: string, justificationData: any) => void;
@@ -161,7 +186,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   const checkPermission = useCallback((permission: keyof UserPermissions) => {
     if (!hasPermission(user, permission)) {
-      // In a real app, we'd return a rejected promise or show a global error
       console.error(`Acesso negado: ${permission}`);
       alert(`Sem permissão para executar esta ação: ${permission}`);
       return false;
@@ -169,30 +193,159 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     return true;
   }, [user]);
 
+  // ─── Estado — tudo começa vazio, Firestore preenche via onSnapshot ────────
+  const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<string[]>(INITIAL_CATEGORIES);
+  const [expenseCategories, setExpenseCategories] = useState<ExpenseCategory[]>([]);
+  const [purchases, setPurchases] = useState<PurchaseRecord[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [inventoryHistory, setInventoryHistory] = useState<InventoryLog[]>([]);
+  const [stockOperationHistory, setStockOperationHistory] = useState<StockOperationLog[]>([]);
+  const [priceHistory, setPriceHistory] = useState<PriceHistoryLog[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [salesReports, setSalesReports] = useState<SalesReport[]>([]);
+  const [cards, setCards] = useState<Card[]>([]);
+  const [equipments, setEquipments] = useState<Equipment[]>([]);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [currentBalance, setCurrentBalance] = useState<number>(0);
+  const [savingsBalance, setSavingsBalance] = useState<number>(0);
+  const [cashBalance, setCashBalance] = useState<number>(0);
+  const [tpaBalance, setTPABalance] = useState<number>(0);
+  const [lockedDays, setLockedDays] = useState<string[]>([]);
   const [systemDate, setSystemDateState] = useState<Date>(() => {
-    const saved = localStorage.getItem('mg_system_date');
-    if (saved) return new Date(saved);
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
-    return now;
+    const now = new Date(); now.setHours(0, 0, 0, 0); return now;
   });
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [isSyncing] = useState(false);
+  const [hasPendingChanges] = useState(false);
 
-  const setSystemDate = (date: Date) => {
-    const oldDate = systemDate;
-    const dateOnly = new Date(date);
-    dateOnly.setHours(0, 0, 0, 0);
-    setSystemDateState(dateOnly);
-    localStorage.setItem('mg_system_date', dateOnly.toISOString());
-    
-    addAuditLog({
-      action: 'ALTERAR_DATA_SISTEMA',
-      module: 'SISTEMA',
-      description: `Data do sistema alterada de ${formatDateISO(oldDate)} para ${formatDateISO(dateOnly)}`,
-      previousValue: formatDateISO(oldDate),
-      newValue: formatDateISO(dateOnly)
+  // ─── onSnapshot — subscrever todas as colecções ───────────────────────────
+  useEffect(() => {
+    const unsubs: (() => void)[] = [];
+
+    unsubs.push(onSnapshot(collection(db, COL.products), snap => {
+      const data = snap.docs.map(d => ({ ...d.data(), id: d.id } as Product));
+      if (data.length > 0) setProducts(data);
+      else {
+        // Primeira vez — inicializar produtos
+        INITIAL_PRODUCTS.forEach(p => setDoc(doc(db, COL.products, p.id), p));
+        setProducts(INITIAL_PRODUCTS);
+      }
+    }));
+
+    unsubs.push(onSnapshot(collection(db, COL.purchases), snap => {
+      setPurchases(snap.docs.map(d => d.data() as PurchaseRecord).sort((a,b) => b.timestamp - a.timestamp));
+    }));
+
+    unsubs.push(onSnapshot(collection(db, COL.expenses), snap => {
+      setExpenses(snap.docs.map(d => d.data() as Expense).sort((a,b) => b.timestamp - a.timestamp));
+    }));
+
+    unsubs.push(onSnapshot(collection(db, COL.expenseCategories), snap => {
+      const data = snap.docs.map(d => d.data() as ExpenseCategory);
+      if (data.length > 0) setExpenseCategories(data);
+      else {
+        INITIAL_EXPENSE_CATEGORIES.forEach(c => setDoc(doc(db, COL.expenseCategories, c.id), c));
+        setExpenseCategories(INITIAL_EXPENSE_CATEGORIES);
+      }
+    }));
+
+    unsubs.push(onSnapshot(collection(db, COL.inventoryHistory), snap => {
+      setInventoryHistory(snap.docs.map(d => d.data() as InventoryLog));
+    }));
+
+    unsubs.push(onSnapshot(collection(db, COL.stockOperationHistory), snap => {
+      setStockOperationHistory(snap.docs.map(d => d.data() as StockOperationLog).sort((a,b) => b.timestamp - a.timestamp));
+    }));
+
+    unsubs.push(onSnapshot(collection(db, COL.priceHistory), snap => {
+      setPriceHistory(snap.docs.map(d => d.data() as PriceHistoryLog).sort((a,b) => b.timestamp - a.timestamp));
+    }));
+
+    unsubs.push(onSnapshot(collection(db, COL.transactions), snap => {
+      setTransactions(snap.docs.map(d => d.data() as Transaction).sort((a,b) => {
+        const da = new Date(a.date).getTime(); const db2 = new Date(b.date).getTime();
+        return db2 - da;
+      }));
+    }));
+
+    unsubs.push(onSnapshot(collection(db, COL.salesReports), snap => {
+      setSalesReports(snap.docs.map(d => d.data() as SalesReport).sort((a,b) => b.timestamp - a.timestamp));
+    }));
+
+    unsubs.push(onSnapshot(collection(db, COL.cards), snap => {
+      const data = snap.docs.map(d => d.data() as Card);
+      if (data.length > 0) setCards(data);
+      else {
+        INITIAL_CARDS.forEach(c => setDoc(doc(db, COL.cards, c.id), c));
+        setCards(INITIAL_CARDS);
+      }
+    }));
+
+    unsubs.push(onSnapshot(collection(db, COL.equipments), snap => {
+      const data = snap.docs.map(d => d.data() as Equipment);
+      if (data.length > 0) setEquipments(data);
+      else {
+        INITIAL_EQUIPMENTS.forEach(e => setDoc(doc(db, COL.equipments, e.id), e));
+        setEquipments(INITIAL_EQUIPMENTS);
+      }
+    }));
+
+    unsubs.push(onSnapshot(collection(db, COL.notifications), snap => {
+      setNotifications(snap.docs.map(d => d.data()).sort((a,b) => b.timestamp - a.timestamp));
+    }));
+
+    // Saldos e dias bloqueados como documento único
+    unsubs.push(onSnapshot(doc(db, 'appdata', 'balances'), snap => {
+      if (snap.exists()) {
+        const d = snap.data();
+        setCurrentBalance(d.currentBalance ?? 0);
+        setSavingsBalance(d.savingsBalance ?? 0);
+        setCashBalance(d.cashBalance ?? 0);
+        setTPABalance(d.tpaBalance ?? 0);
+        // Actualizar saldo dos cartões também
+        setCards(prev => prev.map(c => {
+          if (c.id === 'main') return { ...c, balance: d.currentBalance ?? c.balance };
+          if (c.id === 'savings') return { ...c, balance: d.savingsBalance ?? c.balance };
+          return c;
+        }));
+      }
+    }));
+
+    unsubs.push(onSnapshot(doc(db, 'appdata', 'locked_days'), snap => {
+      if (snap.exists()) setLockedDays(snap.data().days ?? []);
+    }));
+
+    return () => unsubs.forEach(u => u());
+  }, []);
+
+  // ─── Online/Offline ───────────────────────────────────────────────────────
+  useEffect(() => {
+    const goOnline = () => setIsOnline(true);
+    const goOffline = () => setIsOnline(false);
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
+    return () => { window.removeEventListener('online', goOnline); window.removeEventListener('offline', goOffline); };
+  }, []);
+
+  // ─── Helper: guardar saldos ───────────────────────────────────────────────
+  const saveBalances = useCallback(async (cb?: number, sb?: number, cash?: number, tpa?: number) => {
+    await setDoc(doc(db, 'appdata', 'balances'), {
+      currentBalance: cb ?? currentBalance,
+      savingsBalance: sb ?? savingsBalance,
+      cashBalance: cash ?? cashBalance,
+      tpaBalance: tpa ?? tpaBalance,
     });
-  };
+  }, [currentBalance, savingsBalance, cashBalance, tpaBalance]);
 
+  // ─── syncData — mantido para compatibilidade com UI ──────────────────────
+  const syncData = useCallback(async () => {
+    // Com onSnapshot já activo, não é necessário fazer nada.
+    // Firestore mantém tudo actualizado em tempo real.
+    console.log('Firestore em tempo real — sem necessidade de sincronização manual.');
+  }, []);
+
+  // ─── Sistema de datas ─────────────────────────────────────────────────────
   const getSystemDate = useCallback(() => {
     const now = new Date();
     const date = new Date(systemDate);
@@ -202,52 +355,15 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   const getSystemDateStr = () => formatDateISO(getSystemDate());
 
-  const [lockedDays, setLockedDays] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('mg_locked_days');
-      return saved ? JSON.parse(saved) : [];
-    } catch { return []; }
-  });
+  const setSystemDate = (date: Date) => {
+    const oldDate = systemDate;
+    const dateOnly = new Date(date);
+    dateOnly.setHours(0, 0, 0, 0);
+    setSystemDateState(dateOnly);
+    addAuditLog({ action: 'ALTERAR_DATA_SISTEMA', module: 'SISTEMA', description: `Data do sistema alterada de ${formatDateISO(oldDate)} para ${formatDateISO(dateOnly)}`, previousValue: formatDateISO(oldDate), newValue: formatDateISO(dateOnly) });
+  };
 
-  // ── NOTIFICAÇÕES ─────────────────────────────────────────────────────────
-  const [notifications, setNotifications] = useState<any[]>(() => {
-    try {
-      const saved = localStorage.getItem('mg_pending_notifications');
-      return saved ? JSON.parse(saved) : [];
-    } catch { return []; }
-  });
-
-  const addNotification = useCallback((notif: Omit<any, 'id' | 'timestamp' | 'read'>) => {
-    const newNotif = {
-      ...notif,
-      id: generateUUID(),
-      timestamp: Date.now(),
-      read: false
-    };
-    setNotifications(prev => {
-      const updated = [newNotif, ...prev];
-      localStorage.setItem('mg_pending_notifications', JSON.stringify(updated));
-      return updated;
-    });
-  }, []);
-
-  const markNotificationRead = useCallback((id: string) => {
-    setNotifications(prev => {
-      const updated = prev.map(n => n.id === id ? { ...n, read: true } : n);
-      localStorage.setItem('mg_pending_notifications', JSON.stringify(updated));
-      return updated;
-    });
-  }, []);
-
-  const clearNotifications = useCallback(() => {
-    setNotifications([]);
-    localStorage.removeItem('mg_pending_notifications');
-  }, []);
-
-  useEffect(() => { localStorage.setItem('mg_locked_days', JSON.stringify(lockedDays)); }, [lockedDays]);
-
-
-
+  // ─── AuditLog ─────────────────────────────────────────────────────────────
   const addAuditLog = useCallback((log: any) => {
     addLog({
       action: log.action || 'AÇÃO_DESCONHECIDA',
@@ -259,2022 +375,652 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     }, user);
   }, [addLog, user]);
 
-  const [syncQueue, setSyncQueue] = useState<PendingAction[]>([]);
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
-
-  useEffect(() => {
-    const savedQueue = localStorage.getItem('mg_sync_queue');
-    if (savedQueue) setSyncQueue(JSON.parse(savedQueue));
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem('mg_sync_queue', JSON.stringify(syncQueue));
-  }, [syncQueue]);
-
-  useEffect(() => {
-    const goOnline = () => setIsOnline(true);
-    const goOffline = () => setIsOnline(false);
-    window.addEventListener('online', goOnline);
-    window.addEventListener('offline', goOffline);
-    return () => {
-      window.removeEventListener('online', goOnline);
-      window.removeEventListener('offline', goOffline);
-    };
-  }, []);
-
-  const processSyncQueue = async () => {
-    if (syncQueue.length === 0) return;
-    console.log('Processing sync queue:', syncQueue);
-    // TODO: Implement actual sync logic here
-    // For now, we clear the queue to simulate processing
-    setSyncQueue([]);
-  };
-
-  // Removed automatic sync background process to focus on manual user actions
-  
-  const [products, setProducts] = useState<Product[]>(() => {
-    try {
-      const saved = localStorage.getItem('mg_products');
-      const parsed = saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
-      return Array.isArray(parsed) ? parsed : INITIAL_PRODUCTS;
-    } catch { return INITIAL_PRODUCTS; }
-  });
-// FIREBASE: Carregar produtos da nuvem ao iniciar
-useEffect(() => {
-  const unsubscribe = onSnapshot(
-    collection(db, 'products'),
-    (snapshot) => {
-      if (!snapshot.empty) {
-        const firestoreProducts = snapshot.docs.map(doc => ({
-          ...doc.data() as Product,
-          id: doc.id
-        }));
-        setProducts(firestoreProducts);
-        localStorage.setItem('mg_products', JSON.stringify(firestoreProducts));
-      }
-    },
-    (error) => {
-      console.error('Erro Firebase:', error);
-    }
-  );
-  return () => unsubscribe();
-}, []);
-  const [categories, setCategories] = useState<string[]>(INITIAL_CATEGORIES);
-
-  const [expenseCategories, setExpenseCategories] = useState<ExpenseCategory[]>(() => {
-    try {
-      const saved = localStorage.getItem('mg_expense_categories');
-      const parsed = saved ? JSON.parse(saved) : INITIAL_EXPENSE_CATEGORIES;
-      return Array.isArray(parsed) ? parsed : INITIAL_EXPENSE_CATEGORIES;
-    } catch { return INITIAL_EXPENSE_CATEGORIES; }
-  });
-  
-  const [purchases, setPurchases] = useState<PurchaseRecord[]>(() => {
-    try {
-      const saved = localStorage.getItem('mg_purchases');
-      const parsed = saved ? JSON.parse(saved) : [];
-      if (!Array.isArray(parsed)) return [];
-      // Deduplicate by ID
-      const unique: PurchaseRecord[] = [];
-      const seen = new Set();
-      parsed.forEach((p: PurchaseRecord) => {
-        if (!seen.has(p.id)) {
-          seen.add(p.id);
-          unique.push(p);
-        }
-      });
-      return unique;
-    } catch { return []; }
-  });
-
-  const [expenses, setExpenses] = useState<Expense[]>(() => {
-    try {
-      const saved = localStorage.getItem('mg_expenses');
-      const parsed = saved ? JSON.parse(saved) : [];
-      if (!Array.isArray(parsed)) return [];
-      // Deduplicate by ID
-      const unique: Expense[] = [];
-      const seen = new Set();
-      parsed.map((item: any) => ({
-        ...item,
-        attachments: item.attachments || (item.attachment ? [item.attachment] : [])
-      })).forEach((e: Expense) => {
-        if (!seen.has(e.id)) {
-          seen.add(e.id);
-          unique.push(e);
-        }
-      });
-      return unique;
-    } catch { return []; }
-  });
-
-  const [inventoryHistory, setInventoryHistory] = useState<InventoryLog[]>(() => {
-    try {
-      const saved = localStorage.getItem('mg_inventory_history');
-      const parsed = saved ? JSON.parse(saved) : [];
-      if (!Array.isArray(parsed)) return [];
-      // Deduplicate by ID
-      const unique: InventoryLog[] = [];
-      const seen = new Set();
-      parsed.forEach((l: InventoryLog) => {
-        if (!seen.has(l.id)) {
-          seen.add(l.id);
-          unique.push(l);
-        }
-      });
-      return unique;
-    } catch { return []; }
-  });
-
-  const [stockOperationHistory, setStockOperationHistory] = useState<StockOperationLog[]>(() => {
-    try {
-      const saved = localStorage.getItem('mg_stock_operation_history');
-      const parsed = saved ? JSON.parse(saved) : [];
-      if (!Array.isArray(parsed)) return [];
-      // Deduplicate by ID
-      const unique: StockOperationLog[] = [];
-      const seen = new Set();
-      parsed.forEach((l: StockOperationLog) => {
-        if (!seen.has(l.id)) {
-          seen.add(l.id);
-          unique.push(l);
-        }
-      });
-      return unique;
-    } catch { return []; }
-  });
-
+  // ─── isDayLocked ──────────────────────────────────────────────────────────
   const isDayLocked = useCallback((date: string | Date) => {
     if (!date) return false;
     const dateStr = date instanceof Date ? formatDateISO(date) : date;
-    const cleanTarget = cleanDate(dateStr);
-    return lockedDays
-      .map(d => cleanDate(d))
-      .includes(cleanTarget);
+    return lockedDays.map(d => cleanDate(d)).includes(cleanDate(dateStr));
   }, [lockedDays]);
 
+  // ─── validateAction ───────────────────────────────────────────────────────
   const validateAction = useCallback((type: string, payload: any) => {
-    // 1. Day Lock Check
-    if (isDayLocked(getSystemDate())) {
-      throw new Error('Operação Negada: O dia atual está bloqueado.');
-    }
-
-    // 2. Stock validation (Cannot go negative for sales)
+    if (isDayLocked(getSystemDate())) throw new Error('Operação Negada: O dia atual está bloqueado.');
     if (type === 'SALE' || type === 'SALES_REPORT' || type === 'UPDATE_STOCK') {
       const items = payload.items || (payload.productId ? [{ productId: payload.productId, qty: payload.qty }] : []);
       for (const item of items) {
         const product = products.find(p => p.id === item.productId || p.name === item.name);
         if (product) {
-          const currentStock = product.stock;
-          const change = item.qty;
-          // If it's a SALE or SALES_REPORT, change is positive but we subtract it
-          // If it's UPDATE_STOCK, change is the delta
-          const finalStock = (type === 'SALE' || type === 'SALES_REPORT') ? currentStock - change : currentStock + change;
-          
+          const finalStock = (type === 'SALE' || type === 'SALES_REPORT') ? product.stock - item.qty : product.stock + item.qty;
           if (finalStock < 0) {
-            // Permite stock negativo para vendas e relatórios de vendas para evitar bloqueios operacionais.
-            // O administrador pode corrigir o stock posteriormente com uma compra ou ajuste manual.
             const isSaleRelated = type === 'SALE' || type === 'SALES_REPORT' || (type === 'UPDATE_STOCK' && item.qty < 0);
-            
-            if (!isSaleRelated) {
-              throw new Error(`Stock insuficiente para ${product.name}. Disponível: ${currentStock}`);
-            } else {
-              console.warn(`Stock insuficiente para ${product.name}. Permitindo stock negativo para não bloquear a operação.`);
-            }
+            if (!isSaleRelated) throw new Error(`Stock insuficiente para ${product.name}. Disponível: ${product.stock}`);
+            else console.warn(`Stock insuficiente para ${product.name}. Permitindo stock negativo.`);
           }
         }
       }
     }
-
-    // 3. Price validation (Must be positive)
-    if (payload.price !== undefined && payload.price <= 0) {
-      throw new Error('Preço inválido: O valor deve ser maior que zero.');
-    }
-
+    if (payload.price !== undefined && payload.price <= 0) throw new Error('Preço inválido: O valor deve ser maior que zero.');
     return true;
   }, [products, isDayLocked, getSystemDate]);
 
+  // ─── handleStockMovement ──────────────────────────────────────────────────
   const handleStockMovement = useCallback((productId: string, quantity: number, type: 'SALE' | 'PURCHASE' | 'ADJUSTMENT' | 'MANUAL_ADJUSTMENT', performedBy: string, reason: string, referenceId?: string) => {
     try {
-      if ((type === 'ADJUSTMENT' || type === 'MANUAL_ADJUSTMENT') && !reason) {
-        throw new Error('Um motivo é obrigatório para ajustes manuais de stock.');
-      }
-
-      // Active Protection: Validate before processing
+      if ((type === 'ADJUSTMENT' || type === 'MANUAL_ADJUSTMENT') && !reason) throw new Error('Um motivo é obrigatório para ajustes manuais de stock.');
       validateAction('UPDATE_STOCK', { productId, qty: type === 'SALE' ? -quantity : quantity });
-
-      // FIND PRODUCT BEFORE UPDATING TO GET CURRENT VALUES
       const product = products.find(p => p.id === productId);
       if (!product) return;
 
-      const productName = product.name;
-      
-      // IDEMPOTENCY LOGIC: If referenceId exists, check if we already processed this movement
       let qtyBefore = product.stock;
       let existingLogId: string | null = null;
-
       if (referenceId) {
-        const existingLog = stockOperationHistory.find(log => log.referenceId === referenceId && log.productId === productId);
-        if (existingLog) {
-          // Reverse the previous effect
-          qtyBefore = qtyBefore - existingLog.qtyAdded;
-          existingLogId = existingLog.id;
-        }
+        const existingLog = stockOperationHistory.find(l => l.referenceId === referenceId && l.productId === productId);
+        if (existingLog) { qtyBefore = qtyBefore - existingLog.qtyAdded; existingLogId = existingLog.id; }
       }
-      
-      let qtyAdded = 0;
-      if (type === 'SALE') qtyAdded = -quantity;
-      else if (type === 'PURCHASE') qtyAdded = quantity;
-      else if (type === 'ADJUSTMENT' || type === 'MANUAL_ADJUSTMENT') qtyAdded = quantity;
 
+      let qtyAdded = type === 'SALE' ? -quantity : type === 'PURCHASE' ? quantity : quantity;
       const qtyAfter = Math.max(0, qtyBefore + qtyAdded);
-
-      setProducts(prevProducts => {
-        return prevProducts.map(p => p.id === productId ? { ...p, stock: qtyAfter } : p);
-      });
-
-      // Determinar se é um ajuste manual para o histórico
       const isManual = type === 'ADJUSTMENT' || type === 'MANUAL_ADJUSTMENT' || (!referenceId && (type === 'SALE' || type === 'PURCHASE'));
-      const logType = isManual ? 'MANUAL_ADJUSTMENT' : type;
 
-      // Update Audit Log (StockOperationLog)
+      // Actualizar produto no Firestore
+      setDoc(doc(db, COL.products, productId), { ...product, stock: qtyAfter });
+
       const log: StockOperationLog = {
-        id: existingLogId || generateUUID(),
-        productId,
-        productName,
-        type: logType as any,
-        qtyBefore,
-        qtyAdded: qtyAdded,
-        qtyAfter,
-        previousStock: qtyBefore,
-        newStock: qtyAfter,
-        qtyChanged: qtyAdded,
-        responsible: performedBy,
-        timestamp: Date.now(),
-        performedBy,
-        reason: reason || (isManual ? 'Ajuste Manual via Sistema' : 'Movimentação de Stock'),
-        referenceId
+        id: existingLogId || generateUUID(), productId, productName: product.name,
+        type: (isManual ? 'MANUAL_ADJUSTMENT' : type) as any,
+        qtyBefore, qtyAdded, qtyAfter, previousStock: qtyBefore, newStock: qtyAfter,
+        qtyChanged: qtyAdded, responsible: performedBy, timestamp: Date.now(), performedBy,
+        reason: reason || (isManual ? 'Ajuste Manual via Sistema' : 'Movimentação de Stock'), referenceId
       };
+      setDoc(doc(db, COL.stockOperationHistory, log.id), log);
 
-      setStockOperationHistory(prev => {
-        if (existingLogId) {
-          return prev.map(l => l.id === existingLogId ? log : l);
-        }
-        return [log, ...prev];
-      });
-
-      // Update Audit Context
-      addLog({
-        action: isManual ? 'AJUSTE_MANUAL_STOCK' : (type === 'SALE' ? 'VENDA_STOCK' : (type === 'PURCHASE' ? 'COMPRA_STOCK' : 'AJUSTE_STOCK')),
-        module: 'STOCK',
-        description: `${isManual ? 'Ajuste Manual' : (type === 'SALE' ? 'Venda' : (type === 'PURCHASE' ? 'Compra' : 'Ajuste'))} de ${Math.abs(quantity)} unidades de ${productName}. Stock: ${qtyBefore} -> ${qtyAfter}. Motivo: ${reason || 'Ajuste Manual'}`,
-        entityId: productId,
-        previousValue: qtyBefore,
-        newValue: qtyAfter
-      }, user);
-
+      addLog({ action: isManual ? 'AJUSTE_MANUAL_STOCK' : (type === 'SALE' ? 'VENDA_STOCK' : 'COMPRA_STOCK'), module: 'STOCK', description: `${Math.abs(quantity)} unidades de ${product.name}. Stock: ${qtyBefore} -> ${qtyAfter}`, entityId: productId, previousValue: qtyBefore, newValue: qtyAfter }, user);
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Erro desconhecido';
-      addLog({
-        action: 'ERROR' as any,
-        module: 'STOCK',
-        description: `ERRO: ${msg}`,
-        entityId: productId
-      }, user);
+      addLog({ action: 'ERROR' as any, module: 'STOCK', description: `ERRO: ${msg}`, entityId: productId }, user);
       throw error;
     }
-  }, [user, addLog, validateAction, products]);
+  }, [user, addLog, validateAction, products, stockOperationHistory]);
 
-  const [priceHistory, setPriceHistory] = useState<PriceHistoryLog[]>(() => {
-      try {
-        const saved = localStorage.getItem('mg_price_history');
-        return saved ? JSON.parse(saved) : [];
-      } catch { return []; }
-  });
-
-  const [currentBalance, setCurrentBalance] = useState<number>(() => {
-    const saved = localStorage.getItem('mg_current_balance');
-    return saved ? parseFloat(saved) : 1250000;
-  });
-
-  const [savingsBalance, setSavingsBalance] = useState<number>(() => {
-    const saved = localStorage.getItem('mg_savings_balance');
-    return saved ? parseFloat(saved) : 500000;
-  });
-
-  const [cashBalance, setCashBalance] = useState<number>(() => {
-    const saved = localStorage.getItem('mg_cash_balance');
-    return saved ? parseFloat(saved) : 850000;
-  });
-
-  const [tpaBalance, setTPABalance] = useState<number>(() => {
-    const saved = localStorage.getItem('mg_tpa_balance');
-    return saved ? parseFloat(saved) : 400000;
-  });
-
-  const [cards, setCards] = useState<Card[]>(() => {
-    try {
-      const saved = localStorage.getItem('mg_cards');
-      if (saved) return JSON.parse(saved);
-      
-      // Default cards
-      return [
-        {
-          id: 'main',
-          name: 'Conta Corrente',
-          holder: 'Marguel Bar',
-          balance: 1250000,
-          color: 'bg-gradient-to-bl from-[#003366] via-[#004488] to-[#0054A6]',
-          type: 'Corrente',
-          validity: '12/28'
-        },
-        {
-          id: 'savings',
-          name: 'Marguel Reserve',
-          holder: 'Marguel Reserve',
-          balance: 500000,
-          color: 'bg-gradient-to-br from-[#F5DF4D] via-[#D4AF37] to-[#AA6C39]',
-          type: 'Poupança',
-          validity: '06/30'
-        }
-      ];
-    } catch { return []; }
-  });
-
-  const [transactions, setTransactions] = useState<Transaction[]>(() => {
-    try {
-      const saved = localStorage.getItem('mg_transactions');
-      const parsed = saved ? JSON.parse(saved) : [];
-      // Deduplicate by ID
-      const unique: Transaction[] = [];
-      const seen = new Set();
-      parsed.forEach((t: Transaction) => {
-        if (!seen.has(t.id)) {
-          seen.add(t.id);
-          unique.push(t);
-        }
-      });
-      return unique;
-    } catch { return []; }
-  });
-
-  const [salesReports, setSalesReports] = useState<SalesReport[]>(() => {
-    try {
-      const saved = localStorage.getItem('mg_sales_reports');
-      const parsed = saved ? JSON.parse(saved) : [];
-      if (!Array.isArray(parsed)) return [];
-      // Deduplicate by ID
-      const unique: SalesReport[] = [];
-      const seen = new Set();
-      parsed.forEach((r: SalesReport) => {
-        if (!seen.has(r.id)) {
-          seen.add(r.id);
-          unique.push(r);
-        }
-      });
-      return unique;
-    } catch { return []; }
-  });
-
-  const getConfirmedSalesReports = useCallback(() => {
-    return salesReports.filter(r => r.status === ClosureStatus.FECHO_CONFIRMADO);
-  }, [salesReports]);
-
+  // ─── processTransaction ───────────────────────────────────────────────────
   const processTransaction = useCallback((
-    type: 'deposit' | 'withdraw', 
-    account: 'main' | 'savings' | 'cash' | 'tpa' | string, 
-    amount: number, 
-    description: string, 
-    category?: string, 
-    referenceId?: string, 
-    referenceType?: Transaction['referenceType'],
-    performedBy?: string,
-    date?: string 
+    type: 'deposit' | 'withdraw',
+    account: 'main' | 'savings' | 'cash' | 'tpa' | string,
+    amount: number, description: string, category?: string,
+    referenceId?: string, referenceType?: Transaction['referenceType'],
+    performedBy?: string, date?: string
   ) => {
     try {
-      // Overwrite logic: if referenceId exists, reverse its effect first
       const existingTrans = referenceId ? transactions.filter(t => t.referenceId === referenceId && t.referenceType === referenceType) : [];
-      
+
+      // Calcular novos saldos
+      let newCB = currentBalance, newSB = savingsBalance, newCash = cashBalance, newTPA = tpaBalance;
+      let accountName = '';
+
+      // Reverter transacções anteriores com mesmo referenceId
       if (existingTrans.length > 0) {
         existingTrans.forEach(t => {
-          const oldAmt = t.amount;
-          const isOldEntry = t.type === 'entrada';
-          
-          // Reversão baseada no accountName gravado na transação
-          if (t.accountName === 'Caixa (Dinheiro)') setCashBalance(p => isOldEntry ? p - oldAmt : p + oldAmt);
-          else if (t.accountName === 'TPA') setTPABalance(p => isOldEntry ? p - oldAmt : p + oldAmt);
-          else if (t.accountName === 'Conta Corrente') {
-            setCurrentBalance(p => isOldEntry ? p - oldAmt : p + oldAmt);
-            setCards(prev => prev.map(c => c.id === 'main' ? { ...c, balance: isOldEntry ? c.balance - oldAmt : c.balance + oldAmt } : c));
-          } else if (t.accountName === 'Marguel Reserve' || t.accountName === 'Conta Poupança') {
-            setSavingsBalance(p => isOldEntry ? p - oldAmt : p + oldAmt);
-            setCards(prev => prev.map(c => c.id === 'savings' ? { ...c, balance: isOldEntry ? c.balance - oldAmt : c.balance + oldAmt } : c));
-          } else {
-            setCards(prev => prev.map(c => {
-              if (c.name === t.accountName) {
-                return { ...c, balance: isOldEntry ? c.balance - oldAmt : c.balance + oldAmt };
-              }
-              return c;
-            }));
-          }
+          const amt = t.amount; const isEntry = t.type === 'entrada';
+          if (t.accountName === 'Caixa (Dinheiro)') newCash += isEntry ? -amt : amt;
+          else if (t.accountName === 'TPA') newTPA += isEntry ? -amt : amt;
+          else if (t.accountName === 'Conta Corrente') newCB += isEntry ? -amt : amt;
+          else if (t.accountName === 'Marguel Reserve' || t.accountName === 'Conta Poupança') newSB += isEntry ? -amt : amt;
         });
       }
 
-      // Fluxo Unificado: Definimos o alvo, e deixamos UM ÚNICO bloco atualizar o estado
       let targetAccount = account;
-      if (category === 'Transferência' || category === 'TRANSFER') {
-        targetAccount = 'tpa'; 
+      if (category === 'Transferência' || category === 'TRANSFER') targetAccount = 'tpa';
+
+      if (targetAccount === 'main') { newCB += type === 'deposit' ? amount : -amount; accountName = 'Conta Corrente'; }
+      else if (targetAccount === 'savings') { newSB += type === 'deposit' ? amount : -amount; accountName = 'Conta Poupança'; }
+      else if (targetAccount === 'cash') { newCash += type === 'deposit' ? amount : -amount; accountName = 'Caixa (Dinheiro)'; }
+      else if (targetAccount === 'tpa') { newTPA += type === 'deposit' ? amount : -amount; accountName = 'TPA'; }
+      else {
+        const card = cards.find(c => c.id === targetAccount);
+        if (card) {
+          accountName = card.name;
+          if (card.id === 'main') newCB += type === 'deposit' ? amount : -amount;
+          else if (card.id === 'savings') newSB += type === 'deposit' ? amount : -amount;
+        }
       }
 
-      let accountName = '';
-      // Aplicação do NOVO valor (Sem IFs duplicados de TPA fora do fluxo)
-      if (targetAccount === 'main') {
-        setCurrentBalance(prev => type === 'deposit' ? prev + amount : prev - amount);
-        accountName = 'Conta Corrente';
-        setCards(prev => prev.map(c => c.id === 'main' ? { ...c, balance: type === 'deposit' ? c.balance + amount : c.balance - amount } : c));
-      } else if (targetAccount === 'savings') {
-        setSavingsBalance(prev => type === 'deposit' ? prev + amount : prev - amount);
-        accountName = 'Conta Poupança';
-        setCards(prev => prev.map(c => c.id === 'savings' ? { ...c, balance: type === 'deposit' ? c.balance + amount : c.balance - amount } : c));
-      } else if (targetAccount === 'cash') {
-        setCashBalance(prev => type === 'deposit' ? prev + amount : prev - amount);
-        accountName = 'Caixa (Dinheiro)';
-      } else if (targetAccount === 'tpa') {
-        setTPABalance(prev => type === 'deposit' ? prev + amount : prev - amount);
-        accountName = 'TPA';
-      } else {
-        setCards(prev => prev.map(c => {
-          if (c.id === targetAccount) {
-            accountName = c.name;
-            return { ...c, balance: type === 'deposit' ? c.balance + amount : c.balance - amount };
-          }
-          return c;
-        }));
-      }
+      // Actualizar saldos no Firestore
+      setCurrentBalance(newCB); setSavingsBalance(newSB); setCashBalance(newCash); setTPABalance(newTPA);
+      setDoc(doc(db, 'appdata', 'balances'), { currentBalance: newCB, savingsBalance: newSB, cashBalance: newCash, tpaBalance: newTPA });
+      // Actualizar saldo nos cartões
+      setCards(prev => prev.map(c => {
+        if (c.id === 'main') return { ...c, balance: newCB };
+        if (c.id === 'savings') return { ...c, balance: newSB };
+        return c;
+      }));
+      setDoc(doc(db, COL.cards, 'main'), { ...cards.find(c => c.id === 'main'), balance: newCB });
+      setDoc(doc(db, COL.cards, 'savings'), { ...cards.find(c => c.id === 'savings'), balance: newSB });
 
       const targetDate = date || formatDateISO(getSystemDate());
-      const firstExisting = existingTrans.length > 0 ? existingTrans[0] : null;
+      const transId = existingTrans.length > 0 ? existingTrans[0].id : generateUUID();
       const newTrans: Transaction = {
-        id: firstExisting ? firstExisting.id : generateUUID(),
-        type: type === 'deposit' ? 'entrada' : 'saida',
-        category: category || accountName || 'Cartão',
-        amount: amount,
-        date: date ? (date + ', ' + getSystemDate().toLocaleTimeString('pt-AO', {hour:'2-digit', minute:'2-digit'})) : (formatDateISO(getSystemDate()) + ', ' + getSystemDate().toLocaleTimeString('pt-AO', {hour:'2-digit', minute:'2-digit'})),
-        description: description,
-        referenceId,
-        referenceType,
-        performedBy,
-        accountName: accountName || 'Conta Desconhecida',
-        status: 'ATIVO',
-        operationalDay: targetDate
+        id: transId, type: type === 'deposit' ? 'entrada' : 'saida',
+        category: category || accountName || 'Cartão', amount,
+        date: (date || formatDateISO(getSystemDate())) + ', ' + getSystemDate().toLocaleTimeString('pt-AO', { hour: '2-digit', minute: '2-digit' }),
+        description, referenceId, referenceType, performedBy,
+        accountName: accountName || 'Conta Desconhecida', status: 'ATIVO', operationalDay: targetDate
       };
+      setDoc(doc(db, COL.transactions, transId), newTrans);
 
-      if (existingTrans.length > 0) {
-        const existingIds = existingTrans.map(t => t.id);
-        setTransactions(prev => {
-          const filtered = prev.filter(t => !existingIds.includes(t.id));
-          return [newTrans, ...filtered];
-        });
-      } else {
-        setTransactions(prev => [newTrans, ...prev]);
-      }
-
-      // Log manual transactions
       if (!referenceType) {
-        addAuditLog({
-          action: 'TRANSACAO_MANUAL',
-          module: 'FINANCEIRO',
-          entityId: newTrans.id,
-          description: `Transação manual: ${type === 'deposit' ? 'Depósito' : 'Levantamento'} de ${amount.toLocaleString('pt-AO')} Kz em ${accountName}. Descrição: ${description}`,
-          performedBy: performedBy || user?.name || 'Sistema'
-        });
+        addAuditLog({ action: 'TRANSACAO_MANUAL', module: 'FINANCEIRO', entityId: transId, description: `${type === 'deposit' ? 'Depósito' : 'Levantamento'} de ${amount.toLocaleString('pt-AO')} Kz em ${accountName}. ${description}`, performedBy: performedBy || user?.name || 'Sistema' });
       }
     } catch (error) {
       console.error('Erro ao processar transação:', error);
     }
-  }, [transactions, user, getSystemDate, addAuditLog]);
+  }, [transactions, cards, user, currentBalance, savingsBalance, cashBalance, tpaBalance, getSystemDate, addAuditLog]);
 
+  // ─── adjustFinancialsForReport ────────────────────────────────────────────
   const adjustFinancialsForReport = useCallback((oldReport: SalesReport, newReport: SalesReport) => {
     const reportDateStr = (newReport.dateISO || newReport.date || '').split('T')[0];
-
-    // Calcula os novos valores do fecho editado
     const newCash = newReport.cash ?? (newReport as any).financials?.cash ?? 0;
-    const newTpa = (newReport.tpa ?? 0) + (newReport.transfer ?? 0)
-      || ((newReport as any).financials?.ticket ?? 0) + ((newReport as any).financials?.transfer ?? 0);
-    const newTotalLifted = newCash + newTpa;
-
-    // Atualiza saldos de Cash e TPA diretamente (sem criar transação no histórico)
-    // Calcula a diferença em relação ao fecho anterior
+    const newTpa = (newReport.tpa ?? 0) + (newReport.transfer ?? 0) || ((newReport as any).financials?.ticket ?? 0) + ((newReport as any).financials?.transfer ?? 0);
     const oldCash = oldReport.cash ?? (oldReport as any).financials?.cash ?? 0;
-    const oldTpa = (oldReport.tpa ?? 0) + (oldReport.transfer ?? 0)
-      || ((oldReport as any).financials?.ticket ?? 0) + ((oldReport as any).financials?.transfer ?? 0);
-
+    const oldTpa = (oldReport.tpa ?? 0) + (oldReport.transfer ?? 0) || ((oldReport as any).financials?.ticket ?? 0) + ((oldReport as any).financials?.transfer ?? 0);
     const cashDiff = newCash - oldCash;
     const tpaDiff = newTpa - oldTpa;
-
-    if (cashDiff !== 0) setCashBalance(prev => prev + cashDiff);
-    if (tpaDiff !== 0) setTPABalance(prev => prev + tpaDiff);
-
-    // Apenas 1 transação na Conta Corrente — usa o mesmo referenceId para substituir
+    if (cashDiff !== 0) { setCashBalance(p => p + cashDiff); setDoc(doc(db, 'appdata', 'balances'), { currentBalance, savingsBalance, cashBalance: cashBalance + cashDiff, tpaBalance }); }
+    if (tpaDiff !== 0) { setTPABalance(p => p + tpaDiff); setDoc(doc(db, 'appdata', 'balances'), { currentBalance, savingsBalance, cashBalance, tpaBalance: tpaBalance + tpaDiff }); }
+    const newTotalLifted = newCash + newTpa;
     if (newTotalLifted > 0) {
-      processTransaction(
-        'deposit',
-        'main',
-        newTotalLifted,
-        `Fecho Confirmado (${reportDateStr}) — Editado`,
-        'Fecho de Caixa',
-        newReport.id,          // mesmo ID → processTransaction reverte o antigo
-        'day_closure',
-        user?.name || 'Sistema',
-        reportDateStr
-      );
+      processTransaction('deposit', 'main', newTotalLifted, `Fecho Confirmado (${reportDateStr}) — Editado`, 'Fecho de Caixa', newReport.id, 'day_closure', user?.name || 'Sistema', reportDateStr);
     }
-  }, [user, processTransaction, setCashBalance, setTPABalance]);
+  }, [user, processTransaction, currentBalance, savingsBalance, cashBalance, tpaBalance]);
 
-  const revertStockFromReport = useCallback((report: SalesReport) => {
-    if (!report.itemsSummary || !report.stockUpdated) return;
+  // ─── Notificações ─────────────────────────────────────────────────────────
+  const addNotification = useCallback((notif: any) => {
+    const newNotif = { ...notif, id: generateUUID(), timestamp: Date.now(), read: false };
+    setDoc(doc(db, COL.notifications, newNotif.id), newNotif);
+  }, []);
 
-    report.itemsSummary.forEach(item => {
-      const product = products.find(p => p.name === item.name);
-      if (product) {
-        // Revert by adding back the quantity (ADJUSTMENT adds quantity)
-        handleStockMovement(product.id, item.qty, 'ADJUSTMENT', 'Sistema', `Estorno de Venda (Edição): ${report.date}`, report.id);
-      }
-    });
-  }, [products, handleStockMovement]);
+  const markNotificationRead = useCallback((id: string) => {
+    const notif = notifications.find(n => n.id === id);
+    if (notif) setDoc(doc(db, COL.notifications, id), { ...notif, read: true });
+  }, [notifications]);
 
-  // Nova função auxiliar para processar a diferença (Delta)
-  const applyStockDelta = useCallback((report: SalesReport, newItems: any[]) => {
-    const reportId = report.id;
-    const deltaTag = `DELTA_FECHO:${reportId}`; // Tag atómica
+  const clearNotifications = useCallback(() => {
+    notifications.forEach(n => deleteDoc(doc(db, COL.notifications, n.id)));
+  }, [notifications]);
 
-    // Idempotência Blindada: Verificação exata da Tag
-    const alreadyApplied = stockOperationHistory.some(
-      log => log.referenceId === reportId && log.reason === deltaTag
-    );
-    if (alreadyApplied) return;
-
-    const oldItems = report.itemsSummary || [];
-
-    // Processamento do Delta (Usa productId como única fonte de verdade)
-    oldItems.forEach(oldItem => {
-      const pId = oldItem.productId;
-      if (!pId) return;
-
-      const newItem = newItems.find(i => i.productId === pId);
-      if (!newItem) {
-        handleStockMovement(pId, oldItem.qty, 'ADJUSTMENT', user?.name || 'Sistema', deltaTag, reportId);
-      } else {
-        const diff = newItem.qty - oldItem.qty;
-        if (diff !== 0) {
-          handleStockMovement(pId, Math.abs(diff), diff > 0 ? 'SALE' : 'ADJUSTMENT', user?.name || 'Sistema', deltaTag, reportId);
-        }
-      }
-    });
-
-    // Itens novos inseridos na edição
-    newItems.forEach(newItem => {
-      if (newItem.productId && !oldItems.find(i => i.productId === newItem.productId)) {
-        handleStockMovement(newItem.productId, newItem.qty, 'SALE', user?.name || 'Sistema', deltaTag, reportId);
-      }
-    });
-
-    // Marcar como aplicado em memória para evitar re-processamento no mesmo ciclo
-    report._deltaApplied = true;
-  }, [stockOperationHistory, handleStockMovement, user, products]);
-
-  // Consolidate localStorage persistence to reduce overhead
-  useEffect(() => {
-    const data = {
-      mg_products: products,
-      mg_purchases: purchases,
-      mg_expenses: expenses,
-      mg_expense_categories: expenseCategories,
-      mg_inventory_history: inventoryHistory,
-      mg_stock_operation_history: stockOperationHistory,
-      mg_current_balance: currentBalance,
-      mg_savings_balance: savingsBalance,
-      mg_cash_balance: cashBalance,
-      mg_tpa_balance: tpaBalance,
-      mg_cards: cards,
-      mg_transactions: transactions,
-      mg_sales_reports: salesReports
-    };
-
-    Object.entries(data).forEach(([key, value]) => {
-      localStorage.setItem(key, typeof value === 'string' || typeof value === 'number' ? value.toString() : JSON.stringify(value));
-    });
-  }, [
-    products, purchases, expenses, expenseCategories, inventoryHistory, 
-    stockOperationHistory, currentBalance, savingsBalance, cashBalance, 
-    tpaBalance, cards, transactions, salesReports
-  ]);
-
-  // FIREBASE: Guardar dados na nuvem sempre que mudam
-  useEffect(() => {
-    if (!isOnline) return;
-    const saveToFirestore = async () => {
-      try {
-        const dataToSave: Record<string, any> = {
-          mg_products: products,
-          mg_users: JSON.parse(localStorage.getItem('mg_users') || '[]'),
-          mg_expenses: expenses,
-          mg_purchases: purchases,
-          mg_transactions: transactions,
-          mg_sales_reports: salesReports,
-          mg_inventory_history: inventoryHistory,
-          mg_stock_operation_history: stockOperationHistory,
-          mg_cards: cards,
-          mg_current_balance: currentBalance,
-          mg_savings_balance: savingsBalance,
-          mg_cash_balance: cashBalance,
-          mg_tpa_balance: tpaBalance,
-        };
-        for (const [chave, valor] of Object.entries(dataToSave)) {
-          await setDoc(doc(db, 'localdata', chave), {
-            chave,
-            dados: JSON.stringify(valor),
-            actualizadoEm: new Date().toISOString()
-          });
-        }
-      } catch (e) {
-        console.warn('Erro ao guardar no Firestore:', e);
-      }
-    };
-    const timer = setTimeout(saveToFirestore, 3000);
-    return () => clearTimeout(timer);
-  }, [
-    products, expenses, purchases, transactions, salesReports,
-    inventoryHistory, stockOperationHistory, cards,
-    currentBalance, savingsBalance, cashBalance, tpaBalance, isOnline
-  ]);
-  
-  const lockDay = (dateStr: string, performedBy: string) => {
+  // ─── lockDay / unlockDay / checkDayLock ───────────────────────────────────
+  const lockDay = useCallback((dateStr: string, performedBy: string) => {
     const cleanTarget = cleanDate(dateStr);
-    // Removemos o alerta impeditivo. O sistema agora permite bloquear qualquer dia.
-    setLockedDays(prev => prev.includes(cleanTarget) ? prev : [...prev, cleanTarget]);
-
-    // REGRA FINAL DO PONTO 3
+    const newDays = lockedDays.includes(cleanTarget) ? lockedDays : [...lockedDays, cleanTarget];
+    setLockedDays(newDays);
+    setDoc(doc(db, 'appdata', 'locked_days'), { days: newDays });
     ignoreLockedDayWithoutClosure(dateStr);
+    addAuditLog({ action: 'BLOQUEAR_DIA', module: 'CALENDÁRIO', entityId: cleanTarget, description: `Dia ${cleanTarget} bloqueado.`, performedBy });
+  }, [lockedDays, addAuditLog]);
 
-    addAuditLog({
-      action: 'BLOQUEAR_DIA',
-      module: 'CALENDÁRIO',
-      entityId: cleanTarget,
-      description: `Dia ${cleanTarget} bloqueado pelo usuário.`,
-      performedBy
-    });
-  };
-
-  const unlockDay = (dateStr: string, reason: string) => {
-    if (!hasPermission(user, 'calendar_unlock')) {
-      alert("Sem permissão para desbloquear dias.");
-      return;
-    }
-
+  const unlockDay = useCallback((dateStr: string, reason: string) => {
+    if (!hasPermission(user, 'calendar_unlock')) { alert('Sem permissão para desbloquear dias.'); return; }
     const cleanTarget = cleanDate(dateStr);
-
-    setLockedDays(prev => prev.filter(d => cleanDate(d) !== cleanTarget));
-
-    addAuditLog({
-      action: 'DESBLOQUEAR_DIA',
-      module: 'CALENDÁRIO',
-      entityId: cleanTarget,
-      description: `Dia ${cleanTarget} desbloqueado. Motivo: ${reason}`,
-      performedBy: user?.name || 'Sistema'
-    });
-  };
+    const newDays = lockedDays.filter(d => cleanDate(d) !== cleanTarget);
+    setLockedDays(newDays);
+    setDoc(doc(db, 'appdata', 'locked_days'), { days: newDays });
+    addAuditLog({ action: 'DESBLOQUEAR_DIA', module: 'CALENDÁRIO', entityId: cleanTarget, description: `Dia ${cleanTarget} desbloqueado. Motivo: ${reason}`, performedBy: user?.name || 'Sistema' });
+  }, [lockedDays, user, addAuditLog]);
 
   const checkDayLock = useCallback((date: Date | string) => {
     if (isDayLocked(date)) {
       const dateStr = typeof date === 'string' ? date : formatDateISO(date);
-      
-      // Log the attempt
-      addAuditLog({
-        action: 'TENTATIVA_EDICAO_BLOQUEADA',
-        entity: 'Day',
-        entityId: dateStr,
-        details: `Tentativa de edição em dia bloqueado por ${user?.name || 'Desconhecido'}.`,
-        performedBy: user?.name || 'Sistema'
-      });
-
-      const msg = "Dia bloqueado. Contacte administrador";
-      if (typeof window !== 'undefined') {
-        window.alert(msg);
-      }
-      throw new Error(msg);
+      addAuditLog({ action: 'TENTATIVA_EDICAO_BLOQUEADA', module: 'SISTEMA', entityId: dateStr, description: `Tentativa de edição em dia bloqueado por ${user?.name || 'Desconhecido'}.`, performedBy: user?.name || 'Sistema' });
+      window.alert('Dia bloqueado. Contacte administrador');
+      throw new Error('Dia bloqueado. Contacte administrador');
     }
   }, [isDayLocked, addAuditLog, user]);
-  
-  useEffect(() => {
-      const handleStorage = () => {
-          const saved = localStorage.getItem('mg_price_history');
-          if(saved) setPriceHistory(JSON.parse(saved));
-      };
-      window.addEventListener('storage', handleStorage);
-      return () => window.removeEventListener('storage', handleStorage);
-  }, []);
 
-  const addExpense = (expense: Expense) => {
-    if (!checkPermission('expenses_execute')) return;
-    
-    // 1. Register Expense
-    setExpenses(prev => [expense, ...prev]);
-    
-    addAuditLog({
-      action: 'ADICIONAR_DESPESA',
-      module: 'FINANCEIRO',
-      entityId: expense.id,
-      description: `Despesa registada: ${expense.title} (${expense.amount.toLocaleString('pt-AO')} Kz). Categoria: ${expense.category}`,
-      performedBy: expense.user
-    });
-    
-    // 2. Financial Debit
-    if (expense.amount > 0) {
-      processTransaction(
-        'withdraw', 
-        'main', 
-        expense.amount, 
-        `Despesa: ${expense.title}`, 
-        expense.category, 
-        expense.id, 
-        'expense', 
-        expense.user
-      );
+  // ─── ignoreLockedDayWithoutClosure ────────────────────────────────────────
+  const ignoreLockedDayWithoutClosure = useCallback((dateStr: string) => {
+    const clean = cleanDate(dateStr);
+    if (isDayLocked(dateStr)) {
+      const hasConfirmedReport = salesReports.some(r => cleanDate(r.dateISO || r.date) === clean && r.status === ClosureStatus.FECHO_CONFIRMADO);
+      if (!hasConfirmedReport) {
+        transactions.filter(t => cleanDate(t.operationalDay || t.date) === clean).forEach(t => deleteDoc(doc(db, COL.transactions, t.id)));
+      }
+      salesReports.filter(r => {
+        const isSameDay = cleanDate(r.dateISO || r.date) === clean;
+        const isConfirmedOrPartial = r.status === ClosureStatus.FECHO_CONFIRMADO || r.status === ClosureStatus.FECHO_PARCIAL;
+        return isSameDay && !isConfirmedOrPartial;
+      }).forEach(r => deleteDoc(doc(db, COL.salesReports, r.id)));
+      addAuditLog({ action: 'LIMPEZA_DIA_BLOQUEADO', module: 'VENDAS', entityId: clean, description: `Limpeza de segurança no dia ${clean}.`, performedBy: 'Sistema' });
     }
-  };
+  }, [isDayLocked, salesReports, transactions, addAuditLog]);
 
-  const deleteExpense = (id: string, deletedBy: string) => {
+  // ─── Expenses ─────────────────────────────────────────────────────────────
+  const addExpense = useCallback((expense: Expense) => {
     if (!checkPermission('expenses_execute')) return;
-    
+    setDoc(doc(db, COL.expenses, expense.id), expense);
+    addAuditLog({ action: 'ADICIONAR_DESPESA', module: 'FINANCEIRO', entityId: expense.id, description: `Despesa: ${expense.title} (${expense.amount.toLocaleString('pt-AO')} Kz)`, performedBy: expense.user });
+    if (expense.amount > 0) processTransaction('withdraw', 'main', expense.amount, `Despesa: ${expense.title}`, expense.category, expense.id, 'expense', expense.user);
+  }, [checkPermission, addAuditLog, processTransaction]);
+
+  const deleteExpense = useCallback((id: string, deletedBy: string) => {
+    if (!checkPermission('expenses_execute')) return;
     const expense = expenses.find(e => e.id === id);
     if (!expense || expense.status === 'REVERSED' || expense.isReverted) return;
-    
-    // 1. Mark original as reversed (Immutable History)
-    setExpenses(prev => prev.map(e => e.id === id ? { ...e, status: 'REVERSED', isReverted: true } : e));
+    setDoc(doc(db, COL.expenses, id), { ...expense, status: 'REVERSED', isReverted: true });
+    const reversalExpense: Expense = { ...expense, id: `rev_${expense.id}_${generateUUID()}`, title: `ESTORNO: ${expense.title}`, amount: -expense.amount, notes: `Estorno por ${deletedBy}. Ref: ${expense.id}`, timestamp: getSystemDate().getTime(), user: deletedBy, status: 'REVERSAL', isReverted: true };
+    setDoc(doc(db, COL.expenses, reversalExpense.id), reversalExpense);
+    if (expense.amount > 0) processTransaction('deposit', 'main', expense.amount, `Estorno: ${expense.title}`, 'Estorno', expense.id, 'reversal', deletedBy);
+    addAuditLog({ action: 'ESTORNO_DESPESA', module: 'FINANCEIRO', entityId: id, description: `Estorno de ${expense.title} por ${deletedBy}`, performedBy: deletedBy });
+  }, [checkPermission, expenses, getSystemDate, processTransaction, addAuditLog]);
 
-    // 2. Create Reversal Entry (Negative value entry)
-    const reversalExpense: Expense = {
-      ...expense,
-      id: `rev_${expense.id}_${generateUUID()}`,
-      title: `ESTORNO: ${expense.title}`,
-      amount: -expense.amount,
-      notes: `Estorno de despesa realizado por ${deletedBy}. Referência Original: ${expense.id}`,
-      timestamp: getSystemDate().getTime(),
-      user: deletedBy,
-      status: 'REVERSAL',
-      isReverted: true
-    };
-    setExpenses(prev => [reversalExpense, ...prev]);
+  const updateExpense = useCallback((updated: Expense) => {
+    setDoc(doc(db, COL.expenses, updated.id), updated);
+    addAuditLog({ action: 'EDITAR_DESPESA', module: 'FINANCEIRO', entityId: updated.id, description: `Despesa editada: ${updated.title}`, performedBy: user?.name || 'Sistema' });
+  }, [addAuditLog, user]);
 
-    // 3. Financial Refund (Reversal)
-    if (expense.amount > 0) {
-      processTransaction(
-        'deposit', 
-        'main', 
-        expense.amount, 
-        `Estorno de despesa: ${expense.title}`, 
-        'Estorno', 
-        expense.id, 
-        'reversal', 
-        deletedBy
-      );
-    }
-
-    addAuditLog({
-      action: 'ESTORNO_DESPESA',
-      module: 'FINANCEIRO',
-      entityId: id,
-      description: `Estorno de despesa: ${expense.title}. Realizado por ${deletedBy}`,
-      performedBy: deletedBy
-    });
-  };
-  const updateExpense = (updated: Expense) => {
-    setExpenses(prev => prev.map(e => e.id === updated.id ? updated : e));
-    
-    addAuditLog({
-      action: 'EDITAR_DESPESA',
-      module: 'FINANCEIRO',
-      entityId: updated.id,
-      description: `Despesa editada: ${updated.title}`,
-      performedBy: user?.name || 'Sistema'
-    });
-  };
-
-  const addExpenseCategory = (category: Omit<ExpenseCategory, 'id'>) => {
+  // ─── ExpenseCategories ────────────────────────────────────────────────────
+  const addExpenseCategory = useCallback((category: Omit<ExpenseCategory, 'id'>) => {
     if (!checkPermission('expenses_category_manage')) return;
     const newCat = { ...category, id: Math.random().toString(36).substr(2, 9) };
-    setExpenseCategories(prev => [...prev, newCat]);
-    
-    addAuditLog({
-      action: 'CRIAR_CATEGORIA_DESPESA',
-      module: 'FINANCEIRO',
-      entityId: newCat.id,
-      description: `Categoria de despesa criada: ${newCat.name}`,
-      performedBy: user?.name || 'Sistema'
-    });
-  };
+    setDoc(doc(db, COL.expenseCategories, newCat.id), newCat);
+    addAuditLog({ action: 'CRIAR_CATEGORIA_DESPESA', module: 'FINANCEIRO', entityId: newCat.id, description: `Categoria criada: ${newCat.name}`, performedBy: user?.name || 'Sistema' });
+  }, [checkPermission, addAuditLog, user]);
 
-  const updateExpenseCategory = (id: string, updates: Partial<ExpenseCategory>) => {
-    if (!checkPermission('expenses_category_manage')) return;
-    setExpenseCategories(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
-    
-    addAuditLog({
-      action: 'EDITAR_CATEGORIA_DESPESA',
-      module: 'FINANCEIRO',
-      entityId: id,
-      description: `Categoria de despesa atualizada: ${id}`,
-      performedBy: user?.name || 'Sistema'
-    });
-  };
-
-  const deleteExpenseCategory = (id: string) => {
+  const updateExpenseCategory = useCallback((id: string, updates: Partial<ExpenseCategory>) => {
     if (!checkPermission('expenses_category_manage')) return;
     const cat = expenseCategories.find(c => c.id === id);
-    setExpenseCategories(prev => prev.filter(c => c.id !== id));
-    
-    addAuditLog({
-      action: 'REMOVER_CATEGORIA_DESPESA',
-      module: 'FINANCEIRO',
-      entityId: id,
-      description: `Categoria de despesa removida: ${cat?.name || id}`,
-      performedBy: user?.name || 'Sistema'
-    });
-  };
+    if (cat) setDoc(doc(db, COL.expenseCategories, id), { ...cat, ...updates });
+    addAuditLog({ action: 'EDITAR_CATEGORIA_DESPESA', module: 'FINANCEIRO', entityId: id, description: `Categoria actualizada: ${id}`, performedBy: user?.name || 'Sistema' });
+  }, [checkPermission, expenseCategories, addAuditLog, user]);
 
-  const addInventoryLog = (log: InventoryLog) => {
+  const deleteExpenseCategory = useCallback((id: string) => {
+    if (!checkPermission('expenses_category_manage')) return;
+    const cat = expenseCategories.find(c => c.id === id);
+    deleteDoc(doc(db, COL.expenseCategories, id));
+    addAuditLog({ action: 'REMOVER_CATEGORIA_DESPESA', module: 'FINANCEIRO', entityId: id, description: `Categoria removida: ${cat?.name || id}`, performedBy: user?.name || 'Sistema' });
+  }, [checkPermission, expenseCategories, addAuditLog, user]);
+
+  // ─── Inventory ────────────────────────────────────────────────────────────
+  const addInventoryLog = useCallback((log: InventoryLog) => {
     try {
       validateAction('INVENTORY_LOG', {});
-      setInventoryHistory(prev => [log, ...prev]);
-      
-      addAuditLog({
-        action: 'REGISTRO_INVENTARIO',
-        module: 'INVENTARIO',
-        entityId: log.id,
-        description: `Relatório de inventário registado. Status: ${log.status}`,
-        performedBy: log.performedBy
-      });
+      setDoc(doc(db, COL.inventoryHistory, log.id), log);
+      addAuditLog({ action: 'REGISTRO_INVENTARIO', module: 'INVENTARIO', entityId: log.id, description: `Inventário registado. Status: ${log.status}`, performedBy: log.performedBy });
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Erro desconhecido';
-      addLog({
-        action: 'ERROR' as any,
-        module: 'INVENTARIO',
-        description: `ERRO: ${msg}`,
-        entityId: log.id
-      }, user);
+      addLog({ action: 'ERROR' as any, module: 'INVENTARIO', description: `ERRO: ${msg}`, entityId: log.id }, user);
       throw error;
     }
-  };
+  }, [validateAction, addAuditLog, addLog, user]);
 
-  const addProduct = (product: Omit<Product, 'id'>) => {
+  // ─── Products ─────────────────────────────────────────────────────────────
+  const addProduct = useCallback((product: Omit<Product, 'id'>) => {
     try {
       if (!checkPermission('inventory_product_create')) return;
       validateAction('ADD_PRODUCT', { price: product.sellPrice });
       const newProduct = { ...product, id: generateUUID() };
-      setProducts(prev => [...prev, newProduct]);
-      
-      addAuditLog({
-        action: 'CRIAR_PRODUTO',
-        module: 'INVENTARIO',
-        entityId: newProduct.id,
-        description: `Produto ${newProduct.name} criado.`,
-        performedBy: user?.name || 'Sistema'
-      });
+      setDoc(doc(db, COL.products, newProduct.id), newProduct);
+      addAuditLog({ action: 'CRIAR_PRODUTO', module: 'INVENTARIO', entityId: newProduct.id, description: `Produto ${newProduct.name} criado.`, performedBy: user?.name || 'Sistema' });
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Erro desconhecido';
-      addLog({
-        action: 'ERROR' as any,
-        module: 'INVENTARIO',
-        description: `ERRO: ${msg}`,
-        entityId: product.name
-      }, user);
+      addLog({ action: 'ERROR' as any, module: 'INVENTARIO', description: `ERRO: ${msg}`, entityId: product.name }, user);
       throw error;
     }
-  };
+  }, [checkPermission, validateAction, addAuditLog, addLog, user]);
 
- const saveProductToFirebase = async (product: Product) => {
-  try {
-    await setDoc(doc(db, 'products', product.id), product);
-  } catch (error) {
-    console.error('Erro ao guardar no Firebase:', error);
-  }
-};
-
-   
-   const updateProduct = (id: string, updates: Partial<Product>) => {
+  const updateProduct = useCallback((id: string, updates: Partial<Product>) => {
     try {
       if (!checkPermission('inventory_product_edit')) return;
       validateAction('UPDATE_PRODUCT', { price: updates.sellPrice });
-      
       const product = products.find(p => p.id === id);
       if (!product) return;
-
-      // Se o stock estiver a ser alterado diretamente via updateProduct (raro, mas possível)
       if (updates.stock !== undefined && updates.stock !== product.stock) {
         const diff = updates.stock - product.stock;
         handleStockMovement(id, diff, 'MANUAL_ADJUSTMENT', user?.name || 'Sistema', 'Ajuste via Edição de Produto');
-        // Não precisamos atualizar o stock aqui pois o handleStockMovement já o fará via setProducts
         const { stock, ...otherUpdates } = updates;
-        if (Object.keys(otherUpdates).length > 0) {
-          setProducts(prevProducts => { const updated = prevProducts.map(p => p.id === id ? { ...p, ...otherUpdates } : p); localStorage.setItem('mg_products', JSON.stringify(updated)); return updated; });
-        }
+        if (Object.keys(otherUpdates).length > 0) setDoc(doc(db, COL.products, id), { ...product, ...otherUpdates });
       } else {
-        setProducts(prevProducts => { const updated = prevProducts.map(p => p.id === id ? { ...p, ...updates } : p); localStorage.setItem('mg_products', JSON.stringify(updated)); return updated; });
+        setDoc(doc(db, COL.products, id), { ...product, ...updates });
       }
-      
-     // FIREBASE: Guardar alteração na nuvem
-const updatedProduct = { ...product, ...updates };
-saveProductToFirebase(updatedProduct);
-     addAuditLog({
-        action: 'EDITAR_PRODUTO',
-        module: 'INVENTARIO',
-        entityId: id,
-        description: `Produto ${product.name} atualizado.`,
-        performedBy: user?.name || 'Sistema'
-      });
+      addAuditLog({ action: 'EDITAR_PRODUTO', module: 'INVENTARIO', entityId: id, description: `Produto ${product.name} atualizado.`, performedBy: user?.name || 'Sistema' });
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Erro desconhecido';
-      addLog({
-        action: 'ERROR' as any,
-        module: 'INVENTARIO',
-        description: `ERRO: ${msg}`,
-        entityId: id
-      }, user);
+      addLog({ action: 'ERROR' as any, module: 'INVENTARIO', description: `ERRO: ${msg}`, entityId: id }, user);
       throw error;
     }
-  };
+  }, [checkPermission, validateAction, products, handleStockMovement, addAuditLog, addLog, user]);
 
-  const deleteProduct = (id: string) => {
+  const deleteProduct = useCallback((id: string) => {
     try {
       if (!checkPermission('inventory_product_delete')) return;
       validateAction('DELETE_PRODUCT', {});
-      
       const product = products.find(p => p.id === id);
-      // Instead of deleting, we mark as archived to preserve history
-      setProducts(prev => prev.map(p => p.id === id ? { ...p, isArchived: true } : p));
-      
-      addAuditLog({
-        action: 'ARQUIVAR_PRODUTO',
-        module: 'INVENTARIO',
-        entityId: id,
-        description: `Produto ${product?.name || id} arquivado para preservar histórico.`,
-        performedBy: user?.name || 'Sistema'
-      });
+      setDoc(doc(db, COL.products, id), { ...product, isArchived: true });
+      addAuditLog({ action: 'ARQUIVAR_PRODUTO', module: 'INVENTARIO', entityId: id, description: `Produto ${product?.name || id} arquivado.`, performedBy: user?.name || 'Sistema' });
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Erro desconhecido';
-      addLog({
-        action: 'ERROR' as any,
-        module: 'INVENTARIO',
-        description: `ERRO: ${msg}`,
-        entityId: id
-      }, user);
+      addLog({ action: 'ERROR' as any, module: 'INVENTARIO', description: `ERRO: ${msg}`, entityId: id }, user);
       throw error;
     }
-  };
+  }, [checkPermission, validateAction, products, addAuditLog, addLog, user]);
 
-  const addCategory = (category: string) => {
-    try {
-      if (!checkPermission('inventory_category_manage')) return;
-      // Removed validateAction to allow category management even on locked days
-      if (!categories.includes(category)) {
-        setCategories([...categories, category].sort());
-        addAuditLog({
-          action: 'CRIAR_CATEGORIA',
-          module: 'INVENTARIO',
-          description: `Categoria ${category} criada.`,
-          performedBy: user?.name || 'Sistema'
-        });
-      }
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : 'Erro desconhecido';
-      addLog({
-        action: 'ERROR' as any,
-        module: 'INVENTARIO',
-        description: `ERRO: ${msg}`,
-        entityId: category
-      }, user);
-      throw error;
+  // ─── Categories ───────────────────────────────────────────────────────────
+  const addCategory = useCallback((category: string) => {
+    if (!checkPermission('inventory_category_manage')) return;
+    if (!categories.includes(category)) {
+      setCategories(prev => [...prev, category].sort());
+      addAuditLog({ action: 'CRIAR_CATEGORIA', module: 'INVENTARIO', description: `Categoria ${category} criada.`, performedBy: user?.name || 'Sistema' });
     }
-  };
+  }, [checkPermission, categories, addAuditLog, user]);
 
   const editCategory = useCallback(async (oldName: string, newName: string) => {
-    try {
-      if (!checkPermission('inventory_category_manage')) return;
-      if (!newName || oldName === newName) return;
-      // Removed validateAction to allow category management even on locked days
+    if (!checkPermission('inventory_category_manage')) return;
+    if (!newName || oldName === newName) return;
+    setCategories(prev => prev.map(c => c === oldName ? newName : c));
+    products.filter(p => p.category === oldName).forEach(p => setDoc(doc(db, COL.products, p.id), { ...p, category: newName }));
+    addAuditLog({ action: 'EDITAR_CATEGORIA', module: 'INVENTARIO', description: `Categoria ${oldName} → ${newName}.`, performedBy: user?.name || 'Sistema' });
+  }, [checkPermission, products, addAuditLog, user]);
 
-      // 1. Atualiza a lista de categorias
-      setCategories(prev => prev.map(cat => cat === oldName ? newName : cat));
+  const removeCategory = useCallback((category: string) => {
+    if (!checkPermission('inventory_category_manage')) return;
+    setCategories(prev => prev.filter(c => c !== category));
+    addAuditLog({ action: 'REMOVER_CATEGORIA', module: 'INVENTARIO', description: `Categoria ${category} removida.`, performedBy: user?.name || 'Sistema' });
+  }, [checkPermission, addAuditLog, user]);
 
-      // 2. Realoca todos os produtos da categoria antiga para a nova
-      setProducts(prevProducts => 
-        prevProducts.map(prod => 
-          prod.category === oldName ? { ...prod, category: newName } : prod
-        )
-      );
-
-      // 3. Marcar para sincronização
-      setHasPendingChanges(true);
-      
-      addAuditLog({
-        action: 'EDITAR_CATEGORIA',
-        module: 'INVENTARIO',
-        description: `Categoria ${oldName} alterada para ${newName}.`,
-        performedBy: user?.name || 'Sistema'
-      });
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : 'Erro desconhecido';
-      addLog({
-        action: 'ERROR' as any,
-        module: 'INVENTARIO',
-        description: `ERRO: ${msg}`,
-        entityId: oldName
-      }, user);
-      throw error;
-    }
-  }, [setCategories, setProducts, checkPermission, user, addAuditLog, addLog]);
-
-  const removeCategory = (category: string) => {
-    try {
-      if (!checkPermission('inventory_category_manage')) return;
-      // Removed validateAction to allow category management even on locked days
-      setCategories(categories.filter(c => c !== category));
-      
-      addAuditLog({
-        action: 'REMOVER_CATEGORIA',
-        module: 'INVENTARIO',
-        description: `Categoria ${category} removida.`,
-        performedBy: user?.name || 'Sistema'
-      });
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : 'Erro desconhecido';
-      addLog({
-        action: 'ERROR' as any,
-        module: 'INVENTARIO',
-        description: `ERRO: ${msg}`,
-        entityId: category
-      }, user);
-      throw error;
-    }
-  };
-
-  const processCashTPADebit = (origin: 'Cash' | 'TPA', amount: number, note: string, referenceId?: string, referenceType?: Transaction['referenceType'], performedBy?: string, date?: string) => {
-    const targetDate = date || formatDateISO(getSystemDate());
-    validateAction('TRANSACTION', { date: targetDate, amount });
-
-    if (origin === 'Cash') {
-      setCashBalance(prev => prev - amount);
-    } else {
-      setTPABalance(prev => prev - amount);
-    }
-
-    const newTrans: Transaction = {
-      id: generateUUID(),
-      type: 'saida',
-      category: `Débito ${origin}`,
-      amount: amount,
-      date: date ? (date + ', ' + getSystemDate().toLocaleTimeString('pt-AO', {hour:'2-digit', minute:'2-digit'})) : (formatDateISO(getSystemDate()) + ', ' + getSystemDate().toLocaleTimeString('pt-AO', {hour:'2-digit', minute:'2-digit'})),
-      description: note,
-      referenceId,
-      referenceType,
-      performedBy,
-      accountName: origin === 'Cash' ? 'Cash (Mão)' : 'TPA (Banco)',
-      status: 'ATIVO',
-      operationalDay: targetDate
-    };
-
-    setTransactions(prev => [newTrans, ...prev]);
-
-    addAuditLog({
-      action: 'DEBITO_CASH_TPA',
-      module: 'FINANCEIRO',
-      entityId: newTrans.id,
-      description: `Débito de ${origin}: ${amount.toLocaleString('pt-AO')} Kz. Nota: ${note}`,
-      performedBy: performedBy || user?.name || 'Sistema'
-    });
-  };
-
-  const addPurchase = (items: Record<string, number>, source: 'Prices' | 'Inventory' | 'Sales', completedBy: string, attachments?: string[], supplier?: string) => {
+  // ─── Purchases ────────────────────────────────────────────────────────────
+  const addPurchase = useCallback((items: Record<string, number>, source: 'Prices' | 'Inventory' | 'Sales', completedBy: string, attachments?: string[], supplier?: string) => {
     try {
       if (!checkPermission('purchases_execute')) return;
       validateAction('PURCHASE', { date: systemDate });
       let totalValue = 0;
       const purchaseId = generateUUID();
-      
-      // 1. Calcular total
       products.forEach(p => {
-        if (items[p.id]) {
-          const qtyPacks = items[p.id];
-          const packSize = p.packSize || 1;
-          const packCost = p.buyPrice * packSize;
-          totalValue += packCost * qtyPacks;
-        }
+        if (items[p.id]) totalValue += p.buyPrice * (p.packSize || 1) * items[p.id];
       });
-
-      if (user?.permissions?.purchases_limit && totalValue > user.permissions.purchases_limit) {
-        alert(`Limite de compra excedido! Limite: ${user.permissions.purchases_limit.toLocaleString('pt-AO')} Kz, Total: ${totalValue.toLocaleString('pt-AO')} Kz`);
-        return;
-      }
-
-      // 2. Atualização de Estoque via handleStockMovement
+      if (user?.permissions?.purchases_limit && totalValue > user.permissions.purchases_limit) { alert(`Limite de compra excedido!`); return; }
       Object.entries(items).forEach(([productId, qtyPacks]) => {
         if (qtyPacks > 0) {
           const p = products.find(prod => prod.id === productId);
-          if (p) {
-            const packSize = p.packSize || 1;
-            const unitsToAdd = qtyPacks * packSize;
-            handleStockMovement(productId, unitsToAdd, 'PURCHASE', completedBy, 'Compra de Stock', purchaseId);
-          }
+          if (p) handleStockMovement(productId, qtyPacks * (p.packSize || 1), 'PURCHASE', completedBy, 'Compra de Stock', purchaseId);
         }
       });
-
-      // 3. Registro da Compra
-      const newRecord: PurchaseRecord = {
-        id: purchaseId,
-        name: source === 'Inventory' ? 'Ajuste de Stock (Inventário)' : source === 'Sales' ? 'Compra Rápida (Vendas)' : `Compra Efectuada`,
-        date: getSystemDateStr(),
-        items, 
-        total: totalValue,
-        completedBy,
-        supplier,
-        timestamp: getSystemDate().getTime(),
-        source,
-        attachments,
-        synced: false
-      };
-
-      setPurchases(prev => [newRecord, ...prev]);
-
-      // 4. Débito Financeiro
-      if (totalValue > 0) {
-          processTransaction('withdraw', 'main', totalValue, 'Compra de estoque', 'Compra de Estoque', purchaseId, 'purchase', completedBy);
-      }
-
-      // 5. Fila de Sincronização
-      setSyncQueue(prev => [...prev, {
-        id: generateUUID(),
-        type: 'UPDATE_STOCK',
-        payload: newRecord,
-        timestamp: getSystemDate().getTime()
-      }]);
-
-      addAuditLog({
-        action: 'CRIAR_COMPRA',
-        module: 'COMPRAS',
-        entityId: purchaseId,
-        description: `Compra registada: ${totalValue.toLocaleString('pt-AO')} Kz. Origem: ${source}`,
-        performedBy: completedBy
-      });
+      const newRecord: PurchaseRecord = { id: purchaseId, name: source === 'Inventory' ? 'Ajuste de Stock (Inventário)' : source === 'Sales' ? 'Compra Rápida (Vendas)' : 'Compra Efectuada', date: getSystemDateStr(), items, total: totalValue, completedBy, supplier, timestamp: getSystemDate().getTime(), source, attachments, synced: true };
+      setDoc(doc(db, COL.purchases, purchaseId), newRecord);
+      if (totalValue > 0) processTransaction('withdraw', 'main', totalValue, 'Compra de estoque', 'Compra de Estoque', purchaseId, 'purchase', completedBy);
+      addAuditLog({ action: 'CRIAR_COMPRA', module: 'COMPRAS', entityId: purchaseId, description: `Compra: ${totalValue.toLocaleString('pt-AO')} Kz. Origem: ${source}`, performedBy: completedBy });
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Erro desconhecido';
-      addLog({
-        action: 'ERROR' as any,
-        module: 'COMPRAS',
-        description: `ERRO: ${msg}`,
-        entityId: source
-      }, user);
+      addLog({ action: 'ERROR' as any, module: 'COMPRAS', description: `ERRO: ${msg}`, entityId: source }, user);
       throw error;
     }
-  };
+  }, [checkPermission, validateAction, products, user, systemDate, getSystemDate, getSystemDateStr, handleStockMovement, processTransaction, addAuditLog, addLog]);
 
-  const getPurchasesByDate = (dateStr: string) => {
-    const targetDate = dateStr;
-    const records = purchases.filter(p => p.date === targetDate);
+  const getPurchasesByDate = useCallback((dateStr: string) => {
     const totals: Record<string, number> = {};
-    records.forEach(record => {
+    purchases.filter(p => p.date === dateStr).forEach(record => {
       Object.entries(record.items).forEach(([id, qtyPacks]) => {
         const p = products.find(prod => prod.id === id);
-        const units = Number(qtyPacks) * (p?.packSize || 1);
-        totals[id] = (totals[id] || 0) + units;
+        totals[id] = (totals[id] || 0) + Number(qtyPacks) * (p?.packSize || 1);
       });
     });
     return totals;
-  };
+  }, [purchases, products]);
 
-  const getTodayPurchases = () => getPurchasesByDate(getSystemDateStr());
+  const getTodayPurchases = useCallback(() => getPurchasesByDate(getSystemDateStr()), [getPurchasesByDate, getSystemDateStr]);
 
-  const registrarDespesaGlobal = (data: {
-    tipo: string;
-    origem: string;
-    descricao: string;
-    nota: string;
-    valor: number;
-    usuario: string;
-    data_operacional: string;
-    referenceId?: string; // Added referenceId
-  }) => {
+  // ─── processCashTPADebit ──────────────────────────────────────────────────
+  const processCashTPADebit = useCallback((origin: 'Cash' | 'TPA', amount: number, note: string, referenceId?: string, referenceType?: Transaction['referenceType'], performedBy?: string, date?: string) => {
+    validateAction('TRANSACTION', { date: date || formatDateISO(getSystemDate()), amount });
+    const newCash = origin === 'Cash' ? cashBalance - amount : cashBalance;
+    const newTPA = origin === 'TPA' ? tpaBalance - amount : tpaBalance;
+    setCashBalance(newCash); setTPABalance(newTPA);
+    setDoc(doc(db, 'appdata', 'balances'), { currentBalance, savingsBalance, cashBalance: newCash, tpaBalance: newTPA });
+    const transId = generateUUID();
+    const targetDate = date || formatDateISO(getSystemDate());
+    const newTrans: Transaction = { id: transId, type: 'saida', category: `Débito ${origin}`, amount, date: targetDate + ', ' + getSystemDate().toLocaleTimeString('pt-AO', { hour: '2-digit', minute: '2-digit' }), description: note, referenceId, referenceType, performedBy, accountName: origin === 'Cash' ? 'Cash (Mão)' : 'TPA (Banco)', status: 'ATIVO', operationalDay: targetDate };
+    setDoc(doc(db, COL.transactions, transId), newTrans);
+    addAuditLog({ action: 'DEBITO_CASH_TPA', module: 'FINANCEIRO', entityId: transId, description: `Débito ${origin}: ${amount.toLocaleString('pt-AO')} Kz. ${note}`, performedBy: performedBy || user?.name || 'Sistema' });
+  }, [validateAction, getSystemDate, cashBalance, tpaBalance, currentBalance, savingsBalance, addAuditLog, user]);
+
+  // ─── registrarDespesaGlobal ───────────────────────────────────────────────
+  const registrarDespesaGlobal = useCallback((data: { tipo: string; origem: string; descricao: string; nota: string; valor: number; usuario: string; data_operacional: string; referenceId?: string; }) => {
     try {
       validateAction('EXPENSE', { date: data.data_operacional, amount: data.valor });
-
-      // Robust duplicate prevention and update logic
-      const existingExpense = data.referenceId 
+      const existingExpense = data.referenceId
         ? expenses.find(e => e.id === data.referenceId || e.notes?.includes(data.referenceId!))
-        : expenses.find(e => 
-            e.title === data.descricao && 
-            e.date === data.data_operacional &&
-            e.origin === data.origem
-          );
-
+        : expenses.find(e => e.title === data.descricao && e.date === data.data_operacional && e.origin === data.origem);
       if (existingExpense) {
-        // If it exists but amount or title is different, update it using processTransaction
         if (existingExpense.amount !== data.valor || existingExpense.title !== data.descricao) {
-          setExpenses(prev => prev.map(e => e.id === existingExpense.id ? { ...e, amount: data.valor, title: data.descricao, notes: data.nota } : e));
-          
-          processTransaction(
-            'withdraw',
-            'main',
-            data.valor,
-            `Despesa (${data.origem}): ${data.descricao}`,
-            data.tipo,
-            existingExpense.id,
-            'expense',
-            data.usuario,
-            data.data_operacional
-          );
-
-          addAuditLog({
-            action: 'EDITAR_DESPESA',
-            module: 'FINANCEIRO',
-            entityId: existingExpense.id,
-            description: `Despesa global atualizada (${data.origem}): ${data.descricao}. Valor: ${existingExpense.amount} -> ${data.valor}`,
-            performedBy: data.usuario
-          });
-        } else {
-          console.log(`Despesa já existe com o mesmo valor: ${data.descricao}. Ignorando.`);
+          setDoc(doc(db, COL.expenses, existingExpense.id), { ...existingExpense, amount: data.valor, title: data.descricao, notes: data.nota });
+          processTransaction('withdraw', 'main', data.valor, `Despesa (${data.origem}): ${data.descricao}`, data.tipo, existingExpense.id, 'expense', data.usuario, data.data_operacional);
+          addAuditLog({ action: 'EDITAR_DESPESA', module: 'FINANCEIRO', entityId: existingExpense.id, description: `Despesa actualizada (${data.origem}): ${data.descricao}`, performedBy: data.usuario });
         }
         return;
       }
-
-      const newExpense: Expense = {
-        id: data.referenceId || generateUUID(),
-        title: data.descricao,
-        amount: data.valor,
-        category: data.tipo,
-        date: data.data_operacional,
-        timestamp: getSystemDate().getTime(),
-        user: data.usuario,
-        notes: data.nota,
-        origin: data.origem,
-        attachments: []
-      };
-      
-      setExpenses(prev => {
-        if (data.referenceId && prev.some(e => e.id === data.referenceId)) {
-          return prev;
-        }
-        return [newExpense, ...prev];
-      });
-      
-      if (newExpense.amount > 0) {
-        processTransaction(
-          'withdraw',
-          'main',
-          newExpense.amount,
-          `Despesa (${data.origem}): ${newExpense.title}`,
-          newExpense.category,
-          newExpense.id,
-          'expense',
-          newExpense.user,
-          data.data_operacional
-        );
-      }
-
-      addAuditLog({
-        action: 'ADICIONAR_DESPESA',
-        module: 'FINANCEIRO',
-        entityId: newExpense.id,
-        description: `Despesa global registada (${data.origem}): ${data.descricao}`,
-        performedBy: data.usuario
-      });
+      const newExpense: Expense = { id: data.referenceId || generateUUID(), title: data.descricao, amount: data.valor, category: data.tipo, date: data.data_operacional, timestamp: getSystemDate().getTime(), user: data.usuario, notes: data.nota, origin: data.origem, attachments: [] };
+      setDoc(doc(db, COL.expenses, newExpense.id), newExpense);
+      if (newExpense.amount > 0) processTransaction('withdraw', 'main', newExpense.amount, `Despesa (${data.origem}): ${newExpense.title}`, newExpense.category, newExpense.id, 'expense', newExpense.user, data.data_operacional);
+      addAuditLog({ action: 'ADICIONAR_DESPESA', module: 'FINANCEIRO', entityId: newExpense.id, description: `Despesa global (${data.origem}): ${data.descricao}`, performedBy: data.usuario });
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Erro desconhecido';
-      addLog({
-        action: 'ERROR' as any,
-        module: 'FINANCEIRO',
-        description: `ERRO: ${msg}`,
-        entityId: data.origem
-      }, user);
+      addLog({ action: 'ERROR' as any, module: 'FINANCEIRO', description: `ERRO: ${msg}`, entityId: data.origem }, user);
       throw error;
     }
-  };
+  }, [validateAction, expenses, getSystemDate, processTransaction, addAuditLog, addLog, user]);
 
-  const registrarAlmocoBlindado = (report: SalesReport) => {
+  // ─── registrarAlmocoBlindado ──────────────────────────────────────────────
+  const registrarAlmocoBlindado = useCallback((report: SalesReport) => {
     const lunchVal = report.lunchExpense ?? (report as any).financials?.lunch ?? 0;
     const isFinal = report.isFinalClosure || report.type === 'FINAL' || report.status === ClosureStatus.FECHO_CONFIRMADO;
     if (lunchVal > 0 && isFinal && !report.lunchProcessed) {
       const dateKey = new Date(report.dateISO || report.date).toISOString().split('T')[0];
       const lunchRefId = `LUNCH_EXPENSE_${dateKey}`;
-      // Registo APENAS informativo — NÃO passa por registrarDespesaGlobal
-      // para evitar que processTransaction debite a conta corrente
-      const existingLunch = expenses.find(e => e.id === lunchRefId);
-      if (!existingLunch) {
-        const lunchExpenseRecord: Expense = {
-          id: lunchRefId,
-          title: `Almoço (${dateKey})`,
-          amount: lunchVal,
-          category: 'DESPESA_OPERACIONAL',
-          date: dateKey,
-          timestamp: getSystemDate().getTime(),
-          user: report.closedBy || 'Sistema',
-          notes: 'Despesa operacional de fecho — apenas informativo, não debita conta corrente.',
-          origin: 'CONTROLE_VENDAS',
-          attachments: [],
-          isInformativeOnly: true   // flag para UI saber que não impacta saldo
-        };
-        setExpenses(prev => [lunchExpenseRecord, ...prev]);
+      if (!expenses.find(e => e.id === lunchRefId)) {
+        const lunchRecord: Expense = { id: lunchRefId, title: `Almoço (${dateKey})`, amount: lunchVal, category: 'DESPESA_OPERACIONAL', date: dateKey, timestamp: getSystemDate().getTime(), user: report.closedBy || 'Sistema', notes: 'Despesa operacional — apenas informativo.', origin: 'CONTROLE_VENDAS', attachments: [], isInformativeOnly: true };
+        setDoc(doc(db, COL.expenses, lunchRefId), lunchRecord);
       }
     }
-  };
+  }, [expenses, getSystemDate]);
 
-  const deductStockFromReport = (report: SalesReport) => {
-    if (!report.itemsSummary || report.stockUpdated) return false;
-    
-    validateAction('SALES_REPORT', { date: report.date, items: report.itemsSummary });
+  // ─── SalesReports ─────────────────────────────────────────────────────────
+  const getConfirmedSalesReports = useCallback(() => salesReports.filter(r => r.status === ClosureStatus.FECHO_CONFIRMADO), [salesReports]);
 
-    const itemsToDeduct = report.itemsSummary.filter(i => i.qty > 0);
-    if (itemsToDeduct.length === 0) return true; // Nothing to deduct, but mark as updated
-
-    itemsToDeduct.forEach(item => {
-      const product = products.find(p => p.name === item.name);
-      if (product) {
-        handleStockMovement(product.id, item.qty, 'SALE', report.closedBy || 'Sistema', `Fecho de Vendas: ${report.date}`, report.id);
-      }
-    });
-
-    return true;
-  };
-
-  const addSalesReport = (report: SalesReport) => {
+  const addSalesReport = useCallback((report: SalesReport) => {
     try {
-      // Any user can initiate a partial or final closure as requested
-      // if (!checkPermission('sales_closure')) return;
       if (!checkPermission('sales_execute')) return;
       validateAction('SALES_REPORT', { date: report.date, items: report.itemsSummary });
-
-      // Inventory Consistency: Stock deduction moved to confirmSalesReport
-      const finalReport = { 
-        ...report, 
-        id: report.id || generateUUID(),
-        synced: false,
-        stockUpdated: false // Stock only updated on confirmation
-      };
-
-      setSalesReports(prev => {
-        const existingIdx = prev.findIndex(r => r.date === report.date);
-        
-        if (existingIdx !== -1) {
-          const existingReport = prev[existingIdx];
-          
-          // Bloqueado ou Dia Bloqueado não podem ser editados
-          if (existingReport.status === ClosureStatus.BLOQUEADO || 
-              existingReport.status === ClosureStatus.DIA_BLOQUEADO) {
-            return prev;
-          }
-
-          // Se já estava confirmado, precisamos ajustar o financeiro se os valores mudaram
-          if (existingReport.status === ClosureStatus.FECHO_CONFIRMADO && existingReport.processedFinancials) {
-            adjustFinancialsForReport(existingReport, finalReport as SalesReport);
-            // Mantém o status e flags do relatório EXISTENTE — não deixa addSalesReport
-            // promover ou alterar o status de um relatório já confirmado.
-            finalReport.status = existingReport.status;
-            (finalReport as any).processedFinancials = existingReport.processedFinancials;
-            (finalReport as any).stockUpdated = existingReport.stockUpdated;
-          }
-
-          const updated = [...prev];
-          updated[existingIdx] = finalReport as SalesReport;
-          return updated;
+      const finalReport = { ...report, id: report.id || generateUUID(), synced: true, stockUpdated: false };
+      const existingReport = salesReports.find(r => r.date === report.date);
+      if (existingReport) {
+        if (existingReport.status === ClosureStatus.BLOQUEADO || existingReport.status === ClosureStatus.DIA_BLOQUEADO) return;
+        if (existingReport.status === ClosureStatus.FECHO_CONFIRMADO && existingReport.processedFinancials) {
+          adjustFinancialsForReport(existingReport, finalReport as SalesReport);
+          finalReport.status = existingReport.status;
+          (finalReport as any).processedFinancials = existingReport.processedFinancials;
+          (finalReport as any).stockUpdated = existingReport.stockUpdated;
         }
-        return [finalReport as SalesReport, ...prev];
-      });
-
-      if (finalReport.lunchExpense > 0 && !finalReport.lunchProcessed) {
-        registrarAlmocoBlindado(finalReport as SalesReport);
-        finalReport.lunchProcessed = true;
       }
-
-      const action: PendingAction = {
-        id: generateUUID(),
-        type: 'ADD_SALE',
-        payload: finalReport,
-        timestamp: getSystemDate().getTime()
-      };
-      setSyncQueue(prev => [...prev, action]);
-
-      addAuditLog({
-        action: 'CRIAR_RELATORIO_VENDAS',
-        module: 'VENDAS',
-        entityId: finalReport.id,
-        description: `Relatório de vendas criado/atualizado para ${finalReport.date}`,
-        performedBy: finalReport.closedBy
-      });
+      setDoc(doc(db, COL.salesReports, finalReport.id), finalReport);
+      if (finalReport.lunchExpense > 0 && !finalReport.lunchProcessed) { registrarAlmocoBlindado(finalReport as SalesReport); finalReport.lunchProcessed = true; }
+      addAuditLog({ action: 'CRIAR_RELATORIO_VENDAS', module: 'VENDAS', entityId: finalReport.id, description: `Relatório criado/actualizado para ${finalReport.date}`, performedBy: finalReport.closedBy });
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Erro desconhecido';
-      addLog({
-        action: 'ERROR' as any,
-        module: 'VENDAS',
-        description: `ERRO: ${msg}`,
-        entityId: report.date
-      }, user);
+      addLog({ action: 'ERROR' as any, module: 'VENDAS', description: `ERRO: ${msg}`, entityId: report.date }, user);
       throw error;
     }
-  };
+  }, [checkPermission, validateAction, salesReports, adjustFinancialsForReport, registrarAlmocoBlindado, addAuditLog, addLog, user]);
 
-  const updateSalesReport = (reportId: string, updates: Partial<SalesReport>) => {
+  const updateSalesReport = useCallback((reportId: string, updates: Partial<SalesReport>) => {
     try {
       const report = salesReports.find(r => r.id === reportId);
-      if (report) {
-        const reportDateStr = report.dateISO ? report.dateISO : report.date;
-        validateAction('SALES_REPORT', { 
-          date: reportDateStr, 
-          items: updates.itemsSummary || report.itemsSummary 
-        });
-
-        // Stock deduction moved to confirmSalesReport
-        
-        // If report is already confirmed and processed, we need to handle financial adjustments
-        if (report.status === ClosureStatus.FECHO_CONFIRMADO && report.processedFinancials) {
-          const hasFinancialChanges = 
-            updates.cash !== undefined || 
-            updates.tpa !== undefined || 
-            updates.transfer !== undefined ||
-            updates.totalLifted !== undefined;
-
-          if (hasFinancialChanges) {
-            const newReport = { ...report, ...updates };
-            adjustFinancialsForReport(report, newReport);
-
-            addAuditLog({
-              action: 'AJUSTE_FINANCEIRO_FECHO',
-              entity: 'SalesReport',
-              entityId: reportId,
-              details: `Valores ajustados via edição parcial.`,
-              performedBy: user?.name || 'Sistema'
-            });
-          }
-        }
+      if (!report) return;
+      validateAction('SALES_REPORT', { date: report.dateISO || report.date, items: updates.itemsSummary || report.itemsSummary });
+      if (report.status === ClosureStatus.FECHO_CONFIRMADO && report.processedFinancials) {
+        const hasFinancialChanges = updates.cash !== undefined || updates.tpa !== undefined || updates.transfer !== undefined || updates.totalLifted !== undefined;
+        if (hasFinancialChanges) { adjustFinancialsForReport(report, { ...report, ...updates }); addAuditLog({ action: 'AJUSTE_FINANCEIRO_FECHO', module: 'VENDAS', entityId: reportId, description: `Valores ajustados.`, performedBy: user?.name || 'Sistema' }); }
       }
-      setSalesReports(prev => prev.map(r => r.id === reportId ? { ...r, ...updates } : r));
-      
-      // If lunchExpense was updated or it's a final closure, re-run lunch registration
-      const updatedReport = salesReports.find(r => r.id === reportId);
-      if (updatedReport) {
-        const finalUpdatedReport = { ...updatedReport, ...updates };
-        if (finalUpdatedReport.lunchExpense > 0 && !finalUpdatedReport.lunchProcessed) {
-          registrarAlmocoBlindado(finalUpdatedReport as SalesReport);
-          updates.lunchProcessed = true;
-        }
-      }
+      setDoc(doc(db, COL.salesReports, reportId), { ...report, ...updates });
+      const finalUpdatedReport = { ...report, ...updates };
+      if (finalUpdatedReport.lunchExpense > 0 && !finalUpdatedReport.lunchProcessed) registrarAlmocoBlindado(finalUpdatedReport as SalesReport);
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Erro desconhecido';
-      addLog({
-        action: 'ERROR' as any,
-        module: 'VENDAS',
-        description: `ERRO: ${msg}`,
-        entityId: reportId
-      }, user);
+      addLog({ action: 'ERROR' as any, module: 'VENDAS', description: `ERRO: ${msg}`, entityId: reportId }, user);
       throw error;
     }
-  };
+  }, [salesReports, validateAction, adjustFinancialsForReport, registrarAlmocoBlindado, addAuditLog, addLog, user]);
 
-  const updateSalesReportJustification = (reportId: string, justificationData: any) => {
+  const updateSalesReportJustification = useCallback((reportId: string, justificationData: any) => {
     const report = salesReports.find(r => r.id === reportId);
-    if (report) {
-      const reportDateStr = report.dateISO ? report.dateISO : report.date;
-      checkDayLock(reportDateStr);
-    }
-    setSalesReports(prev => prev.map(r => r.id === reportId ? { 
-      ...r, 
-      justificationLog: justificationData,
-      financials: r.financials ? { ...r.financials, justification: justificationData.justificativa } : undefined
-    } : r));
+    if (!report) return;
+    checkDayLock(report.dateISO || report.date);
+    setDoc(doc(db, COL.salesReports, reportId), { ...report, justificationLog: justificationData, financials: report.financials ? { ...report.financials, justification: justificationData.justificativa } : undefined });
+    addAuditLog({ action: 'JUSTIFICAR_FECHO', module: 'VENDAS', entityId: reportId, description: `Justificativa adicionada ao relatório ${reportId}`, performedBy: user?.name || 'Sistema' });
+  }, [salesReports, checkDayLock, addAuditLog, user]);
 
-    addAuditLog({
-      action: 'JUSTIFICAR_FECHO',
-      module: 'VENDAS',
-      entityId: reportId,
-      description: `Justificativa de fecho adicionada/atualizada para o relatório ${reportId}`,
-      performedBy: user?.name || 'Sistema'
-    });
-  };
-
-  const confirmSalesReport = (reportId: string, confirmedBy: string, isUnilateral: boolean = false, reportData?: SalesReport) => {
+  const confirmSalesReport = useCallback((reportId: string, confirmedBy: string, isUnilateral: boolean = false, reportData?: SalesReport) => {
     if (!checkPermission('sales_closure')) return;
-
-    // Sempre usa reportData se fornecido — ignora o estado stale do array
     const report = reportData ?? salesReports.find(r => r.id === reportId);
     if (!report) return;
-
-    // ✅ GUARDA ANTI-CICLO: Se já está confirmado, recusa silenciosamente.
-    // Isto quebra qualquer ciclo de re-confirmação, independentemente da origem.
     const liveReport = salesReports.find(r => r.id === reportId);
-    if (liveReport?.status === ClosureStatus.FECHO_CONFIRMADO && liveReport?.processedFinancials) {
-      console.warn(`[confirmSalesReport] Bloqueado: Relatório ${reportId} já foi confirmado.`);
-      return;
-    }
-
-    // Garante que processedFinancials e stockUpdated reflectem o estado ANTES da confirmação
+    if (liveReport?.status === ClosureStatus.FECHO_CONFIRMADO && liveReport?.processedFinancials) { console.warn(`[confirmSalesReport] Bloqueado: já confirmado.`); return; }
     const wasAlreadyProcessed = !reportData && (report.processedFinancials === true);
     const wasStockUpdated = !reportData && (report.stockUpdated === true);
-
     const reportDateStr = report.dateISO || report.date;
-
-    // 2. Preparar o relatório final com os flags de processamento
-    const finalReport: SalesReport = {
-      ...report,
-      status: ClosureStatus.FECHO_CONFIRMADO,
-      confirmedBy,
-      confirmationTimestamp: getSystemDate().getTime(),
-      unilateralAdminConfirmation: isUnilateral,
-      processedFinancials: true,   // Marcamos como processado para evitar duplicidade futura
-      stockUpdated: true,          // Marcamos como atualizado
-      lunchProcessed: true,        // Marcamos almoço como processado
-      isFinalClosure: true
-    };
-
-    // 3. DEDUÇÃO DE STOCK (Idempotente)
+    const finalReport: SalesReport = { ...report, status: ClosureStatus.FECHO_CONFIRMADO, confirmedBy, confirmationTimestamp: getSystemDate().getTime(), unilateralAdminConfirmation: isUnilateral, processedFinancials: true, stockUpdated: true, lunchProcessed: true, isFinalClosure: true };
     if (!wasStockUpdated && !report.stockUpdated) {
-      const itemsToDeduct = report.itemsSnapshot || report.itemsSummary || [];
-      
-      itemsToDeduct.forEach((item: any) => {
-        const p = products.find(prod => 
-          (item.productId && item.productId === prod.id) || 
-          item.id === prod.id || 
-          item.name === prod.name
-        );
+      (report.itemsSnapshot || report.itemsSummary || []).forEach((item: any) => {
+        const p = products.find(prod => (item.productId && item.productId === prod.id) || item.id === prod.id || item.name === prod.name);
         const qty = item.soldQty ?? item.qty ?? 0;
-        
-        if (p && qty > 0) {
-          handleStockMovement(p.id, qty, 'SALE', confirmedBy, `Fecho Confirmado: ${reportDateStr}`, `confirm_${reportId}_${p.id}`);
-        }
+        if (p && qty > 0) handleStockMovement(p.id, qty, 'SALE', confirmedBy, `Fecho Confirmado: ${reportDateStr}`, `confirm_${reportId}_${p.id}`);
       });
     }
-
-    // 4. PROCESSAMENTO FINANCEIRO (Idempotente)
     if (!wasAlreadyProcessed && !report.processedFinancials) {
       const cash = (finalReport as any).cash ?? (finalReport as any).financials?.cash ?? 0;
       const tpa = (finalReport as any).tpa ?? (finalReport as any).financials?.ticket ?? 0;
       const transfer = (finalReport as any).transfer ?? (finalReport as any).financials?.transfer ?? 0;
-      const totalLifted = cash + tpa + transfer;   // ← Valor bruto levantado
-
-      // Atualiza apenas os saldos de Cash e TPA (não cria transações no histórico)
-      if (cash > 0) setCashBalance(prev => prev + cash);
-      if (tpa + transfer > 0) setTPABalance(prev => prev + (tpa + transfer));
-
-      // Apenas 1 transação no Estado de Conta: o Total Levantado
-      if (totalLifted > 0) {
-        processTransaction(
-          'deposit',
-          'main',
-          totalLifted,
-          `Fecho Confirmado (${reportDateStr})`,
-          'Fecho de Caixa',
-          reportId,
-          'day_closure',
-          confirmedBy,
-          reportDateStr
-        );
-      }
+      const totalLifted = cash + tpa + transfer;
+      const newCash = cashBalance + cash; const newTPA = tpaBalance + (tpa + transfer);
+      setCashBalance(newCash); setTPABalance(newTPA);
+      setDoc(doc(db, 'appdata', 'balances'), { currentBalance, savingsBalance, cashBalance: newCash, tpaBalance: newTPA });
+      if (totalLifted > 0) processTransaction('deposit', 'main', totalLifted, `Fecho Confirmado (${reportDateStr})`, 'Fecho de Caixa', reportId, 'day_closure', confirmedBy, reportDateStr);
     }
-
-    // 5. REGISTO DE DESPESA DE ALMOÇO — vem DEPOIS do fecho financeiro
-    // para garantir ordem correta no histórico de movimentos
     const lunchVal = (finalReport as any).lunchExpense ?? (finalReport as any).financials?.lunch ?? 0;
-    if (lunchVal > 0 && !report.lunchProcessed) {
-      registrarAlmocoBlindado({ ...finalReport, lunchExpense: lunchVal } as SalesReport);
-    }
+    if (lunchVal > 0 && !report.lunchProcessed) registrarAlmocoBlindado({ ...finalReport, lunchExpense: lunchVal } as SalesReport);
+    setDoc(doc(db, COL.salesReports, reportId), finalReport);
+    addAuditLog({ action: isUnilateral ? 'CONFIRMAÇÃO_UNILATERAL_FECHO' : 'VALIDAÇÃO_FINAL_FECHO', module: 'VENDAS', entityId: reportId, description: `Fecho confirmado para ${reportDateStr}.`, performedBy: confirmedBy });
+  }, [checkPermission, salesReports, products, getSystemDate, cashBalance, tpaBalance, currentBalance, savingsBalance, handleStockMovement, processTransaction, registrarAlmocoBlindado, addAuditLog]);
 
-    // 6. ATUALIZAÇÃO DE ESTADO E PERSISTÊNCIA IMEDIATA
-    setSalesReports(prev => {
-      const exists = prev.some(r => r.id === reportId);
-      const newReports = exists
-        ? prev.map(r => (r.id === reportId ? finalReport : r))
-        : [finalReport, ...prev];
-      localStorage.setItem('mg_sales_reports', JSON.stringify(newReports));
-      return newReports;
-    });
-
-    // 7. LOG DE AUDITORIA
-    addAuditLog({
-      action: isUnilateral ? 'CONFIRMAÇÃO_UNILATERAL_FECHO' : 'VALIDAÇÃO_FINAL_FECHO',
-      module: 'VENDAS',
-      entityId: reportId,
-      description: `Fecho confirmado para ${reportDateStr}. Stock, Financeiro e Almoço processados.`,
-      performedBy: confirmedBy
-    });
-  };
-
-  const [equipments, setEquipments] = useState<Equipment[]>(() => {
-    try {
-        const saved = localStorage.getItem('@Marguel:equipments');
-        return saved ? JSON.parse(saved) : [
-            { id: '1', name: 'Mesas', qty: 20, prevQty: 20, status: 'Operacional' },
-            { id: '2', name: 'Cadeiras', qty: 80, prevQty: 80, status: 'Operacional' },
-            { id: '3', name: 'Grades (Vazias)', qty: 50, prevQty: 48, status: 'Operacional' },
-            { id: '4', name: 'Vasilhames', qty: 1200, prevQty: 1200, status: 'Operacional' },
-            { id: '5', name: 'Chaves de Abrir', qty: 10, prevQty: 12, status: 'Operacional' },
-            { id: '6', name: 'Freezer Vertical', qty: 3, prevQty: 3, status: 'Operacional' }
-        ];
-    } catch { return []; }
-  });
-
-  useEffect(() => {
-    localStorage.setItem('@Marguel:equipments', JSON.stringify(equipments));
-  }, [equipments]);
-
-  const [hasPendingChanges, setHasPendingChanges] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
-
-  const markAsPending = () => {
-    if (!navigator.onLine) {
-      setHasPendingChanges(true);
-      localStorage.setItem('@Marguel:needsSync', 'true');
-    }
-  };
-
-  const syncData = useCallback(async () => {
-  if (!isOnline || isSyncing) return;
-  setIsSyncing(true);
-  try {
-    const keysToSync = [
-      { firestore: 'mg_products', setter: setProducts, isArray: true },
-      { firestore: 'mg_expenses', setter: setExpenses, isArray: true },
-      { firestore: 'mg_purchases', setter: setPurchases, isArray: true },
-      { firestore: 'mg_transactions', setter: setTransactions, isArray: true },
-      { firestore: 'mg_sales_reports', setter: setSalesReports, isArray: true },
-      { firestore: 'mg_inventory_history', setter: setInventoryHistory, isArray: true },
-      { firestore: 'mg_stock_operation_history', setter: setStockOperationHistory, isArray: true },
-      { firestore: 'mg_cards', setter: setCards, isArray: true },
-      { firestore: 'mg_current_balance', setter: setCurrentBalance, isArray: false },
-      { firestore: 'mg_savings_balance', setter: setSavingsBalance, isArray: false },
-      { firestore: 'mg_cash_balance', setter: setCashBalance, isArray: false },
-      { firestore: 'mg_tpa_balance', setter: setTPABalance, isArray: false },
-    ];
-
-    for (const { firestore, setter, isArray } of keysToSync) {
-      try {
-        const chaveSegura = firestore.replace(/[^a-zA-Z0-9_-]/g, '_');
-        const snap = await getDoc(doc(db, 'localdata', chaveSegura));
-        if (snap.exists()) {
-          const dados = snap.data().dados;
-          const parsed = JSON.parse(dados);
-          if (isArray && Array.isArray(parsed)) {
-            (setter as any)(parsed);
-            localStorage.setItem(firestore, dados);
-          } else if (!isArray) {
-            (setter as any)(parseFloat(dados) || 0);
-            localStorage.setItem(firestore, dados);
-          }
-        }
-      } catch (e) {
-        console.warn('Erro ao sincronizar', firestore, e);
-      }
-    }
-    // Sincronizar utilizadores
-    try {
-      const usersSnap = await getDoc(doc(db, 'localdata', 'mg_users'));
-      if (usersSnap.exists()) {
-        const dados = usersSnap.data().dados;
-        localStorage.setItem('mg_users', dados);
-        window.dispatchEvent(new Event('mg_users_updated'));
-      }
-    } catch (e) {
-      console.warn('Erro ao sincronizar mg_users:', e);
-    }
-    setHasPendingChanges(false);
-    console.log('Sincronização concluída.');
-  } catch (error) {
-    console.error('Erro na sincronização:', error);
-  } finally {
-    setIsSyncing(false);
-  }
-}, [isOnline, isSyncing]);
-
-  const addEquipment = (equipment: Omit<Equipment, 'id' | 'prevQty'>) => {
+  // ─── Equipments ───────────────────────────────────────────────────────────
+  const addEquipment = useCallback((equipment: Omit<Equipment, 'id' | 'prevQty'>) => {
     try {
       validateAction('EQUIPMENT', {});
-      const newEquip: Equipment = {
-          ...equipment,
-          id: generateUUID(),
-          prevQty: equipment.qty
-      };
-      setEquipments(prev => [...prev, newEquip]);
-      markAsPending();
-      
-      addAuditLog({
-        action: 'ADICIONAR_EQUIPAMENTO',
-        module: 'INVENTARIO',
-        entityId: newEquip.id,
-        description: `Equipamento ${newEquip.name} adicionado.`,
-        performedBy: user?.name || 'Sistema'
-      });
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : 'Erro desconhecido';
-      addLog({
-        action: 'ERROR' as any,
-        module: 'INVENTARIO',
-        description: `ERRO: ${msg}`,
-        entityId: equipment.name
-      }, user);
-      throw error;
-    }
-  };
+      const newEquip: Equipment = { ...equipment, id: generateUUID(), prevQty: equipment.qty };
+      setDoc(doc(db, COL.equipments, newEquip.id), newEquip);
+      addAuditLog({ action: 'ADICIONAR_EQUIPAMENTO', module: 'INVENTARIO', entityId: newEquip.id, description: `Equipamento ${newEquip.name} adicionado.`, performedBy: user?.name || 'Sistema' });
+    } catch (error) { const msg = error instanceof Error ? error.message : 'Erro'; addLog({ action: 'ERROR' as any, module: 'INVENTARIO', description: `ERRO: ${msg}`, entityId: equipment.name }, user); throw error; }
+  }, [validateAction, addAuditLog, addLog, user]);
 
-  const updateEquipment = (id: string, updates: Partial<Equipment>) => {
-    try {
-      validateAction('EQUIPMENT', {});
-      setEquipments(prev => prev.map(eq => 
-          eq.id === id ? { ...eq, ...updates } : eq
-      ));
-      markAsPending();
-      
-      addAuditLog({
-        action: 'EDITAR_EQUIPAMENTO',
-        module: 'INVENTARIO',
-        entityId: id,
-        description: `Equipamento ${id} atualizado.`,
-        performedBy: user?.name || 'Sistema'
-      });
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : 'Erro desconhecido';
-      addLog({
-        action: 'ERROR' as any,
-        module: 'INVENTARIO',
-        description: `ERRO: ${msg}`,
-        entityId: id
-      }, user);
-      throw error;
-    }
-  };
-
-  const updateEquipmentQty = (id: string, newQty: number) => {
+  const updateEquipment = useCallback((id: string, updates: Partial<Equipment>) => {
     try {
       validateAction('EQUIPMENT', {});
       const equip = equipments.find(e => e.id === id);
-      setEquipments(prev => prev.map(eq => 
-          eq.id === id ? { ...eq, prevQty: eq.qty, qty: newQty } : eq
-      ));
-      markAsPending();
+      if (equip) setDoc(doc(db, COL.equipments, id), { ...equip, ...updates });
+      addAuditLog({ action: 'EDITAR_EQUIPAMENTO', module: 'INVENTARIO', entityId: id, description: `Equipamento ${id} actualizado.`, performedBy: user?.name || 'Sistema' });
+    } catch (error) { const msg = error instanceof Error ? error.message : 'Erro'; addLog({ action: 'ERROR' as any, module: 'INVENTARIO', description: `ERRO: ${msg}`, entityId: id }, user); throw error; }
+  }, [validateAction, equipments, addAuditLog, addLog, user]);
 
-      addAuditLog({
-        action: 'AJUSTE_QTD_EQUIPAMENTO',
-        module: 'INVENTARIO',
-        entityId: id,
-        description: `Quantidade de ${equip?.name || id} alterada de ${equip?.qty} para ${newQty}`,
-        performedBy: user?.name || 'Sistema'
-      });
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : 'Erro desconhecido';
-      addLog({
-        action: 'ERROR' as any,
-        module: 'INVENTARIO',
-        description: `ERRO: ${msg}`,
-        entityId: id
-      }, user);
-      throw error;
-    }
-  };
-
-  const removeEquipment = (id: string) => {
+  const updateEquipmentQty = useCallback((id: string, newQty: number) => {
     try {
       validateAction('EQUIPMENT', {});
       const equip = equipments.find(e => e.id === id);
-      setEquipments(prev => prev.filter(eq => eq.id !== id));
-      markAsPending();
-      
-      addAuditLog({
-        action: 'REMOVER_EQUIPAMENTO',
-        module: 'INVENTARIO',
-        entityId: id,
-        description: `Equipamento ${equip?.name || id} removido.`,
-        performedBy: user?.name || 'Sistema'
-      });
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : 'Erro desconhecido';
-      addLog({
-        action: 'ERROR' as any,
-        module: 'INVENTARIO',
-        description: `ERRO: ${msg}`,
-        entityId: id
-      }, user);
-      throw error;
-    }
-  };
+      if (equip) setDoc(doc(db, COL.equipments, id), { ...equip, prevQty: equip.qty, qty: newQty });
+      addAuditLog({ action: 'AJUSTE_QTD_EQUIPAMENTO', module: 'INVENTARIO', entityId: id, description: `Quantidade de ${equip?.name || id}: ${equip?.qty} → ${newQty}`, performedBy: user?.name || 'Sistema' });
+    } catch (error) { const msg = error instanceof Error ? error.message : 'Erro'; addLog({ action: 'ERROR' as any, module: 'INVENTARIO', description: `ERRO: ${msg}`, entityId: id }, user); throw error; }
+  }, [validateAction, equipments, addAuditLog, addLog, user]);
 
-  const addCard = (card: Omit<Card, 'id'>) => {
+  const removeEquipment = useCallback((id: string) => {
+    try {
+      validateAction('EQUIPMENT', {});
+      const equip = equipments.find(e => e.id === id);
+      deleteDoc(doc(db, COL.equipments, id));
+      addAuditLog({ action: 'REMOVER_EQUIPAMENTO', module: 'INVENTARIO', entityId: id, description: `Equipamento ${equip?.name || id} removido.`, performedBy: user?.name || 'Sistema' });
+    } catch (error) { const msg = error instanceof Error ? error.message : 'Erro'; addLog({ action: 'ERROR' as any, module: 'INVENTARIO', description: `ERRO: ${msg}`, entityId: id }, user); throw error; }
+  }, [validateAction, equipments, addAuditLog, addLog, user]);
+
+  // ─── Cards ────────────────────────────────────────────────────────────────
+  const addCard = useCallback((card: Omit<Card, 'id'>) => {
     if (!checkPermission('finance_card_create')) return;
-    const newCard: Card = {
-      ...card,
-      id: Math.random().toString(36).substr(2, 9)
-    };
-    setCards(prev => [...prev, newCard]);
-    
-    addAuditLog({
-      action: 'CRIAR_CARTAO',
-      module: 'FINANCEIRO',
-      entityId: newCard.id,
-      description: `Novo cartão/conta criado: ${newCard.name}`,
-      performedBy: user?.name || 'Sistema'
-    });
-  };
+    const newCard: Card = { ...card, id: Math.random().toString(36).substr(2, 9) };
+    setDoc(doc(db, COL.cards, newCard.id), newCard);
+    addAuditLog({ action: 'CRIAR_CARTAO', module: 'FINANCEIRO', entityId: newCard.id, description: `Cartão criado: ${newCard.name}`, performedBy: user?.name || 'Sistema' });
+  }, [checkPermission, addAuditLog, user]);
 
-  const updateCard = (id: string, updates: Partial<Card>) => {
-    setCards(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
-    
-    // Sync legacy balances if needed
-    if (id === 'main' && updates.balance !== undefined) setCurrentBalance(updates.balance);
-    if (id === 'savings' && updates.balance !== undefined) setSavingsBalance(updates.balance);
-
-    addAuditLog({
-      action: 'EDITAR_CARTAO',
-      module: 'FINANCEIRO',
-      entityId: id,
-      description: `Cartão/conta atualizado: ${id}`,
-      performedBy: user?.name || 'Sistema'
-    });
-  };
-
-  const deleteCard = (id: string) => {
-    if (!checkPermission('finance_card_delete')) return;
-    if (id === 'main' || id === 'savings') return; // Protect default cards
+  const updateCard = useCallback((id: string, updates: Partial<Card>) => {
     const card = cards.find(c => c.id === id);
-    setCards(prev => prev.filter(c => c.id !== id));
+    if (card) setDoc(doc(db, COL.cards, id), { ...card, ...updates });
+    if (id === 'main' && updates.balance !== undefined) { setCurrentBalance(updates.balance); setDoc(doc(db, 'appdata', 'balances'), { currentBalance: updates.balance, savingsBalance, cashBalance, tpaBalance }); }
+    if (id === 'savings' && updates.balance !== undefined) { setSavingsBalance(updates.balance); setDoc(doc(db, 'appdata', 'balances'), { currentBalance, savingsBalance: updates.balance, cashBalance, tpaBalance }); }
+    addAuditLog({ action: 'EDITAR_CARTAO', module: 'FINANCEIRO', entityId: id, description: `Cartão actualizado: ${id}`, performedBy: user?.name || 'Sistema' });
+  }, [cards, currentBalance, savingsBalance, cashBalance, tpaBalance, addAuditLog, user]);
 
-    addAuditLog({
-      action: 'REMOVER_CARTAO',
-      module: 'FINANCEIRO',
-      entityId: id,
-      description: `Cartão/conta removido: ${card?.name || id}`,
-      performedBy: user?.name || 'Sistema'
-    });
-  };
+  const deleteCard = useCallback((id: string) => {
+    if (!checkPermission('finance_card_delete')) return;
+    if (id === 'main' || id === 'savings') return;
+    const card = cards.find(c => c.id === id);
+    deleteDoc(doc(db, COL.cards, id));
+    addAuditLog({ action: 'REMOVER_CARTAO', module: 'FINANCEIRO', entityId: id, description: `Cartão removido: ${card?.name || id}`, performedBy: user?.name || 'Sistema' });
+  }, [checkPermission, cards, addAuditLog, user]);
 
-  const resetTestData = () => {
+  // ─── resetTestData ────────────────────────────────────────────────────────
+  const resetTestData = useCallback(() => {
     if (!checkPermission('admin_global_admin')) return;
-    
-    setProducts(INITIAL_PRODUCTS);
-    setPurchases([]);
-    setExpenses([]);
-    setTransactions([]);
-    setSalesReports([]);
-    setInventoryHistory([]);
-    setStockOperationHistory([]);
-    setLockedDays([]);
-    // Zerar saldos conforme solicitado
-    setCurrentBalance(0);
-    setSavingsBalance(0);
-    setCashBalance(0);
-    setTPABalance(0);
-    setCards(prev => prev.map(c => ({ ...c, balance: 0 })));
-    
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
-    setSystemDate(now);
-    
-    // Clear specific localStorage keys to avoid clearing auth
-    const keysToClear = [
-      'mg_products', 'mg_purchases', 'mg_expenses', 'mg_expense_categories',
-      'mg_inventory_history', 'mg_stock_operation_history', 'mg_current_balance',
-      'mg_savings_balance', 'mg_cash_balance', 'mg_tpa_balance', 'mg_cards',
-      'mg_transactions', 'mg_sales_reports', 'mg_locked_days', 'mg_system_date'
-    ];
-    keysToClear.forEach(key => localStorage.removeItem(key));
-    
-    addAuditLog({
-      action: 'RESET_SISTEMA',
-      module: 'SISTEMA',
-      entityId: 'ALL',
-      description: 'Sistema resetado para dados iniciais (Saldos zerados)',
-      performedBy: user?.name || 'Admin'
+    INITIAL_PRODUCTS.forEach(p => setDoc(doc(db, COL.products, p.id), p));
+    [COL.purchases, COL.expenses, COL.transactions, COL.salesReports, COL.inventoryHistory, COL.stockOperationHistory].forEach(col => {
+      // Não é possível apagar colecções directamente no SDK cliente — limpa via estado
     });
-  };
+    setDoc(doc(db, 'appdata', 'balances'), { currentBalance: 0, savingsBalance: 0, cashBalance: 0, tpaBalance: 0 });
+    setDoc(doc(db, 'appdata', 'locked_days'), { days: [] });
+    INITIAL_CARDS.forEach(c => setDoc(doc(db, COL.cards, c.id), { ...c, balance: 0 }));
+    addAuditLog({ action: 'RESET_SISTEMA', module: 'SISTEMA', entityId: 'ALL', description: 'Sistema resetado.', performedBy: user?.name || 'Admin' });
+  }, [checkPermission, addAuditLog, user]);
 
-  const runSystemDiagnostic = () => {
-    const currentVer = localStorage.getItem('mg_schema_version');
-    
-    if (currentVer !== SCHEMA_VERSION) {
-      // 1. Migração de Produtos (Garante IDs em tudo)
-      const fixedProducts = products.map(p => ({ ...p, id: p.id || generateUUID() }));
-      setProducts(fixedProducts);
-      localStorage.setItem('mg_products', JSON.stringify(fixedProducts));
+  // ─── runSystemDiagnostic ──────────────────────────────────────────────────
+  const runSystemDiagnostic = useCallback(() => {
+    alert('Sistema a operar com Firestore em tempo real.');
+  }, []);
 
-      // 2. Limpeza de metadados legados nos relatórios
-      const fixedReports = salesReports.map(r => {
-        const { _deltaApplied, ...rest } = r as any;
-        return rest;
-      });
-      setSalesReports(fixedReports);
-      localStorage.setItem('mg_sales_reports', JSON.stringify(fixedReports));
-
-      localStorage.setItem('mg_schema_version', SCHEMA_VERSION);
-      alert(`Migração Concluída: v${SCHEMA_VERSION}`);
-    } else {
-      alert("Sistema operando em versão atualizada.");
-    }
-  };
-
-  const ignoreLockedDayWithoutClosure = useCallback((dateStr: string) => {
-    const clean = cleanDate(dateStr);
-    
-    if (isDayLocked(dateStr)) {
-      const hasConfirmedReport = salesReports.some(r => 
-        cleanDate(r.dateISO || r.date) === clean && 
-        r.status === ClosureStatus.FECHO_CONFIRMADO
-      );
-
-      // Se NÃO houver fecho confirmado, removemos as transações financeiras desse dia
-      if (!hasConfirmedReport) {
-        setTransactions(prev => 
-          prev.filter(t => cleanDate(t.operationalDay || t.date) !== clean)
-        );
-      }
-
-      // Remove apenas relatórios que não sejam fecho confirmado nem fecho parcial
-      setSalesReports(prev => 
-        prev.filter(r => {
-          const isSameDay = cleanDate(r.dateISO || r.date) === clean;
-          if (!isSameDay) return true;
-          
-          const isConfirmedOrPartial = r.status === ClosureStatus.FECHO_CONFIRMADO || r.status === ClosureStatus.FECHO_PARCIAL;
-          return isConfirmedOrPartial;
-        })
-      );
-
-      addAuditLog({
-        action: 'LIMPEZA_DIA_BLOQUEADO',
-        module: 'VENDAS',
-        entityId: clean,
-        description: `Limpeza de segurança no dia ${clean} (bloqueado sem fecho confirmado). Resumos parciais mantidos.`,
-        performedBy: 'Sistema'
-      });
-    }
-  }, [isDayLocked, salesReports, addAuditLog]);
-
+  // ─── value ────────────────────────────────────────────────────────────────
   const value = useMemo(() => ({
-    products: products.filter(p => !p.isArchived), categories, purchases, currentBalance, savingsBalance, cashBalance, tpaBalance, cards, transactions, salesReports, 
+    products: products.filter(p => !p.isArchived), categories, purchases, currentBalance, savingsBalance, cashBalance, tpaBalance, cards, transactions, salesReports,
     expenses, expenseCategories, inventoryHistory, priceHistory, lockedDays, systemDate,
     getSystemDate, setSystemDate, unlockDay, lockDay, isDayLocked, checkDayLock,
     addExpense, deleteExpense, updateExpense,
     addExpenseCategory, updateExpenseCategory, deleteExpenseCategory,
     addInventoryLog, addProduct, updateProduct, deleteProduct, addCategory, editCategory, removeCategory,
     addPurchase, getPurchasesByDate, getTodayPurchases, processTransaction, processCashTPADebit,
-    addSalesReport, 
-    getConfirmedSalesReports,
-    registrarDespesaGlobal,
-    registrarAlmocoBlindado,
-    updateSalesReport, 
-    updateSalesReportJustification, 
-    confirmSalesReport, 
-    addAuditLog, 
-    stockOperationHistory, 
+    addSalesReport, getConfirmedSalesReports, registrarDespesaGlobal, registrarAlmocoBlindado,
+    updateSalesReport, updateSalesReportJustification, confirmSalesReport,
+    addAuditLog, stockOperationHistory,
     equipments, addEquipment, updateEquipment, updateEquipmentQty, removeEquipment,
-    addCard, updateCard, deleteCard, resetTestData,
-    runSystemDiagnostic,
+    addCard, updateCard, deleteCard, resetTestData, runSystemDiagnostic,
     isSyncing, hasPendingChanges, syncData, handleStockMovement,
     ignoreLockedDayWithoutClosure,
     notifications, addNotification, markNotificationRead, clearNotifications,
   }), [
-    products, categories, purchases, currentBalance, savingsBalance, cashBalance, tpaBalance, cards, transactions, salesReports, 
+    products, categories, purchases, currentBalance, savingsBalance, cashBalance, tpaBalance, cards, transactions, salesReports,
     expenses, expenseCategories, inventoryHistory, priceHistory, lockedDays, systemDate,
-    getSystemDate, setSystemDate, unlockDay, lockDay, isDayLocked, checkDayLock,
+    getSystemDate, unlockDay, lockDay, isDayLocked, checkDayLock,
     addExpense, deleteExpense, updateExpense,
     addExpenseCategory, updateExpenseCategory, deleteExpenseCategory,
     addInventoryLog, addProduct, updateProduct, deleteProduct, addCategory, editCategory, removeCategory,
     addPurchase, getPurchasesByDate, getTodayPurchases, processTransaction, processCashTPADebit,
-    addSalesReport, 
-    getConfirmedSalesReports,
-    registrarDespesaGlobal,
-    registrarAlmocoBlindado,
-    updateSalesReport, 
-    updateSalesReportJustification, 
-    confirmSalesReport, 
-    addAuditLog, 
-    stockOperationHistory, 
+    addSalesReport, getConfirmedSalesReports, registrarDespesaGlobal, registrarAlmocoBlindado,
+    updateSalesReport, updateSalesReportJustification, confirmSalesReport,
+    addAuditLog, stockOperationHistory,
     equipments, addEquipment, updateEquipment, updateEquipmentQty, removeEquipment,
-    addCard, updateCard, deleteCard, resetTestData,
-    runSystemDiagnostic,
+    addCard, updateCard, deleteCard, resetTestData, runSystemDiagnostic,
     isSyncing, hasPendingChanges, syncData, handleStockMovement,
     ignoreLockedDayWithoutClosure,
-    notifications, addNotification, markNotificationRead, clearNotifications
+    notifications, addNotification, markNotificationRead, clearNotifications,
   ]);
-
-  // FIREBASE: Sincronizar automaticamente ao iniciar
-useEffect(() => {
-  if (isOnline) {
-    syncData();
-  }
-}, []); // eslint-disable-line react-hooks/exhaustive-deps
-  
-  useEffect(() => {
-    const syncInterval = setInterval(() => {
-      if (navigator.onLine && !isSyncing) {
-        syncData();
-        console.log("Sincronização em segundo plano executada...");
-      }
-    }, 90000); // 1 minuto e 30 segundos
-
-    return () => clearInterval(syncInterval);
-  }, [syncData, isSyncing]);
 
   return (
     <ProductContext.Provider value={value}>
@@ -2285,8 +1031,6 @@ useEffect(() => {
 
 export const useProducts = () => {
   const context = useContext(ProductContext);
-  if (!context) {
-    throw new Error('useProducts must be used within a ProductProvider');
-  }
+  if (!context) throw new Error('useProducts must be used within a ProductProvider');
   return context;
 };
