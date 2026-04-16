@@ -877,6 +877,7 @@ useEffect(() => {
       try {
         const dataToSave: Record<string, any> = {
           mg_products: products,
+          mg_users: JSON.parse(localStorage.getItem('mg_users') || '[]'),
           mg_expenses: expenses,
           mg_purchases: purchases,
           mg_transactions: transactions,
@@ -1928,6 +1929,17 @@ saveProductToFirebase(updatedProduct);
       } catch (e) {
         console.warn('Erro ao sincronizar', firestore, e);
       }
+    }
+    // Sincronizar utilizadores
+    try {
+      const usersSnap = await getDoc(doc(db, 'localdata', 'mg_users'));
+      if (usersSnap.exists()) {
+        const dados = usersSnap.data().dados;
+        localStorage.setItem('mg_users', dados);
+        window.dispatchEvent(new Event('mg_users_updated'));
+      }
+    } catch (e) {
+      console.warn('Erro ao sincronizar mg_users:', e);
     }
     setHasPendingChanges(false);
     console.log('Sincronização concluída.');
