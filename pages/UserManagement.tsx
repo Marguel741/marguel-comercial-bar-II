@@ -91,9 +91,9 @@ const UserManagement: React.FC = () => {
   const handleDeleteUser = (id: string) => {
     const targetUser = users.find(u => u.id === id);
     if (!targetUser) return;
-    // Proteger proprietário e admin padrão
-    if (targetUser.id === 'usr_proprietario_marguel_001' || targetUser.id === 'usr_admin_geral_001') {
-      showToast('Não é possível eliminar as contas de sistema predefinidas.');
+    // CORRECTO — IDs actuais do userStore.ts:
+if (targetUser.id === 'usr_marguel_proprietario_master' || 
+    targetUser.id === 'usr_marguel_admin_geral')
       return;
     }
     triggerHaptic('warning');
