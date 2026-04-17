@@ -126,5 +126,14 @@
 <body class="overflow-x-hidden transition-colors duration-300">
     <div id="root"></div>
 <script type="module" src="/index.tsx"></script>
+    <script>
+  // Desactivar todos os Service Workers
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then(regs => {
+      regs.forEach(reg => reg.unregister());
+    });
+    navigator.serviceWorker.register = () => Promise.resolve();
+  }
+    </script>
 </body>
 </html>
