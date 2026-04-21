@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -55,7 +54,6 @@
             color: #0f172a;
         }
         
-        /* Dark Mode Globals */
         .dark body {
             background-color: #0f172a;
             color: #f1f5f9;
@@ -103,11 +101,6 @@
         .dark .custom-scrollbar::-webkit-scrollbar-thumb {
             background: #475569;
         }
-
-        /* --- Animations Classes Reference --- */
-        /* Discrete: 'transition-all duration-300' (Tailwind default) */
-        /* Moderate: 'animate-pulse-slow' or standard 'animate-bounce' */
-        /* Critical: 'animate-shake' */
     </style>
 <script type="importmap">
 {
@@ -125,15 +118,6 @@
 </head>
 <body class="overflow-x-hidden transition-colors duration-300">
     <div id="root"></div>
-<script type="module" src="/index.tsx"></script>
-    <script>
-  // Desactivar todos os Service Workers
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.getRegistrations().then(regs => {
-      regs.forEach(reg => reg.unregister());
-    });
-    navigator.serviceWorker.register = () => Promise.resolve();
-  }
-    </script>
+    <script type="module" src="/index.tsx"></script>
 </body>
 </html>
