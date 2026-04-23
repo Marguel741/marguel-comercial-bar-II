@@ -44,7 +44,7 @@ const CartItem = memo(({ id, qty, product, variant = 'default' }: { id: string, 
 });
 
 const Prices: React.FC = () => {
-  const { products, categories, updateProduct, purchases, addPurchase, isDayLocked, systemDate, getSystemDate } = useProducts();
+  const { products, categories, updateProduct, purchases, addPurchase, isDayLocked, systemDate, getSystemDate, priceHistory } = useProducts();
   const { sidebarMode, triggerHaptic } = useLayout(); 
   const { user } = useAuth();
   const location = useLocation();
@@ -61,19 +61,7 @@ const Prices: React.FC = () => {
   const [toast, setToast] = useState<{ show: boolean, message: string }>({ show: false, message: '' });
   const [editingPrices, setEditingPrices] = useState<Record<string, { buy?: string, sell?: string, packBuy?: string, promoQty?: string, promoPrice?: string, isPromoActive?: boolean }>>({});
   
-  const [priceHistory, setPriceHistory] = useState<PriceHistoryLog[]>(() => {
-    try {
-      const saved = localStorage.getItem('mg_price_history');
-      return saved ? JSON.parse(saved) : [];
-    } catch (e) {
-      return [];
-    }
-  });
   const [viewHistoryId, setViewHistoryId] = useState<string | null>(null);
-
-  useEffect(() => {
-    localStorage.setItem('mg_price_history', JSON.stringify(priceHistory));
-  }, [priceHistory]);
 
   const [isTableExpanded, setIsTableExpanded] = useState(true);
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
@@ -271,11 +259,7 @@ const Prices: React.FC = () => {
           changedBy: user?.name || 'Sistema',
           timestamp: Date.now()
         };
-        setPriceHistory(prev => {
-          const updated = [historyEntry, ...prev];
-          localStorage.setItem('mg_price_history', JSON.stringify(updated));
-          return updated;
-        });
+        // priceHistory gerido pelo ProductContext via Firestore
       }
     }
 
