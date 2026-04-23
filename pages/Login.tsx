@@ -1,6 +1,5 @@
 // ============================================================
 // pages/Login.tsx — VERSÃO FINAL COMPLETA
-// Colar directamente no GitHub: seleccionar tudo e substituir
 // ============================================================
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -17,7 +16,7 @@ import {
 import Footer from '../components/Footer';
 
 const Login: React.FC = () => {
-  const { login, loginByPin, isLoading } = useAuth();
+  const { login, loginByPin, isLoading, loginError } = useAuth();
   const navigate = useNavigate();
 
   const [email, setEmail] = useState('');
@@ -54,85 +53,81 @@ const Login: React.FC = () => {
     if (ok) {
       navigate('/');
     } else {
-      setError(
-        usePin
-          ? 'PIN inválido ou conta não autorizada.'
-          : 'Email ou senha inválidos. Verifique as suas credenciais.'
-      );
+      setError(loginError || (usePin ? 'PIN inválido.' : 'Email ou senha inválidos.'));
     }
   };
 
   const handleBiometric = async () => {
-  const saved = localStorage.getItem('mg_biometric_user');
-  if (!saved) {
-    setError('Biometria não configurada. Vai às Definições → Segurança → Activar Biometria.');
-    return;
-  }
+    const saved = localStorage.getItem('mg_biometric_user');
+    if (!saved) {
+      setError('Biometria não configurada. Vai às Definições → Segurança → Activar Biometria.');
+      return;
+    }
 
-  let bioData: { email: string; pin: string; userId: string; credId: number[] };
-  try {
-    bioData = JSON.parse(saved);
-  } catch {
-    setError('Dados biométricos corrompidos. Reactiva a biometria nas Definições.');
-    localStorage.removeItem('mg_biometric_user');
-    return;
-  }
+    let bioData: { email: string; pin: string; userId: string; credId: number[] };
+    try {
+      bioData = JSON.parse(saved);
+    } catch {
+      setError('Dados biométricos corrompidos. Reactiva a biometria nas Definições.');
+      localStorage.removeItem('mg_biometric_user');
+      return;
+    }
 
-  if (!bioData.credId || !Array.isArray(bioData.credId) || bioData.credId.length === 0) {
-    setError('Chave biométrica inválida. Reactiva a biometria nas Definições.');
-    localStorage.removeItem('mg_biometric_user');
-    return;
-  }
+    if (!bioData.credId || !Array.isArray(bioData.credId) || bioData.credId.length === 0) {
+      setError('Chave biométrica inválida. Reactiva a biometria nas Definições.');
+      localStorage.removeItem('mg_biometric_user');
+      return;
+    }
 
-  try {
-    const credentialId = new Uint8Array(bioData.credId);
-    const credential = await navigator.credentials.get({
-      publicKey: {
-        challenge: crypto.getRandomValues(new Uint8Array(32)),
-        rpId: window.location.hostname,
-        allowCredentials: [{ id: credentialId, type: 'public-key' }],
-        userVerification: 'required',
-        timeout: 60000,
-      },
-    } as CredentialRequestOptions);
+    try {
+      const credentialId = new Uint8Array(bioData.credId);
+      const credential = await navigator.credentials.get({
+        publicKey: {
+          challenge: crypto.getRandomValues(new Uint8Array(32)),
+          rpId: window.location.hostname,
+          allowCredentials: [{ id: credentialId, type: 'public-key' }],
+          userVerification: 'required',
+          timeout: 60000,
+        },
+      } as CredentialRequestOptions);
 
-    if (credential) {
-      const ok = await loginByPin(bioData.pin);
-      if (ok) {
-        navigate('/');
+      if (credential) {
+        const ok = await loginByPin(bioData.pin);
+        if (ok) {
+          navigate('/');
+        } else {
+          setError('Biometria válida mas PIN alterado. Usa email e senha e reactiva a biometria.');
+        }
+      }
+    } catch (err: any) {
+      console.error('Erro biometria login:', err);
+      if (err?.name === 'NotAllowedError') {
+        setError('Biometria cancelada.');
+      } else if (err?.name === 'InvalidStateError') {
+        setError('Chave biométrica expirada. Reactiva a biometria nas Definições.');
+        localStorage.removeItem('mg_biometric_user');
       } else {
-        setError('Biometria válida mas PIN alterado. Usa email e senha e reactiva a biometria.');
+        setError('Erro na biometria. Usa email e senha.');
       }
     }
-  } catch (err: any) {
-    console.error('Erro biometria login:', err);
-    if (err?.name === 'NotAllowedError') {
-      setError('Biometria cancelada.');
-    } else if (err?.name === 'InvalidStateError') {
-      setError('Chave biométrica expirada. Reactiva a biometria nas Definições.');
-      localStorage.removeItem('mg_biometric_user');
-    } else {
-      setError('Erro na biometria. Usa email e senha.');
-    }
-  }
-};
+  };
 
   const handleForgotCredentials = () => {
     alert('Para recuperação de credenciais, contacte o Administrador do sistema.');
   };
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-900">
-      {/* Header com gradiente azul + logo MG rosa (igual ao Sidebar) */}
+      {/* Header com gradiente azul + logo MG rosa */}
       <div className="bg-[#003366] py-14 px-6 rounded-b-[3rem] shadow-2xl">
         <div className="flex flex-col items-center animate-fade-in">
-          {/* Logo MG — idêntico ao Sidebar */}
+          {/* Logo MG */}
           <div className="mb-5 flex flex-col items-center">
             <div className="relative flex items-center justify-center">
               <span
                 className="font-sans font-black text-5xl tracking-tighter text-[#E3007E] relative z-10"
                 style={{
-                  filter:
-                    'drop-shadow(0 0 20px rgba(227, 0, 126, 0.55))',
+                  filter: 'drop-shadow(0 0 20px rgba(227, 0, 126, 0.55))',
                 }}
               >
                 MG
@@ -251,11 +246,7 @@ const Login: React.FC = () => {
                       onClick={() => setShowPassword((p) => !p)}
                       className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#003366] transition-colors"
                     >
-                      {showPassword ? (
-                        <EyeOff size={20} />
-                      ) : (
-                        <Eye size={20} />
-                      )}
+                      {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                     </button>
                   </div>
                 </div>
@@ -331,7 +322,7 @@ const Login: React.FC = () => {
         </p>
       </div>
 
-      {/* Rodapé igual à página inicial */}
+      {/* Rodapé */}
       <Footer />
     </div>
   );
