@@ -18,16 +18,15 @@ const Login: React.FC = () => {
   const [biometricAvailable, setBiometricAvailable] = useState(false);
 
   useEffect(() => {
-    if (window.PublicKeyCredential) {
-      PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
-        .then((ok) => {
-          const hasSaved = !!localStorage.getItem('mg_biometric_user');
-          setBiometricAvailable(ok && hasSaved);
-        })
-        .catch(() => setBiometricAvailable(false));
-    }
-  }, []);
-
+  if (window.PublicKeyCredential) {
+    PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
+      .then((ok) => {
+        setBiometricAvailable(ok);
+      })
+      .catch(() => setBiometricAvailable(false));
+  }
+}, []);
+  
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
