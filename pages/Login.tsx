@@ -1,22 +1,12 @@
-// ============================================================
-// pages/Login.tsx — VERSÃO FINAL COMPLETA
-// ============================================================
+// pages/Login.tsx
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import {
-  Mail,
-  Lock,
-  Key,
-  ArrowRight,
-  Eye,
-  EyeOff,
-  Fingerprint,
-} from 'lucide-react';
+import { Mail, Lock, Key, ArrowRight, Eye, EyeOff, Fingerprint, Loader } from 'lucide-react';
 import Footer from '../components/Footer';
 
 const Login: React.FC = () => {
-  const { login, loginByPin, isLoading, loginError } = useAuth();
+  const { login, loginByPin, isLoading, usersReady } = useAuth();
   const navigate = useNavigate();
 
   const [email, setEmail] = useState('');
@@ -27,7 +17,6 @@ const Login: React.FC = () => {
   const [error, setError] = useState('');
   const [biometricAvailable, setBiometricAvailable] = useState(false);
 
-  // Verificar se biometria está disponível E registada
   useEffect(() => {
     if (window.PublicKeyCredential) {
       PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
@@ -43,17 +32,23 @@ const Login: React.FC = () => {
     e.preventDefault();
     setError('');
 
-    let ok = false;
-    if (usePin) {
-      ok = await loginByPin(pin);
-    } else {
-      ok = await login(email, password);
+    // Se utilizadores ainda não carregaram, mostrar aviso
+    if (!usersReady) {
+      setError('Sistema ainda a carregar. Aguarda um momento e tenta novamente.');
+      return;
     }
 
-    if (ok) {
+    let errorMsg: string | null = null;
+    if (usePin) {
+      errorMsg = await loginByPin(pin);
+    } else {
+      errorMsg = await login(email, password);
+    }
+
+    if (errorMsg === null) {
       navigate('/');
     } else {
-      setError(loginError || (usePin ? 'PIN inválido.' : 'Email ou senha inválidos.'));
+      setError(errorMsg);
     }
   };
 
@@ -92,15 +87,14 @@ const Login: React.FC = () => {
       } as CredentialRequestOptions);
 
       if (credential) {
-        const ok = await loginByPin(bioData.pin);
-        if (ok) {
+        const errorMsg = await loginByPin(bioData.pin);
+        if (errorMsg === null) {
           navigate('/');
         } else {
           setError('Biometria válida mas PIN alterado. Usa email e senha e reactiva a biometria.');
         }
       }
     } catch (err: any) {
-      console.error('Erro biometria login:', err);
       if (err?.name === 'NotAllowedError') {
         setError('Biometria cancelada.');
       } else if (err?.name === 'InvalidStateError') {
@@ -118,17 +112,13 @@ const Login: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-900">
-      {/* Header com gradiente azul + logo MG rosa */}
       <div className="bg-[#003366] py-14 px-6 rounded-b-[3rem] shadow-2xl">
         <div className="flex flex-col items-center animate-fade-in">
-          {/* Logo MG */}
           <div className="mb-5 flex flex-col items-center">
             <div className="relative flex items-center justify-center">
               <span
                 className="font-sans font-black text-5xl tracking-tighter text-[#E3007E] relative z-10"
-                style={{
-                  filter: 'drop-shadow(0 0 20px rgba(227, 0, 126, 0.55))',
-                }}
+                style={{ filter: 'drop-shadow(0 0 20px rgba(227, 0, 126, 0.55))' }}
               >
                 MG
               </span>
@@ -148,10 +138,17 @@ const Login: React.FC = () => {
         </div>
       </div>
 
-      {/* Formulário */}
       <div className="flex-1 px-6 -mt-8 pb-6">
         <div className="soft-ui p-8 dark:bg-slate-800 dark:border-slate-700 max-w-md mx-auto">
-          {/* Tabs Email / PIN */}
+
+          {/* Indicador de carregamento do sistema */}
+          {!usersReady && (
+            <div className="flex items-center justify-center gap-2 mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
+              <Loader size={16} className="text-[#003366] animate-spin" />
+              <p className="text-xs text-[#003366] dark:text-blue-400 font-medium">A ligar ao sistema...</p>
+            </div>
+          )}
+
           <div className="flex bg-slate-100 dark:bg-slate-700 p-1 rounded-2xl mb-7">
             {[
               { label: 'Email + Senha', val: false },
@@ -160,10 +157,7 @@ const Login: React.FC = () => {
               <button
                 key={String(tab.val)}
                 type="button"
-                onClick={() => {
-                  setUsePin(tab.val);
-                  setError('');
-                }}
+                onClick={() => { setUsePin(tab.val); setError(''); }}
                 className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all ${
                   usePin === tab.val
                     ? 'bg-white dark:bg-slate-600 shadow-sm text-[#003366] dark:text-white'
@@ -177,16 +171,12 @@ const Login: React.FC = () => {
 
           <form onSubmit={handleSubmit} className="space-y-5">
             {usePin ? (
-              /* ——— Login por PIN ——— */
               <div className="space-y-2">
                 <label className="text-xs font-bold text-[#003366] dark:text-blue-400 uppercase tracking-wider">
                   Código PIN
                 </label>
                 <div className="relative">
-                  <Key
-                    className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-                    size={20}
-                  />
+                  <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
                   <input
                     type="password"
                     inputMode="numeric"
@@ -201,17 +191,13 @@ const Login: React.FC = () => {
                 </div>
               </div>
             ) : (
-              /* ——— Login por Email ——— */
               <>
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-[#003366] dark:text-blue-400 uppercase tracking-wider">
                     E-mail Corporativo
                   </label>
                   <div className="relative">
-                    <Mail
-                      className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-                      size={20}
-                    />
+                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
                     <input
                       type="email"
                       value={email}
@@ -228,10 +214,7 @@ const Login: React.FC = () => {
                     Senha (PIN)
                   </label>
                   <div className="relative">
-                    <Lock
-                      className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-                      size={20}
-                    />
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
                     <input
                       type={showPassword ? 'text' : 'password'}
                       value={password}
@@ -253,7 +236,6 @@ const Login: React.FC = () => {
               </>
             )}
 
-            {/* Esqueceu credenciais */}
             <div className="flex justify-end">
               <button
                 type="button"
@@ -264,19 +246,18 @@ const Login: React.FC = () => {
               </button>
             </div>
 
-            {/* Mensagem de erro */}
+            {/* Mensagem de erro — caixa vermelha visível */}
             {error && (
-              <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl">
-                <p className="text-red-600 dark:text-red-400 text-sm font-medium text-center">
-                  {error}
+              <div className="p-4 bg-red-50 dark:bg-red-900/20 border-2 border-red-300 dark:border-red-700 rounded-xl animate-fade-in">
+                <p className="text-red-600 dark:text-red-400 text-sm font-bold text-center">
+                  ⚠️ {error}
                 </p>
               </div>
             )}
 
-            {/* Botão Entrar */}
             <button
               type="submit"
-              disabled={isLoading}
+              disabled={isLoading || !usersReady}
               className="w-full pill-button py-4 bg-[#003366] text-white font-bold text-lg shadow-xl shadow-blue-900/20 hover:opacity-95 disabled:opacity-50 transition-all active:scale-95 flex items-center justify-center gap-3"
             >
               {isLoading ? (
@@ -290,7 +271,6 @@ const Login: React.FC = () => {
             </button>
           </form>
 
-          {/* Biometria — só aparece se disponível E registada */}
           {biometricAvailable && (
             <>
               <div className="flex items-center gap-4 my-6">
@@ -310,19 +290,14 @@ const Login: React.FC = () => {
           )}
         </div>
 
-        {/* Link criar conta */}
         <p className="text-center mt-6 text-slate-500 dark:text-slate-400 text-sm">
           Primeiro acesso?{' '}
-          <Link
-            to="/register"
-            className="text-[#003366] dark:text-blue-400 font-bold hover:underline"
-          >
+          <Link to="/register" className="text-[#003366] dark:text-blue-400 font-bold hover:underline">
             Criar conta
           </Link>
         </p>
       </div>
 
-      {/* Rodapé */}
       <Footer />
     </div>
   );
