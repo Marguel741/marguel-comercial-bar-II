@@ -12,6 +12,7 @@ interface AuthContextType {
   isLoading: boolean;
   login: (email: string, pass: string) => Promise<boolean>;
   loginByPin: (pin: string) => Promise<boolean>;
+  loginError: string;
   register: (data: { name: string; email: string; pin: string; phoneNumber?: string }) => Promise<{ success: boolean; message: string }>;
   logout: () => void;
   refreshUser: () => void;
@@ -34,6 +35,7 @@ const makeTimestamp = () =>
   });
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const [loginError, setLoginError] = useState<string>('');
   const { addLog } = useAudit();
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -86,35 +88,68 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     await new Promise(r => setTimeout(r, 600));
 
     const found = allUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
-    if (found && found.pin === pass) {
-      const updated: User = { ...found, lastLogin: makeTimestamp() };
-      await saveUser(updated);
-      localStorage.setItem('mg_user', JSON.stringify(updated));
-      setUser(updated);
-      addLog({ action: 'LOGIN', module: 'UTILIZADORES', description: `${updated.name} iniciou sessão`, entityId: updated.id, previousValue: null, newValue: 'LOGGED_IN' }, updated);
+
+    if (!found) {
       setIsLoading(false);
-      return true;
+      setLoginError('Email não encontrado. Verifique as suas credenciais.');
+      return false;
     }
+    if (found.isBanned) {
+      setIsLoading(false);
+      setLoginError('O teu acesso foi revogado. Contacta o administrador.');
+      return false;
+    }
+    if (!found.isApproved) {
+      setIsLoading(false);
+      setLoginError('A tua conta está aguardando aprovação pelo administrador.');
+      return false;
+    }
+    if (found.pin !== pass) {
+      setIsLoading(false);
+      setLoginError('Senha incorrecta. Tenta novamente.');
+      return false;
+    }
+
+    const updated: User = { ...found, lastLogin: makeTimestamp() };
+    await saveUser(updated);
+    localStorage.setItem('mg_user', JSON.stringify(updated));
+    setUser(updated);
+    setLoginError('');
+    addLog({ action: 'LOGIN', module: 'UTILIZADORES', description: `${updated.name} iniciou sessão`, entityId: updated.id, previousValue: null, newValue: 'LOGGED_IN' }, updated);
     setIsLoading(false);
-    return false;
+    return true;
   }, [allUsers, addLog]);
 
   const loginByPin = useCallback(async (pin: string): Promise<boolean> => {
     setIsLoading(true);
     await new Promise(r => setTimeout(r, 600));
 
-    const found = allUsers.find(u => u.pin === pin && u.isApproved && !u.isBanned);
-    if (found) {
-      const updated: User = { ...found, lastLogin: makeTimestamp() };
-      await saveUser(updated);
-      localStorage.setItem('mg_user', JSON.stringify(updated));
-      setUser(updated);
-      addLog({ action: 'LOGIN', module: 'UTILIZADORES', description: `${updated.name} iniciou sessão via PIN`, entityId: updated.id, previousValue: null, newValue: 'LOGGED_IN_PIN' }, updated);
+    const found = allUsers.find(u => u.pin === pin);
+
+    if (!found) {
       setIsLoading(false);
-      return true;
+      setLoginError('PIN inválido. Tenta novamente.');
+      return false;
     }
+    if (found.isBanned) {
+      setIsLoading(false);
+      setLoginError('O teu acesso foi revogado. Contacta o administrador.');
+      return false;
+    }
+    if (!found.isApproved) {
+      setIsLoading(false);
+      setLoginError('A tua conta está aguardando aprovação pelo administrador.');
+      return false;
+    }
+
+    const updated: User = { ...found, lastLogin: makeTimestamp() };
+    await saveUser(updated);
+    localStorage.setItem('mg_user', JSON.stringify(updated));
+    setUser(updated);
+    setLoginError('');
+    addLog({ action: 'LOGIN', module: 'UTILIZADORES', description: `${updated.name} iniciou sessão via PIN`, entityId: updated.id, previousValue: null, newValue: 'LOGGED_IN_PIN' }, updated);
     setIsLoading(false);
-    return false;
+    return true;
   }, [allUsers, addLog]);
 
   const register = useCallback(async (data: { name: string; email: string; pin: string; phoneNumber?: string }): Promise<{ success: boolean; message: string }> => {
@@ -180,8 +215,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, [allUsers]);
 
   const value = React.useMemo(() => ({
-    user, isLoading, login, loginByPin, register, logout, refreshUser, updateUser, switchUser,
-  }), [user, isLoading, login, loginByPin, register, logout, refreshUser, updateUser, switchUser]);
+    user, isLoading, login, loginByPin, loginError, register, logout, refreshUser, updateUser, switchUser,
+  }), [user, isLoading, login, loginByPin, loginError, register, logout, refreshUser, updateUser, switchUser]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
