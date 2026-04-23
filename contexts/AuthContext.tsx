@@ -3,13 +3,14 @@ import React, {
   createContext, useContext, useState, useEffect, ReactNode, useCallback,
 } from 'react';
 import { User, UserRole } from '../types';
-import { getUsers, saveUser, onUsersSnapshot } from '../src/services/userStore';
+import { saveUser, onUsersSnapshot } from '../src/services/userStore';
 import { DEFAULT_PERMISSIONS } from '../src/utils/permissions';
 import { useAudit } from './AuditContext';
 
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
+  usersReady: boolean;
   login: (email: string, pass: string) => Promise<string | null>;
   loginByPin: (pin: string) => Promise<string | null>;
   loginError: string;
@@ -39,39 +40,60 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const { addLog } = useAudit();
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [usersReady, setUsersReady] = useState(false);
   const [allUsers, setAllUsers] = useState<User[]>([]);
 
   useEffect(() => {
-    const init = async () => {
-      const users = await getUsers();
-      setAllUsers(users);
-
-      const raw = localStorage.getItem('mg_user');
-      if (raw) {
-        try {
-          const parsed = JSON.parse(raw);
-          const found = users.find(u => u.id === parsed.id);
-          if (found && !found.isBanned) {
-            setUser(found);
-          } else {
-            localStorage.removeItem('mg_user');
-          }
-        } catch {
-          localStorage.removeItem('mg_user');
-        }
-      }
-      setIsLoading(false);
-    };
-    init();
-
+    // Usar APENAS onSnapshot — ele dispara imediatamente com os dados em cache
+    // e depois actualiza quando o Firestore responde
     const unsubscribe = onUsersSnapshot((users) => {
       setAllUsers(users);
+
+      // Só na primeira vez que recebemos utilizadores
+      if (!usersReady && users.length > 0) {
+        setUsersReady(true);
+
+        // Restaurar sessão
+        const raw = localStorage.getItem('mg_user');
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            const found = users.find(u => u.id === parsed.id);
+            if (found && !found.isBanned) {
+              setUser(found);
+            } else {
+              localStorage.removeItem('mg_user');
+            }
+          } catch {
+            localStorage.removeItem('mg_user');
+          }
+        }
+        setIsLoading(false);
+      }
+
+      // Actualizar utilizador actual se já estiver logado
       setUser(prev => {
         if (!prev) return null;
-        return users.find(u => u.id === prev.id) || null;
+        const found = users.find(u => u.id === prev.id);
+        if (!found || found.isBanned) {
+          localStorage.removeItem('mg_user');
+          return null;
+        }
+        return found;
       });
     });
-    return () => unsubscribe();
+
+    // Timeout de segurança — se o Firestore demorar mais de 5s, desbloqueia o ecrã
+    const timeout = setTimeout(() => {
+      if (!usersReady) {
+        setIsLoading(false);
+      }
+    }, 5000);
+
+    return () => {
+      unsubscribe();
+      clearTimeout(timeout);
+    };
   }, []);
 
   const refreshUser = useCallback(() => {
@@ -81,10 +103,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     });
   }, [allUsers]);
 
-  // Retorna null em caso de sucesso, ou string com mensagem de erro
+  // Retorna null em caso de sucesso, string com mensagem de erro em caso de falha
   const login = useCallback(async (email: string, pass: string): Promise<string | null> => {
     setIsLoading(true);
     await new Promise(r => setTimeout(r, 600));
+
+    // Garantir que temos utilizadores carregados
+    if (allUsers.length === 0) {
+      setIsLoading(false);
+      const msg = 'Sistema a carregar. Tenta novamente em segundos.';
+      setLoginError(msg);
+      return msg;
+    }
 
     const found = allUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
 
@@ -123,10 +153,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return null;
   }, [allUsers, addLog]);
 
-  // Retorna null em caso de sucesso, ou string com mensagem de erro
+  // Retorna null em caso de sucesso, string com mensagem de erro em caso de falha
   const loginByPin = useCallback(async (pin: string): Promise<string | null> => {
     setIsLoading(true);
     await new Promise(r => setTimeout(r, 600));
+
+    // Garantir que temos utilizadores carregados
+    if (allUsers.length === 0) {
+      setIsLoading(false);
+      const msg = 'Sistema a carregar. Tenta novamente em segundos.';
+      setLoginError(msg);
+      return msg;
+    }
 
     const found = allUsers.find(u => u.pin === pin);
 
@@ -222,8 +260,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, [allUsers]);
 
   const value = React.useMemo(() => ({
-    user, isLoading, login, loginByPin, loginError, register, logout, refreshUser, updateUser, switchUser,
-  }), [user, isLoading, login, loginByPin, loginError, register, logout, refreshUser, updateUser, switchUser]);
+    user, isLoading, usersReady, login, loginByPin, loginError, register, logout, refreshUser, updateUser, switchUser,
+  }), [user, isLoading, usersReady, login, loginByPin, loginError, register, logout, refreshUser, updateUser, switchUser]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
