@@ -6,6 +6,8 @@ import { User, UserRole } from '../types';
 import { saveUser, onUsersSnapshot } from '../src/services/userStore';
 import { DEFAULT_PERMISSIONS } from '../src/utils/permissions';
 import { useAudit } from './AuditContext';
+import { db } from '../firebase';
+import { collection, addDoc, query, where, getDocs, deleteDoc, doc } from 'firebase/firestore';
 
 interface AuthContextType {
   user: User | null;
@@ -19,6 +21,9 @@ interface AuthContextType {
   refreshUser: () => void;
   updateUser: (updates: Partial<User>) => Promise<boolean>;
   switchUser: (role: UserRole, name?: string) => boolean;
+  generateRecoveryCode: (userId: string, userName: string) => Promise<string | null>;
+  validateRecoveryCode: (userName: string, code: string) => Promise<{ valid: boolean; userId: string | null; message: string }>;
+  resetPinWithCode: (userId: string, code: string, newPin: string) => Promise<string | null>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -35,6 +40,11 @@ const makeTimestamp = () =>
     hour: '2-digit', minute: '2-digit',
   });
 
+const generateCode = (): string => {
+  const num = Math.floor(1000 + Math.random() * 9000);
+  return `MG-${num}`;
+};
+
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [loginError, setLoginError] = useState<string>('');
   const { addLog } = useAudit();
@@ -44,16 +54,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [allUsers, setAllUsers] = useState<User[]>([]);
 
   useEffect(() => {
-    // Usar APENAS onSnapshot — ele dispara imediatamente com os dados em cache
-    // e depois actualiza quando o Firestore responde
     const unsubscribe = onUsersSnapshot((users) => {
       setAllUsers(users);
 
-      // Só na primeira vez que recebemos utilizadores
       if (!usersReady && users.length > 0) {
         setUsersReady(true);
 
-        // Restaurar sessão
         const raw = localStorage.getItem('mg_user');
         if (raw) {
           try {
@@ -71,7 +77,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setIsLoading(false);
       }
 
-      // Actualizar utilizador actual se já estiver logado
       setUser(prev => {
         if (!prev) return null;
         const found = users.find(u => u.id === prev.id);
@@ -83,17 +88,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       });
     });
 
-    // Timeout de segurança — se o Firestore demorar mais de 5s, desbloqueia o ecrã
     const timeout = setTimeout(() => {
-      if (!usersReady) {
-        setIsLoading(false);
-      }
+      if (!usersReady) setIsLoading(false);
     }, 5000);
 
-    return () => {
-      unsubscribe();
-      clearTimeout(timeout);
-    };
+    return () => { unsubscribe(); clearTimeout(timeout); };
   }, []);
 
   const refreshUser = useCallback(() => {
@@ -103,45 +102,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     });
   }, [allUsers]);
 
-  // Retorna null em caso de sucesso, string com mensagem de erro em caso de falha
   const login = useCallback(async (email: string, pass: string): Promise<string | null> => {
     setIsLoading(true);
     await new Promise(r => setTimeout(r, 600));
 
-    // Garantir que temos utilizadores carregados
     if (allUsers.length === 0) {
       setIsLoading(false);
       const msg = 'Sistema a carregar. Tenta novamente em segundos.';
-      setLoginError(msg);
-      return msg;
+      setLoginError(msg); return msg;
     }
 
     const found = allUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
-
-    if (!found) {
-      setIsLoading(false);
-      const msg = 'Email não encontrado. Verifique as suas credenciais.';
-      setLoginError(msg);
-      return msg;
-    }
-    if (found.isBanned) {
-      setIsLoading(false);
-      const msg = 'O teu acesso foi revogado. Contacta o administrador.';
-      setLoginError(msg);
-      return msg;
-    }
-    if (!found.isApproved) {
-      setIsLoading(false);
-      const msg = 'A tua conta está aguardando aprovação pelo administrador.';
-      setLoginError(msg);
-      return msg;
-    }
-    if (found.pin !== pass) {
-      setIsLoading(false);
-      const msg = 'Senha incorrecta. Tenta novamente.';
-      setLoginError(msg);
-      return msg;
-    }
+    if (!found) { setIsLoading(false); const msg = 'Email não encontrado. Verifique as suas credenciais.'; setLoginError(msg); return msg; }
+    if (found.isBanned) { setIsLoading(false); const msg = 'O teu acesso foi revogado. Contacta o administrador.'; setLoginError(msg); return msg; }
+    if (!found.isApproved) { setIsLoading(false); const msg = 'A tua conta está aguardando aprovação pelo administrador.'; setLoginError(msg); return msg; }
+    if (found.pin !== pass) { setIsLoading(false); const msg = 'Senha incorrecta. Tenta novamente.'; setLoginError(msg); return msg; }
 
     const updated: User = { ...found, lastLogin: makeTimestamp() };
     await saveUser(updated);
@@ -153,39 +128,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return null;
   }, [allUsers, addLog]);
 
-  // Retorna null em caso de sucesso, string com mensagem de erro em caso de falha
   const loginByPin = useCallback(async (pin: string): Promise<string | null> => {
     setIsLoading(true);
     await new Promise(r => setTimeout(r, 600));
 
-    // Garantir que temos utilizadores carregados
     if (allUsers.length === 0) {
       setIsLoading(false);
       const msg = 'Sistema a carregar. Tenta novamente em segundos.';
-      setLoginError(msg);
-      return msg;
+      setLoginError(msg); return msg;
     }
 
     const found = allUsers.find(u => u.pin === pin);
-
-    if (!found) {
-      setIsLoading(false);
-      const msg = 'PIN inválido. Tenta novamente.';
-      setLoginError(msg);
-      return msg;
-    }
-    if (found.isBanned) {
-      setIsLoading(false);
-      const msg = 'O teu acesso foi revogado. Contacta o administrador.';
-      setLoginError(msg);
-      return msg;
-    }
-    if (!found.isApproved) {
-      setIsLoading(false);
-      const msg = 'A tua conta está aguardando aprovação pelo administrador.';
-      setLoginError(msg);
-      return msg;
-    }
+    if (!found) { setIsLoading(false); const msg = 'PIN inválido. Tenta novamente.'; setLoginError(msg); return msg; }
+    if (found.isBanned) { setIsLoading(false); const msg = 'O teu acesso foi revogado. Contacta o administrador.'; setLoginError(msg); return msg; }
+    if (!found.isApproved) { setIsLoading(false); const msg = 'A tua conta está aguardando aprovação pelo administrador.'; setLoginError(msg); return msg; }
 
     const updated: User = { ...found, lastLogin: makeTimestamp() };
     await saveUser(updated);
@@ -196,6 +152,112 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setIsLoading(false);
     return null;
   }, [allUsers, addLog]);
+
+  // ── RECUPERAÇÃO DE CREDENCIAIS ──────────────────────────────
+
+  const generateRecoveryCode = useCallback(async (userId: string, userName: string): Promise<string | null> => {
+    try {
+      // Apagar códigos anteriores do mesmo utilizador
+      const q = query(collection(db, 'recovery_codes'), where('userId', '==', userId));
+      const existing = await getDocs(q);
+      await Promise.all(existing.docs.map(d => deleteDoc(doc(db, 'recovery_codes', d.id))));
+
+      const code = generateCode();
+      const expiresAt = Date.now() + 30 * 60 * 1000; // 30 min
+
+      await addDoc(collection(db, 'recovery_codes'), {
+        userId,
+        userName,
+        code,
+        expiresAt,
+        used: false,
+        generatedBy: user?.name || 'Admin',
+        generatedAt: Date.now(),
+      });
+
+      addLog({
+        action: 'RECOVERY_CODE_GENERATED',
+        module: 'SEGURANÇA',
+        description: `Código de recuperação gerado para ${userName} por ${user?.name}`,
+        entityId: userId,
+        previousValue: null,
+        newValue: code,
+      }, user!);
+
+      return code;
+    } catch (error) {
+      console.error('Erro ao gerar código:', error);
+      return null;
+    }
+  }, [user, addLog]);
+
+  const validateRecoveryCode = useCallback(async (userName: string, code: string): Promise<{ valid: boolean; userId: string | null; message: string }> => {
+    try {
+      const q = query(
+        collection(db, 'recovery_codes'),
+        where('code', '==', code.toUpperCase()),
+        where('used', '==', false)
+      );
+      const snapshot = await getDocs(q);
+
+      if (snapshot.empty) {
+        return { valid: false, userId: null, message: 'Código inválido ou já utilizado.' };
+      }
+
+      const data = snapshot.docs[0].data();
+
+      if (!data.userName.toLowerCase().includes(userName.toLowerCase())) {
+        return { valid: false, userId: null, message: 'Nome não corresponde ao código.' };
+      }
+
+      if (Date.now() > data.expiresAt) {
+        await deleteDoc(doc(db, 'recovery_codes', snapshot.docs[0].id));
+        return { valid: false, userId: null, message: 'Código expirado. Pede um novo ao administrador.' };
+      }
+
+      return { valid: true, userId: data.userId, message: 'Código válido!' };
+    } catch (error) {
+      console.error('Erro ao validar código:', error);
+      return { valid: false, userId: null, message: 'Erro ao validar. Tenta novamente.' };
+    }
+  }, []);
+
+  const resetPinWithCode = useCallback(async (userId: string, code: string, newPin: string): Promise<string | null> => {
+    try {
+      if (newPin.length < 4) return 'O PIN deve ter pelo menos 4 dígitos.';
+
+      const targetUser = allUsers.find(u => u.id === userId);
+      if (!targetUser) return 'Utilizador não encontrado.';
+
+      // Apagar código usado
+      const q = query(collection(db, 'recovery_codes'), where('code', '==', code.toUpperCase()));
+      const snapshot = await getDocs(q);
+      if (!snapshot.empty) {
+        await deleteDoc(doc(db, 'recovery_codes', snapshot.docs[0].id));
+      }
+
+      const updated: User = { ...targetUser, pin: newPin, lastLogin: makeTimestamp() };
+      await saveUser(updated);
+      localStorage.setItem('mg_user', JSON.stringify(updated));
+      setUser(updated);
+
+      addLog({
+        action: 'PIN_RESET_VIA_CODE',
+        module: 'SEGURANÇA',
+        description: `PIN de ${targetUser.name} redefinido via código de recuperação`,
+        entityId: userId,
+        previousValue: '****',
+        newValue: '****',
+      }, updated);
+
+      return null;
+    } catch (error) {
+      console.error('Erro ao redefinir PIN:', error);
+      return 'Erro ao redefinir PIN. Tenta novamente.';
+    }
+  }, [allUsers, addLog]);
+
+  // ───────────────────────────────────────────────────────────
 
   const register = useCallback(async (data: { name: string; email: string; pin: string; phoneNumber?: string }): Promise<{ success: boolean; message: string }> => {
     if (allUsers.find(u => u.email.toLowerCase() === data.email.toLowerCase())) {
@@ -261,7 +323,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const value = React.useMemo(() => ({
     user, isLoading, usersReady, login, loginByPin, loginError, register, logout, refreshUser, updateUser, switchUser,
-  }), [user, isLoading, usersReady, login, loginByPin, loginError, register, logout, refreshUser, updateUser, switchUser]);
+    generateRecoveryCode, validateRecoveryCode, resetPinWithCode,
+  }), [user, isLoading, usersReady, login, loginByPin, loginError, register, logout, refreshUser, updateUser, switchUser,
+    generateRecoveryCode, validateRecoveryCode, resetPinWithCode]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
