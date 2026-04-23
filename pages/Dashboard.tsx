@@ -345,20 +345,34 @@ const Dashboard: React.FC = () => {
   const handleCreateAlert = () => {
     if (!newAlertTitle || !newAlertMsg) return;
     const newAlert = {
-        id: generateUUID(),
-        type: newAlertType,
-        title: newAlertTitle,
-        message: newAlertMsg,
-        isCustom: true,
-        icon: newAlertType === 'CRITICO' ? AlertTriangle : newAlertType === 'SUCCESS' ? CheckCircle : FileText,
-        color: newAlertType === 'CRITICO' ? 'red' : newAlertType === 'SUAVE' ? 'amber' : newAlertType === 'SUCCESS' ? 'green' : 'blue'
-    };
+    id: generateUUID(),
+    type: newAlertType,
+    title: newAlertTitle,
+    message: newAlertMsg,
+    isCustom: true,
+    icon: newAlertType === 'CRITICO' ? 'AlertTriangle' : newAlertType === 'SUCCESS' ? 'CheckCircle' : 'FileText',
+    color: newAlertType === 'CRITICO' ? 'red' : newAlertType === 'SUAVE' ? 'amber' : newAlertType === 'SUCCESS' ? 'green' : 'blue'
+};
     setCustomAlerts(prev => [newAlert, ...prev]);
     setShowCreateAlert(false);
     setNewAlertTitle('');
     setNewAlertMsg('');
   };
 
+  // Resolver ícone guardado como string ou como componente React
+  const getIconComponent = (icon: any) => {
+    if (typeof icon === 'function') return icon;
+    const iconMap: Record<string, any> = {
+      'AlertTriangle': AlertTriangle,
+      'CheckCircle': CheckCircle,
+      'FileText': FileText,
+      'Package': Package,
+      'TrendingDown': TrendingDown,
+      'Clock': Clock,
+    };
+    return iconMap[icon] || AlertTriangle;
+  };
+  
   const removeCustomAlert = (id: string) => {
     setCustomAlerts(prev => prev.filter(a => a.id !== id));
   };
@@ -435,7 +449,7 @@ const Dashboard: React.FC = () => {
                                                         alert.color === 'green' ? 'bg-green-100 text-green-500 dark:bg-green-900/50 dark:text-green-400' :
                                                         'bg-blue-100 text-blue-500 dark:bg-blue-900/50 dark:text-blue-400'
                                                     }`}>
-                                                        <alert.icon size={12} />
+                                                        {React.createElement(getIconComponent(alert.icon), { size: 12 })}
                                                     </div>
                                                     <div className="flex-1">
                                                         <h5 className="font-bold text-xs text-slate-800 dark:text-white">{alert.title}</h5>
@@ -830,7 +844,7 @@ const Dashboard: React.FC = () => {
                         <div key={alert.id} className={`${colorClasses} p-4 rounded-[1.5rem] border transition-all`}>
                             <div className="flex items-center gap-4">
                                 <div className={`w-10 h-10 rounded-full flex items-center justify-center ${iconBg}`}>
-                                    <alert.icon size={18} />
+                                  {React.createElement(getIconComponent(alert.icon), { size: 18 })}
                                 </div>
                                 <div className="flex-1">
                                     <h4 className="font-bold text-sm">{alert.title}</h4>
