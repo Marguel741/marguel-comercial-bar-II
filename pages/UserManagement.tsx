@@ -6,7 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useAudit } from '../contexts/AuditContext';
 import { useLayout } from '../contexts/LayoutContext';
 import { DEFAULT_PERMISSIONS } from '../src/utils/permissions';
-import { getUsers, saveUsers } from '../src/services/userStore';
+import { saveUsers, onUsersSnapshot } from '../src/services/userStore';
 import { dispatchCustomEvent } from '../src/utils';
 
 const UserManagement: React.FC = () => {
@@ -18,12 +18,11 @@ const UserManagement: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
 
   useEffect(() => {
-    setUsers(getUsers());
-
-    // Listener para actualizações em tempo real
-    const handleUpdate = () => setUsers(getUsers());
-    window.addEventListener('mg_users_updated', handleUpdate);
-    return () => window.removeEventListener('mg_users_updated', handleUpdate);
+    // Subscrever Firestore em tempo real
+    const unsubscribe = onUsersSnapshot((users) => {
+      setUsers(users);
+    });
+    return () => unsubscribe();
   }, []);
 
   const [searchTerm, setSearchTerm] = useState('');
