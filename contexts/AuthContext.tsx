@@ -1,17 +1,17 @@
-// contexts/AuthContext.tsx — SEM localStorage para utilizadores
+// contexts/AuthContext.tsx
 import React, {
   createContext, useContext, useState, useEffect, ReactNode, useCallback,
 } from 'react';
 import { User, UserRole } from '../types';
-import { getUsers, saveUsers, saveUser, onUsersSnapshot } from '../src/services/userStore';
+import { getUsers, saveUser, onUsersSnapshot } from '../src/services/userStore';
 import { DEFAULT_PERMISSIONS } from '../src/utils/permissions';
 import { useAudit } from './AuditContext';
 
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
-  login: (email: string, pass: string) => Promise<boolean>;
-  loginByPin: (pin: string) => Promise<boolean>;
+  login: (email: string, pass: string) => Promise<string | null>;
+  loginByPin: (pin: string) => Promise<string | null>;
   loginError: string;
   register: (data: { name: string; email: string; pin: string; phoneNumber?: string }) => Promise<{ success: boolean; message: string }>;
   logout: () => void;
@@ -41,7 +41,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isLoading, setIsLoading] = useState(true);
   const [allUsers, setAllUsers] = useState<User[]>([]);
 
-  // Inicialização — carregar utilizadores do Firestore e restaurar sessão
   useEffect(() => {
     const init = async () => {
       const users = await getUsers();
@@ -65,7 +64,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
     init();
 
-    // Observar mudanças em tempo real
     const unsubscribe = onUsersSnapshot((users) => {
       setAllUsers(users);
       setUser(prev => {
@@ -83,7 +81,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     });
   }, [allUsers]);
 
-  const login = useCallback(async (email: string, pass: string): Promise<boolean> => {
+  // Retorna null em caso de sucesso, ou string com mensagem de erro
+  const login = useCallback(async (email: string, pass: string): Promise<string | null> => {
     setIsLoading(true);
     await new Promise(r => setTimeout(r, 600));
 
@@ -91,23 +90,27 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     if (!found) {
       setIsLoading(false);
-      setLoginError('Email não encontrado. Verifique as suas credenciais.');
-      return false;
+      const msg = 'Email não encontrado. Verifique as suas credenciais.';
+      setLoginError(msg);
+      return msg;
     }
     if (found.isBanned) {
       setIsLoading(false);
-      setLoginError('O teu acesso foi revogado. Contacta o administrador.');
-      return false;
+      const msg = 'O teu acesso foi revogado. Contacta o administrador.';
+      setLoginError(msg);
+      return msg;
     }
     if (!found.isApproved) {
       setIsLoading(false);
-      setLoginError('A tua conta está aguardando aprovação pelo administrador.');
-      return false;
+      const msg = 'A tua conta está aguardando aprovação pelo administrador.';
+      setLoginError(msg);
+      return msg;
     }
     if (found.pin !== pass) {
       setIsLoading(false);
-      setLoginError('Senha incorrecta. Tenta novamente.');
-      return false;
+      const msg = 'Senha incorrecta. Tenta novamente.';
+      setLoginError(msg);
+      return msg;
     }
 
     const updated: User = { ...found, lastLogin: makeTimestamp() };
@@ -117,10 +120,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setLoginError('');
     addLog({ action: 'LOGIN', module: 'UTILIZADORES', description: `${updated.name} iniciou sessão`, entityId: updated.id, previousValue: null, newValue: 'LOGGED_IN' }, updated);
     setIsLoading(false);
-    return true;
+    return null;
   }, [allUsers, addLog]);
 
-  const loginByPin = useCallback(async (pin: string): Promise<boolean> => {
+  // Retorna null em caso de sucesso, ou string com mensagem de erro
+  const loginByPin = useCallback(async (pin: string): Promise<string | null> => {
     setIsLoading(true);
     await new Promise(r => setTimeout(r, 600));
 
@@ -128,18 +132,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     if (!found) {
       setIsLoading(false);
-      setLoginError('PIN inválido. Tenta novamente.');
-      return false;
+      const msg = 'PIN inválido. Tenta novamente.';
+      setLoginError(msg);
+      return msg;
     }
     if (found.isBanned) {
       setIsLoading(false);
-      setLoginError('O teu acesso foi revogado. Contacta o administrador.');
-      return false;
+      const msg = 'O teu acesso foi revogado. Contacta o administrador.';
+      setLoginError(msg);
+      return msg;
     }
     if (!found.isApproved) {
       setIsLoading(false);
-      setLoginError('A tua conta está aguardando aprovação pelo administrador.');
-      return false;
+      const msg = 'A tua conta está aguardando aprovação pelo administrador.';
+      setLoginError(msg);
+      return msg;
     }
 
     const updated: User = { ...found, lastLogin: makeTimestamp() };
@@ -149,7 +156,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setLoginError('');
     addLog({ action: 'LOGIN', module: 'UTILIZADORES', description: `${updated.name} iniciou sessão via PIN`, entityId: updated.id, previousValue: null, newValue: 'LOGGED_IN_PIN' }, updated);
     setIsLoading(false);
-    return true;
+    return null;
   }, [allUsers, addLog]);
 
   const register = useCallback(async (data: { name: string; email: string; pin: string; phoneNumber?: string }): Promise<{ success: boolean; message: string }> => {
