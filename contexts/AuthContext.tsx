@@ -6,7 +6,7 @@ import { User, UserRole } from '../types';
 import { saveUser, onUsersSnapshot } from '../src/services/userStore';
 import { DEFAULT_PERMISSIONS } from '../src/utils/permissions';
 import { useAudit } from './AuditContext';
-import { db } from '../firebase';
+import { db } from '../src/firebase';
 import { collection, addDoc, query, where, getDocs, deleteDoc, doc } from 'firebase/firestore';
 
 interface AuthContextType {
