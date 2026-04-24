@@ -865,9 +865,12 @@ const Sales: React.FC = () => {
             pageTopRef.current?.scrollIntoView({ behavior: 'smooth' });
         }, 1500);
     } catch (error: any) {
-        setSyncState(prev => ({ ...prev, status: 'error' }));
-        triggerHaptic('error');
-        alert("Não foi possível completar a ação. Verifique os dados.");
+    console.error('ERRO NO FECHO:', error);
+    console.error('MENSAGEM:', error?.message);
+    console.error('STACK:', error?.stack);
+    setSyncState(prev => ({ ...prev, status: 'error' }));
+    triggerHaptic('error');
+    alert("Não foi possível completar a ação. Verifique os dados.");
     }
   };
 
