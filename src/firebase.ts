@@ -4,7 +4,12 @@ import { getFirestore } from 'firebase/firestore';
 const isProd = import.meta.env.VITE_ENV === 'production';
 
 const prodConfig = {
-  // as tuas credenciais actuais do marguel-mobile-ii
+  apiKey: "AIzaSyAgjxTNrME13qW_BsieJ6nziY9_2yDsxPU",
+  authDomain: "marguel-mobile-ii.firebaseapp.com",
+  projectId: "marguel-mobile-ii",
+  storageBucket: "marguel-mobile-ii.firebasestorage.app",
+  messagingSenderId: "187367850278",
+  appId: "1:187367850278:web:ebbb3d5d1329b3eae2c1e7"
 };
 
 const testConfig = {
