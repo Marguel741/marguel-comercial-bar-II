@@ -802,7 +802,7 @@ const Sales: React.FC = () => {
       closedBy: user?.name || 'Vendedor',
       status: ClosureStatus.FECHO_PARCIAL_FUNCIONARIO,   // ← SEMPRE parcial no primeiro fecho
       timestamp: Date.now(),
-      editedBy: existingReport ? user?.name : undefined
+      editedBy: existingReport ? (user?.name || 'Sistema') : null
     };
 
     setShowCloseModal(false);
