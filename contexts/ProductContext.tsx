@@ -7,7 +7,6 @@ import { useAudit } from './AuditContext';
 import { hasPermission } from '../src/utils/permissions';
 import { cleanDate, formatDateISO, generateUUID } from '../src/utils';
 
-// ─── Colecções Firestore ───────────────────────────────────────────────────
 const COL = {
   products:             'products',
   purchases:            'appdata/purchases/records',
@@ -25,12 +24,10 @@ const COL = {
   notifications:        'appdata/notifications/records',
 };
 
-// Helper: guardar documento no Firestore
 const fsSet = async (path: string, id: string, data: any) => {
   await setDoc(doc(db, path, id), data);
 };
 
-// Helper: guardar documento em colecção appdata com ID fixo
 const fsSetFixed = async (docPath: string, data: any) => {
   const parts = docPath.split('/');
   const id = parts.pop()!;
@@ -152,7 +149,7 @@ interface ProductContextType {
   processCashTPADebit: (origin: 'Cash' | 'TPA', amount: number, note: string, referenceId?: string, referenceType?: Transaction['referenceType'], performedBy?: string) => void;
   addSalesReport: (report: SalesReport) => void;
   getConfirmedSalesReports: () => SalesReport[];
-  registrarDespesaGlobal: (data: { tipo: string; origem: string; descricao: string; nota: string; valor: number; usuario: string; data_operacional: string; }) => void;
+  registrarDespesaGlobal: (data: { tipo: string; origem: string; descricao: string; nota: string; valor: number; usuario: string; data_operacional: string; referenceId?: string; }) => void;
   registrarAlmocoBlindado: (report: SalesReport) => void;
   updateSalesReport: (reportId: string, updates: Partial<SalesReport>) => void;
   updateSalesReportJustification: (reportId: string, justificationData: any) => void;
@@ -193,7 +190,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     return true;
   }, [user]);
 
-  // ─── Estado — tudo começa vazio, Firestore preenche via onSnapshot ────────
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<string[]>(INITIAL_CATEGORIES);
   const [expenseCategories, setExpenseCategories] = useState<ExpenseCategory[]>([]);
@@ -219,7 +215,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [isSyncing] = useState(false);
   const [hasPendingChanges] = useState(false);
 
-  // ─── onSnapshot — subscrever todas as colecções ───────────────────────────
   useEffect(() => {
     const unsubs: (() => void)[] = [];
 
@@ -227,7 +222,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       const data = snap.docs.map(d => ({ ...d.data(), id: d.id } as Product));
       if (data.length > 0) setProducts(data);
       else {
-        // Primeira vez — inicializar produtos
         INITIAL_PRODUCTS.forEach(p => setDoc(doc(db, COL.products, p.id), p));
         setProducts(INITIAL_PRODUCTS);
       }
@@ -295,7 +289,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       setNotifications(snap.docs.map(d => d.data()).sort((a,b) => b.timestamp - a.timestamp));
     }));
 
-    // Saldos e dias bloqueados como documento único
     unsubs.push(onSnapshot(doc(db, 'appdata', 'balances'), snap => {
       if (snap.exists()) {
         const d = snap.data();
@@ -303,7 +296,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
         setSavingsBalance(d.savingsBalance ?? 0);
         setCashBalance(d.cashBalance ?? 0);
         setTPABalance(d.tpaBalance ?? 0);
-        // Actualizar saldo dos cartões também
         setCards(prev => prev.map(c => {
           if (c.id === 'main') return { ...c, balance: d.currentBalance ?? c.balance };
           if (c.id === 'savings') return { ...c, balance: d.savingsBalance ?? c.balance };
@@ -319,7 +311,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     return () => unsubs.forEach(u => u());
   }, []);
 
-  // ─── Online/Offline ───────────────────────────────────────────────────────
   useEffect(() => {
     const goOnline = () => setIsOnline(true);
     const goOffline = () => setIsOnline(false);
@@ -328,7 +319,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     return () => { window.removeEventListener('online', goOnline); window.removeEventListener('offline', goOffline); };
   }, []);
 
-  // ─── Helper: guardar saldos ───────────────────────────────────────────────
   const saveBalances = useCallback(async (cb?: number, sb?: number, cash?: number, tpa?: number) => {
     await setDoc(doc(db, 'appdata', 'balances'), {
       currentBalance: cb ?? currentBalance,
@@ -338,14 +328,10 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     });
   }, [currentBalance, savingsBalance, cashBalance, tpaBalance]);
 
-  // ─── syncData — mantido para compatibilidade com UI ──────────────────────
   const syncData = useCallback(async () => {
-    // Com onSnapshot já activo, não é necessário fazer nada.
-    // Firestore mantém tudo actualizado em tempo real.
     console.log('Firestore em tempo real — sem necessidade de sincronização manual.');
   }, []);
 
-  // ─── Sistema de datas ─────────────────────────────────────────────────────
   const getSystemDate = useCallback(() => {
     const now = new Date();
     const date = new Date(systemDate);
@@ -363,7 +349,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     addAuditLog({ action: 'ALTERAR_DATA_SISTEMA', module: 'SISTEMA', description: `Data do sistema alterada de ${formatDateISO(oldDate)} para ${formatDateISO(dateOnly)}`, previousValue: formatDateISO(oldDate), newValue: formatDateISO(dateOnly) });
   };
 
-  // ─── AuditLog ─────────────────────────────────────────────────────────────
   const addAuditLog = useCallback((log: any) => {
     addLog({
       action: log.action || 'AÇÃO_DESCONHECIDA',
@@ -375,14 +360,12 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     }, user);
   }, [addLog, user]);
 
-  // ─── isDayLocked ──────────────────────────────────────────────────────────
   const isDayLocked = useCallback((date: string | Date) => {
     if (!date) return false;
     const dateStr = date instanceof Date ? formatDateISO(date) : date;
     return lockedDays.map(d => cleanDate(d)).includes(cleanDate(dateStr));
   }, [lockedDays]);
 
-  // ─── validateAction ───────────────────────────────────────────────────────
   const validateAction = useCallback((type: string, payload: any) => {
     if (isDayLocked(getSystemDate())) throw new Error('Operação Negada: O dia atual está bloqueado.');
     if (type === 'SALE' || type === 'SALES_REPORT' || type === 'UPDATE_STOCK') {
@@ -403,7 +386,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     return true;
   }, [products, isDayLocked, getSystemDate]);
 
-  // ─── handleStockMovement ──────────────────────────────────────────────────
   const handleStockMovement = useCallback((productId: string, quantity: number, type: 'SALE' | 'PURCHASE' | 'ADJUSTMENT' | 'MANUAL_ADJUSTMENT', performedBy: string, reason: string, referenceId?: string) => {
     try {
       if ((type === 'ADJUSTMENT' || type === 'MANUAL_ADJUSTMENT') && !reason) throw new Error('Um motivo é obrigatório para ajustes manuais de stock.');
@@ -422,7 +404,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       const qtyAfter = Math.max(0, qtyBefore + qtyAdded);
       const isManual = type === 'ADJUSTMENT' || type === 'MANUAL_ADJUSTMENT' || (!referenceId && (type === 'SALE' || type === 'PURCHASE'));
 
-      // Actualizar produto no Firestore
       setDoc(doc(db, COL.products, productId), { ...product, stock: qtyAfter });
 
       const log: StockOperationLog = {
@@ -442,7 +423,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   }, [user, addLog, validateAction, products, stockOperationHistory]);
 
-  // ─── processTransaction ───────────────────────────────────────────────────
   const processTransaction = useCallback((
     type: 'deposit' | 'withdraw',
     account: 'main' | 'savings' | 'cash' | 'tpa' | string,
@@ -453,11 +433,9 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     try {
       const existingTrans = referenceId ? transactions.filter(t => t.referenceId === referenceId && t.referenceType === referenceType) : [];
 
-      // Calcular novos saldos
       let newCB = currentBalance, newSB = savingsBalance, newCash = cashBalance, newTPA = tpaBalance;
       let accountName = '';
 
-      // Reverter transacções anteriores com mesmo referenceId
       if (existingTrans.length > 0) {
         existingTrans.forEach(t => {
           const amt = t.amount; const isEntry = t.type === 'entrada';
@@ -484,10 +462,8 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
         }
       }
 
-      // Actualizar saldos no Firestore
       setCurrentBalance(newCB); setSavingsBalance(newSB); setCashBalance(newCash); setTPABalance(newTPA);
       setDoc(doc(db, 'appdata', 'balances'), { currentBalance: newCB, savingsBalance: newSB, cashBalance: newCash, tpaBalance: newTPA });
-      // Actualizar saldo nos cartões
       setCards(prev => prev.map(c => {
         if (c.id === 'main') return { ...c, balance: newCB };
         if (c.id === 'savings') return { ...c, balance: newSB };
@@ -515,43 +491,39 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   }, [transactions, cards, user, currentBalance, savingsBalance, cashBalance, tpaBalance, getSystemDate, addAuditLog]);
 
-  // ─── adjustFinancialsForReport ────────────────────────────────────────────
+  // ─── adjustFinancialsForReport — CORRIGIDO: sem duplicação ───────────────
   const adjustFinancialsForReport = useCallback((oldReport: SalesReport, newReport: SalesReport) => {
-  const reportDateStr = (newReport.dateISO || newReport.date || '').split('T')[0];
-  const newCash = newReport.cash ?? (newReport as any).financials?.cash ?? 0;
-  const newTpa = (newReport.tpa ?? 0) + (newReport.transfer ?? 0) || ((newReport as any).financials?.ticket ?? 0) + ((newReport as any).financials?.transfer ?? 0);
-  const oldCash = oldReport.cash ?? (oldReport as any).financials?.cash ?? 0;
-  const oldTpa = (oldReport.tpa ?? 0) + (oldReport.transfer ?? 0) || ((oldReport as any).financials?.ticket ?? 0) + ((oldReport as any).financials?.transfer ?? 0);
-  
-  // Apagar transacções antigas do mesmo fecho
-  const existingTrans = transactions.filter(t => 
-    t.referenceId === newReport.id && t.referenceType === 'day_closure'
-  );
-  existingTrans.forEach(t => deleteDoc(doc(db, COL.transactions, t.id)));
-  
-  // Reverter saldos das transacções antigas
-  let newCashBal = cashBalance;
-  let newTPABal = tpaBalance;
-  existingTrans.forEach(t => {
-    if (t.accountName === 'Caixa (Dinheiro)') newCashBal -= t.amount;
-    else if (t.accountName === 'TPA') newTPABal -= t.amount;
-  });
-  
-  // Aplicar novos valores
-  newCashBal = newCashBal + newCash;
-  newTPABal = newTPABal + newTpa;
-  
-  setCashBalance(newCashBal); setTPABalance(newTPABal);
-  setDoc(doc(db, 'appdata', 'balances'), { currentBalance, savingsBalance, cashBalance: newCashBal, tpaBalance: newTPABal });
-  
-  const newTotalLifted = newCash + newTpa;
-  if (newTotalLifted > 0) {
-    processTransaction('deposit', 'main', newTotalLifted, `Fecho Confirmado (${reportDateStr}) — Editado`, 'Fecho de Caixa', newReport.id, 'day_closure', user?.name || 'Sistema', reportDateStr);
-  }
-}, [user, processTransaction, transactions, currentBalance, savingsBalance, cashBalance, tpaBalance]);
-  }, [user, processTransaction, currentBalance, savingsBalance, cashBalance, tpaBalance]);
+    const reportDateStr = (newReport.dateISO || newReport.date || '').split('T')[0];
+    const newCash = newReport.cash ?? (newReport as any).financials?.cash ?? 0;
+    const newTpa = (newReport.tpa ?? 0) + (newReport.transfer ?? 0) || ((newReport as any).financials?.ticket ?? 0) + ((newReport as any).financials?.transfer ?? 0);
 
-  // ─── Notificações ─────────────────────────────────────────────────────────
+    // Apagar transacções antigas do mesmo fecho para evitar duplicação
+    const existingTrans = transactions.filter(t =>
+      t.referenceId === newReport.id && t.referenceType === 'day_closure'
+    );
+    existingTrans.forEach(t => deleteDoc(doc(db, COL.transactions, t.id)));
+
+    // Reverter saldos Cash/TPA das transacções antigas
+    let newCashBal = cashBalance;
+    let newTPABal = tpaBalance;
+    existingTrans.forEach(t => {
+      if (t.accountName === 'Caixa (Dinheiro)') newCashBal -= t.amount;
+      else if (t.accountName === 'TPA') newTPABal -= t.amount;
+    });
+
+    // Aplicar novos valores
+    newCashBal = newCashBal + newCash;
+    newTPABal = newTPABal + newTpa;
+
+    setCashBalance(newCashBal); setTPABalance(newTPABal);
+    setDoc(doc(db, 'appdata', 'balances'), { currentBalance, savingsBalance, cashBalance: newCashBal, tpaBalance: newTPABal });
+
+    const newTotalLifted = newCash + newTpa;
+    if (newTotalLifted > 0) {
+      processTransaction('deposit', 'main', newTotalLifted, `Fecho Confirmado (${reportDateStr}) — Editado`, 'Fecho de Caixa', newReport.id, 'day_closure', user?.name || 'Sistema', reportDateStr);
+    }
+  }, [user, processTransaction, transactions, currentBalance, savingsBalance, cashBalance, tpaBalance]);
+
   const addNotification = useCallback((notif: any) => {
     const newNotif = { ...notif, id: generateUUID(), timestamp: Date.now(), read: false };
     setDoc(doc(db, COL.notifications, newNotif.id), newNotif);
@@ -566,7 +538,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     notifications.forEach(n => deleteDoc(doc(db, COL.notifications, n.id)));
   }, [notifications]);
 
-  // ─── lockDay / unlockDay / checkDayLock ───────────────────────────────────
   const lockDay = useCallback((dateStr: string, performedBy: string) => {
     const cleanTarget = cleanDate(dateStr);
     const newDays = lockedDays.includes(cleanTarget) ? lockedDays : [...lockedDays, cleanTarget];
@@ -594,7 +565,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   }, [isDayLocked, addAuditLog, user]);
 
-  // ─── ignoreLockedDayWithoutClosure ────────────────────────────────────────
   const ignoreLockedDayWithoutClosure = useCallback((dateStr: string) => {
     const clean = cleanDate(dateStr);
     if (isDayLocked(dateStr)) {
@@ -611,7 +581,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   }, [isDayLocked, salesReports, transactions, addAuditLog]);
 
-  // ─── Expenses ─────────────────────────────────────────────────────────────
   const addExpense = useCallback((expense: Expense) => {
     if (!checkPermission('expenses_execute')) return;
     setDoc(doc(db, COL.expenses, expense.id), expense);
@@ -635,7 +604,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     addAuditLog({ action: 'EDITAR_DESPESA', module: 'FINANCEIRO', entityId: updated.id, description: `Despesa editada: ${updated.title}`, performedBy: user?.name || 'Sistema' });
   }, [addAuditLog, user]);
 
-  // ─── ExpenseCategories ────────────────────────────────────────────────────
   const addExpenseCategory = useCallback((category: Omit<ExpenseCategory, 'id'>) => {
     if (!checkPermission('expenses_category_manage')) return;
     const newCat = { ...category, id: Math.random().toString(36).substr(2, 9) };
@@ -657,7 +625,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     addAuditLog({ action: 'REMOVER_CATEGORIA_DESPESA', module: 'FINANCEIRO', entityId: id, description: `Categoria removida: ${cat?.name || id}`, performedBy: user?.name || 'Sistema' });
   }, [checkPermission, expenseCategories, addAuditLog, user]);
 
-  // ─── Inventory ────────────────────────────────────────────────────────────
   const addInventoryLog = useCallback((log: InventoryLog) => {
     try {
       validateAction('INVENTORY_LOG', {});
@@ -670,7 +637,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   }, [validateAction, addAuditLog, addLog, user]);
 
-  // ─── Products ─────────────────────────────────────────────────────────────
   const addProduct = useCallback((product: Omit<Product, 'id'>) => {
     try {
       if (!checkPermission('inventory_product_create')) return;
@@ -721,7 +687,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   }, [checkPermission, validateAction, products, addAuditLog, addLog, user]);
 
-  // ─── Categories ───────────────────────────────────────────────────────────
   const addCategory = useCallback((category: string) => {
     if (!checkPermission('inventory_category_manage')) return;
     if (!categories.includes(category)) {
@@ -744,7 +709,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     addAuditLog({ action: 'REMOVER_CATEGORIA', module: 'INVENTARIO', description: `Categoria ${category} removida.`, performedBy: user?.name || 'Sistema' });
   }, [checkPermission, addAuditLog, user]);
 
-  // ─── Purchases ────────────────────────────────────────────────────────────
   const addPurchase = useCallback((items: Record<string, number>, source: 'Prices' | 'Inventory' | 'Sales', completedBy: string, attachments?: string[], supplier?: string) => {
     try {
       if (!checkPermission('purchases_execute')) return;
@@ -785,7 +749,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   const getTodayPurchases = useCallback(() => getPurchasesByDate(getSystemDateStr()), [getPurchasesByDate, getSystemDateStr]);
 
-  // ─── processCashTPADebit ──────────────────────────────────────────────────
   const processCashTPADebit = useCallback((origin: 'Cash' | 'TPA', amount: number, note: string, referenceId?: string, referenceType?: Transaction['referenceType'], performedBy?: string, date?: string) => {
     validateAction('TRANSACTION', { date: date || formatDateISO(getSystemDate()), amount });
     const newCash = origin === 'Cash' ? cashBalance - amount : cashBalance;
@@ -799,7 +762,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     addAuditLog({ action: 'DEBITO_CASH_TPA', module: 'FINANCEIRO', entityId: transId, description: `Débito ${origin}: ${amount.toLocaleString('pt-AO')} Kz. ${note}`, performedBy: performedBy || user?.name || 'Sistema' });
   }, [validateAction, getSystemDate, cashBalance, tpaBalance, currentBalance, savingsBalance, addAuditLog, user]);
 
-  // ─── registrarDespesaGlobal ───────────────────────────────────────────────
   const registrarDespesaGlobal = useCallback((data: { tipo: string; origem: string; descricao: string; nota: string; valor: number; usuario: string; data_operacional: string; referenceId?: string; }) => {
     try {
       validateAction('EXPENSE', { date: data.data_operacional, amount: data.valor });
@@ -825,7 +787,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   }, [validateAction, expenses, getSystemDate, processTransaction, addAuditLog, addLog, user]);
 
-  // ─── registrarAlmocoBlindado ──────────────────────────────────────────────
   const registrarAlmocoBlindado = useCallback((report: SalesReport) => {
     const lunchVal = report.lunchExpense ?? (report as any).financials?.lunch ?? 0;
     const isFinal = report.isFinalClosure || report.type === 'FINAL' || report.status === ClosureStatus.FECHO_CONFIRMADO;
@@ -839,7 +800,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   }, [expenses, getSystemDate]);
 
-  // ─── SalesReports ─────────────────────────────────────────────────────────
   const getConfirmedSalesReports = useCallback(() => salesReports.filter(r => r.status === ClosureStatus.FECHO_CONFIRMADO), [salesReports]);
 
   const addSalesReport = useCallback((report: SalesReport) => {
@@ -904,6 +864,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     const wasStockUpdated = !reportData && (report.stockUpdated === true);
     const reportDateStr = report.dateISO || report.date;
     const finalReport: SalesReport = { ...report, status: ClosureStatus.FECHO_CONFIRMADO, confirmedBy, confirmationTimestamp: getSystemDate().getTime(), unilateralAdminConfirmation: isUnilateral, processedFinancials: true, stockUpdated: true, lunchProcessed: true, isFinalClosure: true };
+
     if (!wasStockUpdated && !report.stockUpdated) {
       (report.itemsSnapshot || report.itemsSummary || []).forEach((item: any) => {
         const p = products.find(prod => (item.productId && item.productId === prod.id) || item.id === prod.id || item.name === prod.name);
@@ -911,41 +872,42 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
         if (p && qty > 0) handleStockMovement(p.id, qty, 'SALE', confirmedBy, `Fecho Confirmado: ${reportDateStr}`, `confirm_${reportId}_${p.id}`);
       });
     }
+
     if (!wasAlreadyProcessed && !report.processedFinancials) {
-  const cash = (finalReport as any).cash ?? (finalReport as any).financials?.cash ?? 0;
-  const tpa = (finalReport as any).tpa ?? (finalReport as any).financials?.ticket ?? 0;
-  const transfer = (finalReport as any).transfer ?? (finalReport as any).financials?.transfer ?? 0;
-  const totalLifted = cash + tpa + transfer;
-  
-  // Apagar transacções anteriores do mesmo fecho para evitar duplicação
-  const existingClosureTrans = transactions.filter(t => 
-    t.referenceId === reportId && t.referenceType === 'day_closure'
-  );
-  existingClosureTrans.forEach(t => deleteDoc(doc(db, COL.transactions, t.id)));
-  
-  // Recalcular saldos revertendo transacções anteriores
-  let newCash = cashBalance;
-  let newTPA = tpaBalance;
-  existingClosureTrans.forEach(t => {
-    if (t.accountName === 'Caixa (Dinheiro)') newCash -= t.amount;
-    else if (t.accountName === 'TPA') newTPA -= t.amount;
-  });
-  
-  // Aplicar novos valores
-  newCash = newCash + cash;
-  newTPA = newTPA + (tpa + transfer);
-  
-  setCashBalance(newCash); setTPABalance(newTPA);
-  setDoc(doc(db, 'appdata', 'balances'), { currentBalance, savingsBalance, cashBalance: newCash, tpaBalance: newTPA });
-  if (totalLifted > 0) processTransaction('deposit', 'main', totalLifted, `Fecho Confirmado (${reportDateStr})`, 'Fecho de Caixa', reportId, 'day_closure', confirmedBy, reportDateStr);
-}
+      const cash = (finalReport as any).cash ?? (finalReport as any).financials?.cash ?? 0;
+      const tpa = (finalReport as any).tpa ?? (finalReport as any).financials?.ticket ?? 0;
+      const transfer = (finalReport as any).transfer ?? (finalReport as any).financials?.transfer ?? 0;
+      const totalLifted = cash + tpa + transfer;
+
+      // Apagar transacções anteriores do mesmo fecho para evitar duplicação
+      const existingClosureTrans = transactions.filter(t =>
+        t.referenceId === reportId && t.referenceType === 'day_closure'
+      );
+      existingClosureTrans.forEach(t => deleteDoc(doc(db, COL.transactions, t.id)));
+
+      // Recalcular saldos revertendo transacções anteriores
+      let newCash = cashBalance;
+      let newTPA = tpaBalance;
+      existingClosureTrans.forEach(t => {
+        if (t.accountName === 'Caixa (Dinheiro)') newCash -= t.amount;
+        else if (t.accountName === 'TPA') newTPA -= t.amount;
+      });
+
+      // Aplicar novos valores
+      newCash = newCash + cash;
+      newTPA = newTPA + (tpa + transfer);
+
+      setCashBalance(newCash); setTPABalance(newTPA);
+      setDoc(doc(db, 'appdata', 'balances'), { currentBalance, savingsBalance, cashBalance: newCash, tpaBalance: newTPA });
+      if (totalLifted > 0) processTransaction('deposit', 'main', totalLifted, `Fecho Confirmado (${reportDateStr})`, 'Fecho de Caixa', reportId, 'day_closure', confirmedBy, reportDateStr);
+    }
+
     const lunchVal = (finalReport as any).lunchExpense ?? (finalReport as any).financials?.lunch ?? 0;
     if (lunchVal > 0 && !report.lunchProcessed) registrarAlmocoBlindado({ ...finalReport, lunchExpense: lunchVal } as SalesReport);
     setDoc(doc(db, COL.salesReports, reportId), finalReport);
     addAuditLog({ action: isUnilateral ? 'CONFIRMAÇÃO_UNILATERAL_FECHO' : 'VALIDAÇÃO_FINAL_FECHO', module: 'VENDAS', entityId: reportId, description: `Fecho confirmado para ${reportDateStr}.`, performedBy: confirmedBy });
-  }, [checkPermission, salesReports, products, getSystemDate, cashBalance, tpaBalance, currentBalance, savingsBalance, handleStockMovement, processTransaction, registrarAlmocoBlindado, addAuditLog]);
+  }, [checkPermission, salesReports, products, getSystemDate, cashBalance, tpaBalance, currentBalance, savingsBalance, transactions, handleStockMovement, processTransaction, registrarAlmocoBlindado, addAuditLog]);
 
-  // ─── Equipments ───────────────────────────────────────────────────────────
   const addEquipment = useCallback((equipment: Omit<Equipment, 'id' | 'prevQty'>) => {
     try {
       validateAction('EQUIPMENT', {});
@@ -982,7 +944,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     } catch (error) { const msg = error instanceof Error ? error.message : 'Erro'; addLog({ action: 'ERROR' as any, module: 'INVENTARIO', description: `ERRO: ${msg}`, entityId: id }, user); throw error; }
   }, [validateAction, equipments, addAuditLog, addLog, user]);
 
-  // ─── Cards ────────────────────────────────────────────────────────────────
   const addCard = useCallback((card: Omit<Card, 'id'>) => {
     if (!checkPermission('finance_card_create')) return;
     const newCard: Card = { ...card, id: Math.random().toString(36).substr(2, 9) };
@@ -1006,25 +967,19 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     addAuditLog({ action: 'REMOVER_CARTAO', module: 'FINANCEIRO', entityId: id, description: `Cartão removido: ${card?.name || id}`, performedBy: user?.name || 'Sistema' });
   }, [checkPermission, cards, addAuditLog, user]);
 
-  // ─── resetTestData ────────────────────────────────────────────────────────
   const resetTestData = useCallback(() => {
     if (!checkPermission('admin_global_admin')) return;
     INITIAL_PRODUCTS.forEach(p => setDoc(doc(db, COL.products, p.id), p));
-    [COL.purchases, COL.expenses, COL.transactions, COL.salesReports, COL.inventoryHistory, COL.stockOperationHistory].forEach(col => {
-      // Não é possível apagar colecções directamente no SDK cliente — limpa via estado
-    });
     setDoc(doc(db, 'appdata', 'balances'), { currentBalance: 0, savingsBalance: 0, cashBalance: 0, tpaBalance: 0 });
     setDoc(doc(db, 'appdata', 'locked_days'), { days: [] });
     INITIAL_CARDS.forEach(c => setDoc(doc(db, COL.cards, c.id), { ...c, balance: 0 }));
     addAuditLog({ action: 'RESET_SISTEMA', module: 'SISTEMA', entityId: 'ALL', description: 'Sistema resetado.', performedBy: user?.name || 'Admin' });
   }, [checkPermission, addAuditLog, user]);
 
-  // ─── runSystemDiagnostic ──────────────────────────────────────────────────
   const runSystemDiagnostic = useCallback(() => {
     alert('Sistema a operar com Firestore em tempo real.');
   }, []);
 
-  // ─── value ────────────────────────────────────────────────────────────────
   const value = useMemo(() => ({
     products: products.filter(p => !p.isArchived), categories, purchases, currentBalance, savingsBalance, cashBalance, tpaBalance, cards, transactions, salesReports,
     expenses, expenseCategories, inventoryHistory, priceHistory, lockedDays, systemDate,
@@ -1071,3 +1026,4 @@ export const useProducts = () => {
   if (!context) throw new Error('useProducts must be used within a ProductProvider');
   return context;
 };
+
