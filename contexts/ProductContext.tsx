@@ -517,19 +517,38 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   // ─── adjustFinancialsForReport ────────────────────────────────────────────
   const adjustFinancialsForReport = useCallback((oldReport: SalesReport, newReport: SalesReport) => {
-    const reportDateStr = (newReport.dateISO || newReport.date || '').split('T')[0];
-    const newCash = newReport.cash ?? (newReport as any).financials?.cash ?? 0;
-    const newTpa = (newReport.tpa ?? 0) + (newReport.transfer ?? 0) || ((newReport as any).financials?.ticket ?? 0) + ((newReport as any).financials?.transfer ?? 0);
-    const oldCash = oldReport.cash ?? (oldReport as any).financials?.cash ?? 0;
-    const oldTpa = (oldReport.tpa ?? 0) + (oldReport.transfer ?? 0) || ((oldReport as any).financials?.ticket ?? 0) + ((oldReport as any).financials?.transfer ?? 0);
-    const cashDiff = newCash - oldCash;
-    const tpaDiff = newTpa - oldTpa;
-    if (cashDiff !== 0) { setCashBalance(p => p + cashDiff); setDoc(doc(db, 'appdata', 'balances'), { currentBalance, savingsBalance, cashBalance: cashBalance + cashDiff, tpaBalance }); }
-    if (tpaDiff !== 0) { setTPABalance(p => p + tpaDiff); setDoc(doc(db, 'appdata', 'balances'), { currentBalance, savingsBalance, cashBalance, tpaBalance: tpaBalance + tpaDiff }); }
-    const newTotalLifted = newCash + newTpa;
-    if (newTotalLifted > 0) {
-      processTransaction('deposit', 'main', newTotalLifted, `Fecho Confirmado (${reportDateStr}) — Editado`, 'Fecho de Caixa', newReport.id, 'day_closure', user?.name || 'Sistema', reportDateStr);
-    }
+  const reportDateStr = (newReport.dateISO || newReport.date || '').split('T')[0];
+  const newCash = newReport.cash ?? (newReport as any).financials?.cash ?? 0;
+  const newTpa = (newReport.tpa ?? 0) + (newReport.transfer ?? 0) || ((newReport as any).financials?.ticket ?? 0) + ((newReport as any).financials?.transfer ?? 0);
+  const oldCash = oldReport.cash ?? (oldReport as any).financials?.cash ?? 0;
+  const oldTpa = (oldReport.tpa ?? 0) + (oldReport.transfer ?? 0) || ((oldReport as any).financials?.ticket ?? 0) + ((oldReport as any).financials?.transfer ?? 0);
+  
+  // Apagar transacções antigas do mesmo fecho
+  const existingTrans = transactions.filter(t => 
+    t.referenceId === newReport.id && t.referenceType === 'day_closure'
+  );
+  existingTrans.forEach(t => deleteDoc(doc(db, COL.transactions, t.id)));
+  
+  // Reverter saldos das transacções antigas
+  let newCashBal = cashBalance;
+  let newTPABal = tpaBalance;
+  existingTrans.forEach(t => {
+    if (t.accountName === 'Caixa (Dinheiro)') newCashBal -= t.amount;
+    else if (t.accountName === 'TPA') newTPABal -= t.amount;
+  });
+  
+  // Aplicar novos valores
+  newCashBal = newCashBal + newCash;
+  newTPABal = newTPABal + newTpa;
+  
+  setCashBalance(newCashBal); setTPABalance(newTPABal);
+  setDoc(doc(db, 'appdata', 'balances'), { currentBalance, savingsBalance, cashBalance: newCashBal, tpaBalance: newTPABal });
+  
+  const newTotalLifted = newCash + newTpa;
+  if (newTotalLifted > 0) {
+    processTransaction('deposit', 'main', newTotalLifted, `Fecho Confirmado (${reportDateStr}) — Editado`, 'Fecho de Caixa', newReport.id, 'day_closure', user?.name || 'Sistema', reportDateStr);
+  }
+}, [user, processTransaction, transactions, currentBalance, savingsBalance, cashBalance, tpaBalance]);
   }, [user, processTransaction, currentBalance, savingsBalance, cashBalance, tpaBalance]);
 
   // ─── Notificações ─────────────────────────────────────────────────────────
@@ -893,15 +912,33 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       });
     }
     if (!wasAlreadyProcessed && !report.processedFinancials) {
-      const cash = (finalReport as any).cash ?? (finalReport as any).financials?.cash ?? 0;
-      const tpa = (finalReport as any).tpa ?? (finalReport as any).financials?.ticket ?? 0;
-      const transfer = (finalReport as any).transfer ?? (finalReport as any).financials?.transfer ?? 0;
-      const totalLifted = cash + tpa + transfer;
-      const newCash = cashBalance + cash; const newTPA = tpaBalance + (tpa + transfer);
-      setCashBalance(newCash); setTPABalance(newTPA);
-      setDoc(doc(db, 'appdata', 'balances'), { currentBalance, savingsBalance, cashBalance: newCash, tpaBalance: newTPA });
-      if (totalLifted > 0) processTransaction('deposit', 'main', totalLifted, `Fecho Confirmado (${reportDateStr})`, 'Fecho de Caixa', reportId, 'day_closure', confirmedBy, reportDateStr);
-    }
+  const cash = (finalReport as any).cash ?? (finalReport as any).financials?.cash ?? 0;
+  const tpa = (finalReport as any).tpa ?? (finalReport as any).financials?.ticket ?? 0;
+  const transfer = (finalReport as any).transfer ?? (finalReport as any).financials?.transfer ?? 0;
+  const totalLifted = cash + tpa + transfer;
+  
+  // Apagar transacções anteriores do mesmo fecho para evitar duplicação
+  const existingClosureTrans = transactions.filter(t => 
+    t.referenceId === reportId && t.referenceType === 'day_closure'
+  );
+  existingClosureTrans.forEach(t => deleteDoc(doc(db, COL.transactions, t.id)));
+  
+  // Recalcular saldos revertendo transacções anteriores
+  let newCash = cashBalance;
+  let newTPA = tpaBalance;
+  existingClosureTrans.forEach(t => {
+    if (t.accountName === 'Caixa (Dinheiro)') newCash -= t.amount;
+    else if (t.accountName === 'TPA') newTPA -= t.amount;
+  });
+  
+  // Aplicar novos valores
+  newCash = newCash + cash;
+  newTPA = newTPA + (tpa + transfer);
+  
+  setCashBalance(newCash); setTPABalance(newTPA);
+  setDoc(doc(db, 'appdata', 'balances'), { currentBalance, savingsBalance, cashBalance: newCash, tpaBalance: newTPA });
+  if (totalLifted > 0) processTransaction('deposit', 'main', totalLifted, `Fecho Confirmado (${reportDateStr})`, 'Fecho de Caixa', reportId, 'day_closure', confirmedBy, reportDateStr);
+}
     const lunchVal = (finalReport as any).lunchExpense ?? (finalReport as any).financials?.lunch ?? 0;
     if (lunchVal > 0 && !report.lunchProcessed) registrarAlmocoBlindado({ ...finalReport, lunchExpense: lunchVal } as SalesReport);
     setDoc(doc(db, COL.salesReports, reportId), finalReport);
