@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Shield, User as UserIcon, CheckCircle, XCircle, AlertTriangle, MoreVertical, Ban, Eye, EyeOff, DollarSign, Lock, ShoppingCart, Package, Wallet, ShoppingBag, Save, RefreshCw, Trash2 } from 'lucide-react';
+import { Search, Filter, Shield, User as UserIcon, CheckCircle, XCircle, AlertTriangle, MoreVertical, Ban, Eye, EyeOff, DollarSign, Lock, ShoppingCart, Package, Wallet, ShoppingBag, Save, RefreshCw, Trash2, KeyRound } from 'lucide-react';
 import SoftCard from '../components/SoftCard';
 import { User, UserRole, UserPermissions } from '../types';
 import { useAuth } from '../contexts/AuthContext';
@@ -45,7 +45,19 @@ const UserManagement: React.FC = () => {
   const [modifiedUsers, setModifiedUsers] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<{ show: boolean, message: string }>({ show: false, message: '' });
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+const { generateRecoveryCode } = useAuth();
+const [recoveryModal, setRecoveryModal] = useState<{ show: boolean; code: string; userName: string }>({ show: false, code: '', userName: '' });
 
+const handleGenerateCode = async (userId: string, userName: string) => {
+  triggerHaptic('impact');
+  const code = await generateRecoveryCode(userId, userName);
+  if (code) {
+    setRecoveryModal({ show: true, code, userName });
+  } else {
+    showToast('Erro ao gerar código. Tenta novamente.');
+  }
+};
+  
   const showToast = (message: string) => {
     setToast({ show: true, message });
     setTimeout(() => setToast({ show: false, message: '' }), 3000);
@@ -380,22 +392,28 @@ const UserManagement: React.FC = () => {
 
               {/* Specific Permissions Section */}
               <div className="mb-4 grid grid-cols-2 gap-2">
-                <button 
-                  onClick={() => openProfileEdit(u)}
-                  disabled={u.isBanned}
-                  className="py-2 bg-slate-50 dark:bg-slate-700/50 border border-slate-100 dark:border-slate-600 rounded-lg text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all flex items-center justify-center gap-1"
-                >
-                  <UserIcon size={12} /> Perfil / Detalhes
-                </button>
-                <button 
-                  onClick={() => { triggerHaptic('selection'); openPermissionMatrix(u); }}
-                  disabled={isMe || u.isBanned || isHighLevel}
-                  className="py-2 bg-slate-50 dark:bg-slate-700/50 border border-slate-100 dark:border-slate-600 rounded-lg text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all flex items-center justify-center gap-1"
-                >
-                  <Shield size={12} /> Permissões
-                </button>
-              </div>
-
+  <button 
+    onClick={() => openProfileEdit(u)}
+    disabled={u.isBanned}
+    className="py-2 bg-slate-50 dark:bg-slate-700/50 border border-slate-100 dark:border-slate-600 rounded-lg text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all flex items-center justify-center gap-1"
+  >
+    <UserIcon size={12} /> Perfil / Detalhes
+  </button>
+  <button 
+    onClick={() => { triggerHaptic('selection'); openPermissionMatrix(u); }}
+    disabled={isMe || u.isBanned || isHighLevel}
+    className="py-2 bg-slate-50 dark:bg-slate-700/50 border border-slate-100 dark:border-slate-600 rounded-lg text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all flex items-center justify-center gap-1"
+  >
+    <Shield size={12} /> Permissões
+  </button>
+  <button
+    onClick={() => handleGenerateCode(u.id, u.name)}
+    disabled={u.isBanned}
+    className="col-span-2 py-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800 rounded-lg text-[10px] font-bold text-amber-700 dark:text-amber-400 hover:bg-amber-100 transition-all flex items-center justify-center gap-1"
+  >
+    <KeyRound size={12} /> Gerar Código de Recuperação
+  </button>
+</div>
               {/* Actions */}
               <div className="pt-4 border-t border-slate-100 dark:border-slate-700 space-y-3">
                 <div className="space-y-1">
@@ -748,6 +766,43 @@ const UserManagement: React.FC = () => {
             </div>
           </div>
         )}
+      {/* MODAL: CÓDIGO DE RECUPERAÇÃO */}
+{recoveryModal.show && (
+  <div className="fixed inset-0 bg-black/60 z-[200] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+    <div className="bg-white dark:bg-slate-800 rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl">
+      <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+        <KeyRound size={28} className="text-amber-600 dark:text-amber-400" />
+      </div>
+      <h3 className="text-xl font-black text-[#003366] dark:text-white mb-1">Código de Recuperação</h3>
+      <p className="text-slate-400 text-sm mb-6">Para <strong className="text-slate-700 dark:text-slate-200">{recoveryModal.userName}</strong></p>
+      
+      <div className="bg-slate-50 dark:bg-slate-900 rounded-2xl p-6 mb-6 border-2 border-dashed border-amber-300 dark:border-amber-700">
+        <p className="text-4xl font-black text-amber-600 dark:text-amber-400 tracking-widest">{recoveryModal.code}</p>
+      </div>
+      
+      <div className="text-xs text-slate-400 mb-6 space-y-1">
+        <p>⏱ Válido por <strong>30 minutos</strong></p>
+        <p>🔒 Uso único — expira após utilização</p>
+        <p>📢 Passa este código ao utilizador verbalmente ou por WhatsApp</p>
+      </div>
+
+      <div className="flex gap-3">
+        <button
+          onClick={() => { navigator.clipboard.writeText(recoveryModal.code); showToast('Código copiado!'); }}
+          className="flex-1 py-3 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-bold rounded-2xl hover:bg-amber-200 transition-all"
+        >
+          Copiar
+        </button>
+        <button
+          onClick={() => setRecoveryModal({ show: false, code: '', userName: '' })}
+          className="flex-1 py-3 bg-[#003366] text-white font-bold rounded-2xl shadow-lg hover:opacity-90 transition-all"
+        >
+          Fechar
+        </button>
+      </div>
+    </div>
+  </div>
+)}
     </div>
   );
 };
