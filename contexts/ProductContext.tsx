@@ -496,31 +496,52 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     const reportDateStr = (newReport.dateISO || newReport.date || '').split('T')[0];
     const newCash = newReport.cash ?? (newReport as any).financials?.cash ?? 0;
     const newTpa = (newReport.tpa ?? 0) + (newReport.transfer ?? 0) || ((newReport as any).financials?.ticket ?? 0) + ((newReport as any).financials?.transfer ?? 0);
+    const totalLifted = newCash + newTpa;
+    const timeStr = getSystemDate().toLocaleTimeString('pt-AO', { hour: '2-digit', minute: '2-digit' });
 
-    // Apagar transacções antigas do mesmo fecho para evitar duplicação
+    // Apagar transacções antigas do mesmo fecho (todos os formatos de referenceId)
     const existingTrans = transactions.filter(t =>
-      t.referenceId === newReport.id && t.referenceType === 'day_closure'
+      (t.referenceId === newReport.id ||
+       t.referenceId === `${newReport.id}_cash` ||
+       t.referenceId === `${newReport.id}_tpa` ||
+       t.referenceId === `${newReport.id}_closure`) &&
+      t.referenceType === 'day_closure'
     );
     existingTrans.forEach(t => deleteDoc(doc(db, COL.transactions, t.id)));
 
-    // Reverter saldos Cash/TPA das transacções antigas
+    // Reverter saldos das transacções apagadas
+    let newCB = currentBalance;
     let newCashBal = cashBalance;
     let newTPABal = tpaBalance;
     existingTrans.forEach(t => {
-      if (t.accountName === 'Caixa (Dinheiro)') newCashBal -= t.amount;
-      else if (t.accountName === 'TPA') newTPABal -= t.amount;
+      const isEntry = t.type === 'entrada';
+      if (t.accountName === 'Conta Corrente') newCB += isEntry ? -t.amount : t.amount;
+      if (t.accountName === 'Caixa (Dinheiro)') newCashBal += isEntry ? -t.amount : t.amount;
+      else if (t.accountName === 'TPA') newTPABal += isEntry ? -t.amount : t.amount;
     });
 
-    // Aplicar novos valores
+    // Aplicar novos saldos num só setDoc
+    newCB = newCB + totalLifted;
     newCashBal = newCashBal + newCash;
     newTPABal = newTPABal + newTpa;
+    setCurrentBalance(newCB);
+    setCashBalance(newCashBal);
+    setTPABalance(newTPABal);
+    setCards(prev => prev.map(c => c.id === 'main' ? { ...c, balance: newCB } : c));
+    setDoc(doc(db, 'appdata', 'balances'), { currentBalance: newCB, savingsBalance, cashBalance: newCashBal, tpaBalance: newTPABal });
+    setDoc(doc(db, COL.cards, 'main'), { ...cards.find(c => c.id === 'main'), balance: newCB });
 
-    setCashBalance(newCashBal); setTPABalance(newTPABal);
-    setDoc(doc(db, 'appdata', 'balances'), { currentBalance, savingsBalance, cashBalance: newCashBal, tpaBalance: newTPABal });
-
-    if (newCash > 0) processTransaction('deposit', 'cash', newCash, `Fecho Confirmado (${reportDateStr}) — Editado Cash`, 'Fecho de Caixa', `${newReport.id}_cash`, 'day_closure', user?.name || 'Sistema', reportDateStr);
-    if (newTpa > 0) processTransaction('deposit', 'tpa', newTpa, `Fecho Confirmado (${reportDateStr}) — Editado TPA`, 'Fecho de Caixa', `${newReport.id}_tpa`, 'day_closure', user?.name || 'Sistema', reportDateStr);
-  }, [user, processTransaction, transactions, currentBalance, savingsBalance, cashBalance, tpaBalance]);
+    // 1 transacção visível por fecho (Conta Corrente)
+    if (totalLifted > 0) {
+      setDoc(doc(db, COL.transactions, `${newReport.id}_closure`), {
+        id: `${newReport.id}_closure`, type: 'entrada', category: 'Fecho de Caixa', amount: totalLifted,
+        date: `${reportDateStr}, ${timeStr}`,
+        description: `Fecho Editado (${reportDateStr}) — Cash: ${newCash.toLocaleString('pt-AO')} Kz | TPA: ${newTpa.toLocaleString('pt-AO')} Kz`,
+        referenceId: newReport.id, referenceType: 'day_closure', performedBy: user?.name || 'Sistema',
+        accountName: 'Conta Corrente', status: 'ATIVO', operationalDay: reportDateStr
+      });
+    }
+  }, [user, transactions, currentBalance, savingsBalance, cashBalance, tpaBalance, cards, getSystemDate]);
 
   const addNotification = useCallback((notif: any) => {
     const newNotif = { ...notif, id: generateUUID(), timestamp: Date.now(), read: false };
@@ -873,41 +894,61 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     if (!wasAlreadyProcessed && !report.processedFinancials) {
       const cash = (finalReport as any).cash ?? (finalReport as any).financials?.cash ?? 0;
-      const tpa = (finalReport as any).tpa ?? (finalReport as any).financials?.ticket ?? 0;
-      const transfer = (finalReport as any).transfer ?? (finalReport as any).financials?.transfer ?? 0;
-      const totalLifted = cash + tpa + transfer;
+      const tpaFinal = (finalReport as any).financials?.ticket ?? (finalReport as any).tpa ?? 0;
+      const transferFinal = (finalReport as any).financials?.transfer ?? (finalReport as any).transfer ?? 0;
+      const totalLifted = cash + tpaFinal + transferFinal;
+      const targetDate = reportDateStr.split('T')[0];
+      const timeStr = getSystemDate().toLocaleTimeString('pt-AO', { hour: '2-digit', minute: '2-digit' });
 
-      // Apagar transacções anteriores do mesmo fecho para evitar duplicação
+      // Apagar transacções antigas (todos os formatos de referenceId)
       const existingClosureTrans = transactions.filter(t =>
-        t.referenceId === reportId && t.referenceType === 'day_closure'
+        (t.referenceId === reportId ||
+         t.referenceId === `${reportId}_cash` ||
+         t.referenceId === `${reportId}_tpa` ||
+         t.referenceId === `${reportId}_closure`) &&
+        t.referenceType === 'day_closure'
       );
       existingClosureTrans.forEach(t => deleteDoc(doc(db, COL.transactions, t.id)));
 
-      // Recalcular saldos revertendo transacções anteriores
-      let newCash = cashBalance;
-      let newTPA = tpaBalance;
+      // Reverter saldos das transacções apagadas
+      let newCB = currentBalance;
+      let newCashBal = cashBalance;
+      let newTPABal = tpaBalance;
       existingClosureTrans.forEach(t => {
-        if (t.accountName === 'Caixa (Dinheiro)') newCash -= t.amount;
-        else if (t.accountName === 'TPA') newTPA -= t.amount;
+        const isEntry = t.type === 'entrada';
+        if (t.accountName === 'Conta Corrente') newCB += isEntry ? -t.amount : t.amount;
+        if (t.accountName === 'Caixa (Dinheiro)') newCashBal += isEntry ? -t.amount : t.amount;
+        else if (t.accountName === 'TPA') newTPABal += isEntry ? -t.amount : t.amount;
       });
 
-      // Aplicar novos valores
-      newCash = newCash + cash;
-      newTPA = newTPA + (tpa + transfer);
+      // Aplicar novos saldos num só setDoc
+      newCB = newCB + totalLifted;
+      newCashBal = newCashBal + cash;
+      newTPABal = newTPABal + (tpaFinal + transferFinal);
+      setCurrentBalance(newCB);
+      setCashBalance(newCashBal);
+      setTPABalance(newTPABal);
+      setCards(prev => prev.map(c => c.id === 'main' ? { ...c, balance: newCB } : c));
+      setDoc(doc(db, 'appdata', 'balances'), { currentBalance: newCB, savingsBalance, cashBalance: newCashBal, tpaBalance: newTPABal });
+      setDoc(doc(db, COL.cards, 'main'), { ...cards.find(c => c.id === 'main'), balance: newCB });
 
-      setCashBalance(newCash); setTPABalance(newTPA);
-      setDoc(doc(db, 'appdata', 'balances'), { currentBalance, savingsBalance, cashBalance: newCash, tpaBalance: newTPA });
-     const tpaFinal = (finalReport as any).financials?.ticket ?? (finalReport as any).tpa ?? 0;
-      const transferFinal = (finalReport as any).financials?.transfer ?? (finalReport as any).transfer ?? 0;
-      if (cash > 0) processTransaction('deposit', 'cash', cash, `Fecho Confirmado (${reportDateStr}) — Cash`, 'Fecho de Caixa', `${reportId}_cash`, 'day_closure', confirmedBy, reportDateStr);
-      if (tpaFinal + transferFinal > 0) processTransaction('deposit', 'tpa', tpaFinal + transferFinal, `Fecho Confirmado (${reportDateStr}) — TPA`, 'Fecho de Caixa', `${reportId}_tpa`, 'day_closure', confirmedBy, reportDateStr);
+      // 1 transacção visível por fecho (Conta Corrente)
+      if (totalLifted > 0) {
+        setDoc(doc(db, COL.transactions, `${reportId}_closure`), {
+          id: `${reportId}_closure`, type: 'entrada', category: 'Fecho de Caixa', amount: totalLifted,
+          date: `${targetDate}, ${timeStr}`,
+          description: `Fecho (${targetDate}) — Cash: ${cash.toLocaleString('pt-AO')} Kz | TPA: ${(tpaFinal + transferFinal).toLocaleString('pt-AO')} Kz`,
+          referenceId: reportId, referenceType: 'day_closure', performedBy: confirmedBy,
+          accountName: 'Conta Corrente', status: 'ATIVO', operationalDay: targetDate
+        });
+      }
     }
 
     const lunchVal = (finalReport as any).lunchExpense ?? (finalReport as any).financials?.lunch ?? 0;
     if (lunchVal > 0 && !report.lunchProcessed) registrarAlmocoBlindado({ ...finalReport, lunchExpense: lunchVal } as SalesReport);
     setDoc(doc(db, COL.salesReports, reportId), finalReport);
     addAuditLog({ action: isUnilateral ? 'CONFIRMAÇÃO_UNILATERAL_FECHO' : 'VALIDAÇÃO_FINAL_FECHO', module: 'VENDAS', entityId: reportId, description: `Fecho confirmado para ${reportDateStr}.`, performedBy: confirmedBy });
-  }, [checkPermission, salesReports, products, getSystemDate, cashBalance, tpaBalance, currentBalance, savingsBalance, transactions, handleStockMovement, processTransaction, registrarAlmocoBlindado, addAuditLog]);
+  }, [checkPermission, salesReports, products, getSystemDate, cashBalance, tpaBalance, currentBalance, savingsBalance, transactions, cards, handleStockMovement, registrarAlmocoBlindado, addAuditLog]);
 
   const addEquipment = useCallback((equipment: Omit<Equipment, 'id' | 'prevQty'>) => {
     try {
