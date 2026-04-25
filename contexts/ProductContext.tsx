@@ -518,10 +518,8 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     setCashBalance(newCashBal); setTPABalance(newTPABal);
     setDoc(doc(db, 'appdata', 'balances'), { currentBalance, savingsBalance, cashBalance: newCashBal, tpaBalance: newTPABal });
 
-    const newTotalLifted = newCash + newTpa;
-    if (newTotalLifted > 0) {
-      processTransaction('deposit', 'main', newTotalLifted, `Fecho Confirmado (${reportDateStr}) — Editado`, 'Fecho de Caixa', newReport.id, 'day_closure', user?.name || 'Sistema', reportDateStr);
-    }
+    if (newCash > 0) processTransaction('deposit', 'cash', newCash, `Fecho Confirmado (${reportDateStr}) — Editado Cash`, 'Fecho de Caixa', `${newReport.id}_cash`, 'day_closure', user?.name || 'Sistema', reportDateStr);
+    if (newTpa > 0) processTransaction('deposit', 'tpa', newTpa, `Fecho Confirmado (${reportDateStr}) — Editado TPA`, 'Fecho de Caixa', `${newReport.id}_tpa`, 'day_closure', user?.name || 'Sistema', reportDateStr);
   }, [user, processTransaction, transactions, currentBalance, savingsBalance, cashBalance, tpaBalance]);
 
   const addNotification = useCallback((notif: any) => {
@@ -899,7 +897,10 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
 
       setCashBalance(newCash); setTPABalance(newTPA);
       setDoc(doc(db, 'appdata', 'balances'), { currentBalance, savingsBalance, cashBalance: newCash, tpaBalance: newTPA });
-      if (totalLifted > 0) processTransaction('deposit', 'main', totalLifted, `Fecho Confirmado (${reportDateStr})`, 'Fecho de Caixa', reportId, 'day_closure', confirmedBy, reportDateStr);
+     const tpaFinal = (finalReport as any).financials?.ticket ?? (finalReport as any).tpa ?? 0;
+      const transferFinal = (finalReport as any).financials?.transfer ?? (finalReport as any).transfer ?? 0;
+      if (cash > 0) processTransaction('deposit', 'cash', cash, `Fecho Confirmado (${reportDateStr}) — Cash`, 'Fecho de Caixa', `${reportId}_cash`, 'day_closure', confirmedBy, reportDateStr);
+      if (tpaFinal + transferFinal > 0) processTransaction('deposit', 'tpa', tpaFinal + transferFinal, `Fecho Confirmado (${reportDateStr}) — TPA`, 'Fecho de Caixa', `${reportId}_tpa`, 'day_closure', confirmedBy, reportDateStr);
     }
 
     const lunchVal = (finalReport as any).lunchExpense ?? (finalReport as any).financials?.lunch ?? 0;
