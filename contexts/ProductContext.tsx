@@ -878,7 +878,7 @@ if (newTpa > 0) processTransaction('deposit', 'tpa', newTpa, `Fecho Confirmado (
       );
       existingClosureTrans.forEach(t => deleteDoc(doc(db, COL.transactions, t.id)));
 
-
+console.log('[FECHO]', { cash, tpa, transfer, reportId });
       if (cash > 0) processTransaction('deposit', 'cash', cash, `Fecho Confirmado (${reportDateStr}) — Cash`, 'Fecho de Caixa', `${reportId}_cash`, 'day_closure', confirmedBy, reportDateStr);
 if (tpa + transfer > 0) processTransaction('deposit', 'tpa', tpa + transfer, `Fecho Confirmado (${reportDateStr}) — TPA`, 'Fecho de Caixa', `${reportId}_tpa`, 'day_closure', confirmedBy, reportDateStr);
     }
