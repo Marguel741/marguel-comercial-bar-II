@@ -878,7 +878,8 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     const report = reportData ?? salesReports.find(r => r.id === reportId);
     if (!report) return;
     const liveReport = salesReports.find(r => r.id === reportId);
-    if (liveReport?.status === ClosureStatus.FECHO_CONFIRMADO && liveReport?.processedFinancials) { console.warn(`[confirmSalesReport] Bloqueado: já confirmado.`); return; }
+   const isForceReprocess = reportData && reportData.processedFinancials === false;
+    if (!isForceReprocess && liveReport?.status === ClosureStatus.FECHO_CONFIRMADO && liveReport?.processedFinancials) { console.warn(`[confirmSalesReport] Bloqueado: já confirmado.`); return; }
     const wasAlreadyProcessed = !reportData && (report.processedFinancials === true);
     const wasStockUpdated = !reportData && (report.stockUpdated === true);
     const reportDateStr = report.dateISO || report.date;
