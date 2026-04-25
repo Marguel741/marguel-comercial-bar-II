@@ -1,8 +1,3 @@
-// ============================================================
-// components/Sidebar.tsx — VERSÃO FINAL COMPLETA
-// Correcções: botão Sair sem window.confirm, rota /sandbox
-// Colar directamente no GitHub: seleccionar tudo e substituir
-// ============================================================
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
@@ -20,7 +15,6 @@ import {
   ChevronRight,
   MonitorPlay,
   CalendarRange,
-  FlaskConical,
   History,
   Pin,
   PinOff,
@@ -101,12 +95,6 @@ const Sidebar: React.FC = () => {
       label: 'Auditoria Global',
       permission: 'audit_view' as const,
     },
-    {
-      to: '/sandbox',
-      icon: FlaskConical,
-      label: 'Ambiente Sandbox',
-      permission: 'admin_global_admin' as const,
-    },
   ];
 
   const handleAppRefresh = () => {
@@ -123,7 +111,6 @@ const Sidebar: React.FC = () => {
     }
   };
 
-  // SEM window.confirm — não funciona em PWA/iOS standalone
   const handleLogout = () => {
     triggerHaptic('warning');
     logout();
@@ -183,7 +170,6 @@ const Sidebar: React.FC = () => {
           {/* Header azul */}
           <div className="bg-[#003366] p-6 text-white rounded-br-[32px] shadow-lg relative z-10 shrink-0">
             <div className="flex justify-between items-center mb-6">
-              {/* Logo MG */}
               <div
                 className="flex flex-col items-center cursor-pointer hover:scale-105 transition-all duration-300"
                 onClick={handleAppRefresh}
@@ -192,8 +178,7 @@ const Sidebar: React.FC = () => {
                   <span
                     className="font-sans font-black text-3xl tracking-tighter text-[#E3007E] relative z-10"
                     style={{
-                      filter:
-                        'drop-shadow(0 0 12px rgba(227, 0, 126, 0.4))',
+                      filter: 'drop-shadow(0 0 12px rgba(227, 0, 126, 0.4))',
                     }}
                   >
                     MG
@@ -329,8 +314,7 @@ const Sidebar: React.FC = () => {
                 <span
                   className="font-sans font-black text-2xl tracking-tighter text-[#E3007E]"
                   style={{
-                    filter:
-                      'drop-shadow(0 0 10px rgba(227, 0, 126, 0.4))',
+                    filter: 'drop-shadow(0 0 10px rgba(227, 0, 126, 0.4))',
                   }}
                 >
                   MG
