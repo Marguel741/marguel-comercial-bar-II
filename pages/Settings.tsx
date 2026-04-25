@@ -467,16 +467,6 @@ const Settings: React.FC = () => {
               <p className="text-[10px] text-slate-400 italic">Envia dados técnicos para melhoria do sistema.</p>
             </div>
 
-            <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800">
-              <span className="text-sm font-bold text-slate-700 dark:text-slate-200">Dados de Utilização</span>
-              <button
-                onClick={() => setUsageAnalyticsEnabled(!usageAnalyticsEnabled)}
-                className={`w-10 h-5 rounded-full transition-all relative ${usageAnalyticsEnabled ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-700'}`}
-              >
-                <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${usageAnalyticsEnabled ? 'left-6' : 'left-1'}`} />
-              </button>
-            </div>
-            <p className="text-[10px] text-slate-400 italic">Ajuda-nos a entender como o sistema é utilizado.</p>
           </div>
         </SoftCard>
 
