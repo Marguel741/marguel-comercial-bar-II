@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -10,7 +9,6 @@ import {
   Info, 
   Save, 
   RefreshCw, 
-  Trash2, 
   Fingerprint,
   Lock,
   Eye,
@@ -32,7 +30,6 @@ import Footer from '../components/Footer';
 
 const Settings: React.FC = () => {
   const { user, updateUser } = useAuth();
-  const isAdmin = user?.role === 'ADMIN_GERAL' || user?.role === 'PROPRIETARIO';
   const { theme, setTheme } = useTheme();
   const { 
     idleTimeout, setIdleTimeout,
@@ -45,10 +42,6 @@ const Settings: React.FC = () => {
 
   const { syncData } = useProducts();
 
-  const [isDiagnosing, setIsDiagnosing] = useState(false);
-  const [showClearConfirm, setShowClearConfirm] = useState(false);
-
-  // Account State
   const [isEditingAccount, setIsEditingAccount] = useState(false);
   const [accountForm, setAccountForm] = useState({
     name: user?.name || '',
@@ -58,7 +51,6 @@ const Settings: React.FC = () => {
     associatedEmail: user?.associatedEmail || user?.email || ''
   });
 
-  // Security State
   const [pinForm, setPinForm] = useState({ current: '', new: '', confirm: '' });
   const [showPins, setShowPins] = useState({ current: false, new: false, confirm: false });
   const [pinStatus, setPinStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -70,27 +62,17 @@ const Settings: React.FC = () => {
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   };
 
-  // ─── Conta ───────────────────────────────────────────────
   const handleUpdateAccount = async () => {
     const success = await updateUser(accountForm);
     if (success) setIsEditingAccount(false);
   };
 
-  // ─── Sincronização ───────────────────────────────────────
   const handleSync = () => {
     syncData()
       .then(() => alert('Sincronização concluída com sucesso.'))
       .catch(() => alert('Erro na sincronização. Verifique a ligação à internet.'));
   };
 
-  const handleFullDiagnosis = async () => {
-    setIsDiagnosing(true);
-    await syncData();
-    setIsDiagnosing(false);
-    alert('Sincronização completa concluída.');
-  };
-
-  // ─── PIN ─────────────────────────────────────────────────
   const handleUpdatePin = async () => {
     if (user?.pin && pinForm.current !== user.pin) {
       setPinStatus({ type: 'error', message: 'PIN actual incorrecto' });
@@ -112,12 +94,6 @@ const Settings: React.FC = () => {
     }
   };
 
-  // ─── Cache ───────────────────────────────────────────────
-  const handleClearCache = () => {
-    setShowClearConfirm(true);
-  };
-
-  // ─── Biometria — Activar ─────────────────────────────────
   const handleActivateBiometrics = async () => {
     if (!window.PublicKeyCredential || !user) {
       alert('Biometria não suportada neste dispositivo.');
@@ -127,17 +103,12 @@ const Settings: React.FC = () => {
       alert('A biometria requer HTTPS. Limpa a cache do browser e tenta novamente.');
       return;
     }
-
     try {
       const challenge = crypto.getRandomValues(new Uint8Array(32));
-
       const credential = (await navigator.credentials.create({
         publicKey: {
           challenge,
-          rp: {
-            name: 'Marguel SGI',
-            id: window.location.hostname,
-          },
+          rp: { name: 'Marguel SGI', id: window.location.hostname },
           user: {
             id: new TextEncoder().encode(user.id),
             name: user.email,
@@ -156,44 +127,23 @@ const Settings: React.FC = () => {
         },
       })) as PublicKeyCredential | null;
 
-      if (!credential) {
-        alert('❌ Biometria cancelada. Tenta novamente.');
-        return;
-      }
-
+      if (!credential) { alert('❌ Biometria cancelada. Tenta novamente.'); return; }
       const rawId = Array.from(new Uint8Array(credential.rawId));
+      if (rawId.length === 0) { alert('❌ Chave biométrica inválida. Tenta novamente.'); return; }
 
-      if (rawId.length === 0) {
-        alert('❌ Chave biométrica inválida. Tenta novamente.');
-        return;
-      }
-
-      const bioData = {
-        email: user.email,
-        pin: user.pin,
-        userId: user.id,
-        credId: rawId,
-      };
-
+      const bioData = { email: user.email, pin: user.pin, userId: user.id, credId: rawId };
       localStorage.setItem('mg_biometric_user', JSON.stringify(bioData));
       setBiometricEnabled(true);
 
       const saved = localStorage.getItem('mg_biometric_user');
-      if (!saved) {
-        alert('❌ Erro ao guardar dados biométricos. Tenta novamente.');
-        return;
-      }
-
+      if (!saved) { alert('❌ Erro ao guardar dados biométricos. Tenta novamente.'); return; }
       alert('✅ Biometria configurada! Na próxima vez que entrar, usa a impressão digital ou Face ID.');
-
     } catch (err: any) {
-      console.error('Erro biometria activate:', err);
       if (err?.name === 'NotAllowedError') {
         alert('❌ Operação cancelada.\n\nCertifica-te que:\n• O telemóvel tem bloqueio de ecrã activo\n• Tens impressão digital registada nas definições do Android');
       } else if (err?.name === 'NotSupportedError') {
         alert('❌ Este dispositivo não suporta Passkeys.');
       } else if (err?.name === 'InvalidStateError') {
-        // Chave já existe — limpar e recriar
         localStorage.removeItem('mg_biometric_user');
         setBiometricEnabled(false);
         alert('⚠️ Chave anterior detectada e removida. Carrega em "Activar" novamente para criar uma nova.');
@@ -203,14 +153,12 @@ const Settings: React.FC = () => {
     }
   };
 
-  // ─── Biometria — Desactivar ──────────────────────────────
   const handleDeactivateBiometrics = () => {
     localStorage.removeItem('mg_biometric_user');
     setBiometricEnabled(false);
     alert('Biometria desactivada. Os teus dados biométricos foram removidos deste dispositivo.');
   };
 
-  // ─────────────────────────────────────────────────────────
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-8 pb-20">
       <header className="flex items-center gap-4 mb-8">
@@ -225,9 +173,7 @@ const Settings: React.FC = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-        {/* ══════════════════════════════════════════════════
-            1. CONTA
-        ══════════════════════════════════════════════════ */}
+        {/* 1. CONTA */}
         <SoftCard className="flex flex-col">
           <div className="flex items-center gap-3 mb-6">
             <div className="p-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl">
@@ -281,9 +227,7 @@ const Settings: React.FC = () => {
           </button>
         </SoftCard>
 
-        {/* ══════════════════════════════════════════════════
-            2. SEGURANÇA
-        ══════════════════════════════════════════════════ */}
+        {/* 2. SEGURANÇA */}
         <SoftCard className="flex flex-col">
           <div className="flex items-center gap-3 mb-6">
             <div className="p-2 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-xl">
@@ -293,8 +237,6 @@ const Settings: React.FC = () => {
           </div>
 
           <div className="space-y-6">
-
-            {/* Alteração de PIN */}
             <div>
               <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-3 block">
                 Alteração de PIN
@@ -353,7 +295,6 @@ const Settings: React.FC = () => {
               </div>
             </div>
 
-            {/* Bloqueio Automático */}
             <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
@@ -376,7 +317,6 @@ const Settings: React.FC = () => {
               <p className="text-[10px] text-slate-400 italic">Bloqueia a sessão após inatividade prolongada.</p>
             </div>
 
-            {/* Biometria */}
             <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
               <div className="flex items-center justify-between">
                 <div>
@@ -407,13 +347,10 @@ const Settings: React.FC = () => {
                 </p>
               )}
             </div>
-
           </div>
         </SoftCard>
 
-        {/* ══════════════════════════════════════════════════
-            3. APARÊNCIA
-        ══════════════════════════════════════════════════ */}
+        {/* 3. APARÊNCIA */}
         <SoftCard>
           <div className="flex items-center gap-3 mb-6">
             <div className="p-2 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-xl">
@@ -466,9 +403,7 @@ const Settings: React.FC = () => {
           </div>
         </SoftCard>
 
-        {/* ══════════════════════════════════════════════════
-            4. SISTEMA
-        ══════════════════════════════════════════════════ */}
+        {/* 4. SISTEMA */}
         <SoftCard>
           <div className="flex items-center gap-3 mb-6">
             <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-xl">
@@ -494,7 +429,7 @@ const Settings: React.FC = () => {
                 </div>
               </div>
               <p className="text-[10px] text-slate-500 dark:text-slate-400 mb-4">
-                Os dados são guardados localmente e sincronizados automaticamente quando houver conexão.
+                Os dados são sincronizados automaticamente em tempo real via Firestore.
               </p>
               <button
                 onClick={handleSync}
@@ -503,24 +438,10 @@ const Settings: React.FC = () => {
                 <RefreshCw size={14} /> Sincronizar Agora
               </button>
             </div>
-
-            <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
-              <button
-                onClick={handleClearCache}
-                className="w-full flex items-center justify-center gap-2 py-3 bg-red-50 dark:bg-red-900/10 hover:bg-red-100 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl text-xs font-bold transition-all border border-red-100 dark:border-red-900/30"
-              >
-                <Trash2 size={14} /> Limpar Cache e Dados Locais
-              </button>
-              <p className="text-[10px] text-slate-400 italic mt-2 text-center">
-                Atenção: Isto irá remover todos os dados não sincronizados.
-              </p>
-            </div>
           </div>
         </SoftCard>
 
-        {/* ══════════════════════════════════════════════════
-            5. DIAGNÓSTICO
-        ══════════════════════════════════════════════════ */}
+        {/* 5. DIAGNÓSTICO */}
         <SoftCard>
           <div className="flex items-center gap-3 mb-6">
             <div className="p-2 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-xl">
@@ -559,58 +480,7 @@ const Settings: React.FC = () => {
           </div>
         </SoftCard>
 
-        {/* ══════════════════════════════════════════════════
-            CONFIGURAÇÕES AVANÇADAS (apenas admins)
-        ══════════════════════════════════════════════════ */}
-        {isAdmin && (
-          <motion.section
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
-            className="space-y-6 md:col-span-2"
-          >
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl">
-                <Shield className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
-              </div>
-              <h2 className="text-xl font-bold text-slate-800 dark:text-white">Configurações Avançadas</h2>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <SoftCard className="p-6 space-y-4 bg-slate-900 dark:bg-black text-white border-none overflow-hidden relative group">
-                <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform">
-                  <Activity size={120} />
-                </div>
-                <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
-                  <div className="flex items-center gap-4">
-                    <div className="p-3 bg-white/10 rounded-2xl">
-                      <Zap className="w-8 h-8 text-yellow-400" />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-bold">Sincronização do Sistema</h3>
-                      <p className="text-sm text-slate-400">Forçar sincronização de todos os dados locais</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={handleFullDiagnosis}
-                    disabled={isDiagnosing}
-                    className="w-full md:w-auto px-8 py-4 bg-white text-slate-900 font-black rounded-2xl hover:bg-slate-100 transition-all shadow-xl disabled:opacity-50 flex items-center justify-center gap-3 uppercase tracking-wider text-sm"
-                  >
-                    {isDiagnosing ? (
-                      <><RefreshCw className="w-5 h-5 animate-spin" /> A Sincronizar...</>
-                    ) : (
-                      'Sincronizar Agora'
-                    )}
-                  </button>
-                </div>
-              </SoftCard>
-            </div>
-          </motion.section>
-        )}
-
-        {/* ══════════════════════════════════════════════════
-            6. INFORMAÇÃO
-        ══════════════════════════════════════════════════ */}
+        {/* 6. INFORMAÇÃO */}
         <SoftCard>
           <div className="flex items-center gap-3 mb-6">
             <div className="p-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-xl">
@@ -642,9 +512,7 @@ const Settings: React.FC = () => {
 
       </div>
 
-      {/* ══════════════════════════════════════════════════
-          MODAL — Editar Conta
-      ══════════════════════════════════════════════════ */}
+      {/* MODAL — Editar Conta */}
       <AnimatePresence>
         {isEditingAccount && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
@@ -717,34 +585,9 @@ const Settings: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* ══════════════════════════════════════════════════
-          MODAL — Confirmar limpeza de cache
-      ══════════════════════════════════════════════════ */}
-      {showClearConfirm && (
-        <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white dark:bg-slate-800 rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl">
-            <p className="font-black text-xl text-[#003366] dark:text-white mb-4">Limpar dados locais?</p>
-            <p className="text-slate-500 text-sm mb-6">A aplicação será reiniciada. Esta acção é irreversível.</p>
-            <div className="flex gap-4">
-              <button onClick={() => setShowClearConfirm(false)}
-                className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold rounded-2xl">
-                Cancelar
-              </button>
-              <button onClick={() => { localStorage.clear(); window.location.reload(); }}
-                className="flex-1 py-3 bg-red-500 text-white font-bold rounded-2xl">
-                Limpar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       <Footer />
     </div>
   );
 };
-
-// Importação que faltava no topo (Info icon)
-// Já está no import do lucide-react acima.
 
 export default Settings;
