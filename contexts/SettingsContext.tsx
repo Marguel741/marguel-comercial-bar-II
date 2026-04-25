@@ -105,6 +105,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const setDiagnosticReportingMode = (mode: DiagnosticMode) => {
     setDiagnosticReportingModeState(mode);
     setDoc(SETTINGS_DOC, { diagnosticReportingMode: mode }, { merge: true });
+    localStorage.setItem('mg_diagnostic_mode', mode);
     addLog({ action: 'SYSTEM_SETTING_CHANGED', module: 'SISTEMA', description: `Modo de diagnóstico: ${mode}`, previousValue: diagnosticReportingMode, newValue: mode, entityId: null }, user);
   };
 
