@@ -869,9 +869,8 @@ if (newTpa > 0) processTransaction('deposit', 'tpa', newTpa, `Fecho Confirmado (
 
     if (!wasAlreadyProcessed && !report.processedFinancials) {
       const cash = (finalReport as any).cash ?? (finalReport as any).financials?.cash ?? 0;
-      const tpa = (finalReport as any).tpa ?? (finalReport as any).financials?.ticket ?? 0;
-      const transfer = (finalReport as any).transfer ?? (finalReport as any).financials?.transfer ?? 0;
-      
+            const tpa = (finalReport as any).financials?.ticket ?? (finalReport as any).tpa ?? 0;
+      const transfer = (finalReport as any).financials?.transfer ?? (finalReport as any).transfer ?? 0;
 
       // Apagar transacções anteriores do mesmo fecho para evitar duplicação
       const existingClosureTrans = transactions.filter(t =>
