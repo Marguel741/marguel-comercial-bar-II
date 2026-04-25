@@ -959,10 +959,7 @@ const Sales: React.FC = () => {
                     lunchExpense: editConfirmationData.financials?.lunch,
                   };
 
-                  // 1. Atualiza o relatório no contexto
-                  updateSalesReport(editConfirmationData.id, finalReport);
-
-                  // 2. Chama a confirmação final com o objeto completo
+                 // confirmSalesReport trata tudo — não chamar updateSalesReport antes
                   await confirmSalesReport(finalReport.id, user?.name || 'Sistema', isUnilateralAllowed, finalReport);
 
                   setShowConfirmEditModal(false);
@@ -1085,7 +1082,6 @@ const Sales: React.FC = () => {
         lunchExpense: reportData.financials?.lunch,
       };
 
-      updateSalesReport(reportData.id, finalReport);
       await confirmSalesReport(finalReport.id, user?.name || 'Sistema', isUnilateralAllowed, finalReport);
 
       setForceEditMode(false);
