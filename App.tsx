@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import SplashScreen from './components/SplashScreen';
@@ -12,7 +11,6 @@ import UserManagement from './pages/UserManagement';
 import DirectService from './pages/DirectService';
 import GlobalCalendar from './pages/GlobalCalendar';
 import Audit from './pages/Audit';
-import Sandbox from './pages/Sandbox';
 import Settings from './pages/Settings';
 import AccessDenied from './pages/AccessDenied';
 import Login from './pages/Login';
@@ -222,7 +220,6 @@ const AppContent: React.FC = () => {
                     <Route path="/account" element={<ProtectedRoute permission="finance_view"><AccountStatus /></ProtectedRoute>} />
                     <Route path="/users" element={<ProtectedRoute permission="admin_users_view"><UserManagement /></ProtectedRoute>} />
                     <Route path="/audit" element={<ProtectedRoute permission="audit_view"><Audit /></ProtectedRoute>} />
-                    <Route path="/sandbox" element={<ProtectedRoute permission="admin_global_admin"><Sandbox /></ProtectedRoute>} />
                     <Route path="/settings" element={<Settings />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>
