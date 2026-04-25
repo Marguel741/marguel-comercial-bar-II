@@ -16,7 +16,13 @@ export default defineConfig(({ mode }) => {
           output: {
             entryFileNames: `assets/[name]-[hash].js`,
             chunkFileNames: `assets/[name]-[hash].js`,
-            assetFileNames: `assets/[name]-[hash].[ext]`
+            assetFileNames: `assets/[name]-[hash].[ext]`,
+            manualChunks: {
+              'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+              'vendor-firebase': ['firebase/app', 'firebase/firestore'],
+              'vendor-charts': ['recharts'],
+              'vendor-ui': ['lucide-react', 'motion'],
+            },
           }
         }
       },
