@@ -1,22 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, lazy, Suspense } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import SplashScreen from './components/SplashScreen';
-import Dashboard from './pages/Dashboard';
-import Sales from './pages/Sales';
-import Inventory from './pages/Inventory';
-import Prices from './pages/Prices';
-import Expenses from './pages/Expenses';
-import AccountStatus from './pages/AccountStatus';
-import UserManagement from './pages/UserManagement';
-import DirectService from './pages/DirectService';
-import GlobalCalendar from './pages/GlobalCalendar';
-import Audit from './pages/Audit';
-import Settings from './pages/Settings';
-import AccessDenied from './pages/AccessDenied';
-import Login from './pages/Login';
-import Register from './pages/Register';
-import PendingApproval from './pages/PendingApproval';
-import Banned from './pages/Banned';
 import Sidebar from './components/Sidebar';
 import { UserPermissions } from './types';
 import { hasPermission } from './src/utils/permissions';
@@ -27,6 +11,44 @@ import { FinanceProvider } from './contexts/FinanceContext';
 import { LayoutProvider } from './contexts/LayoutContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { SettingsProvider } from './contexts/SettingsContext';
+
+// ── LAZY PAGES ────────────────────────────────────────────────
+const Dashboard      = lazy(() => import('./pages/Dashboard'));
+const Sales          = lazy(() => import('./pages/Sales'));
+const Inventory      = lazy(() => import('./pages/Inventory'));
+const Prices         = lazy(() => import('./pages/Prices'));
+const Expenses       = lazy(() => import('./pages/Expenses'));
+const AccountStatus  = lazy(() => import('./pages/AccountStatus'));
+const UserManagement = lazy(() => import('./pages/UserManagement'));
+const DirectService  = lazy(() => import('./pages/DirectService'));
+const GlobalCalendar = lazy(() => import('./pages/GlobalCalendar'));
+const Audit          = lazy(() => import('./pages/Audit'));
+const Settings       = lazy(() => import('./pages/Settings'));
+const AccessDenied   = lazy(() => import('./pages/AccessDenied'));
+const Login          = lazy(() => import('./pages/Login'));
+const Register       = lazy(() => import('./pages/Register'));
+const PendingApproval = lazy(() => import('./pages/PendingApproval'));
+const Banned         = lazy(() => import('./pages/Banned'));
+// ─────────────────────────────────────────────────────────────
+
+// ── LOADING FALLBACK ──────────────────────────────────────────
+const PageLoader: React.FC = () => (
+  <div className="h-screen w-screen flex items-center justify-center bg-[#001A33]">
+    <div className="text-center animate-fade-in">
+      <div className="w-16 h-16 border-4 border-[#E3007E]/30 border-t-[#E3007E] rounded-full animate-spin mx-auto mb-6" />
+      <span
+        className="font-sans font-black text-4xl tracking-tighter text-[#E3007E]"
+        style={{ filter: 'drop-shadow(0 0 16px rgba(227, 0, 126, 0.5))' }}
+      >
+        MG
+      </span>
+      <p className="text-white/40 text-xs uppercase tracking-widest mt-3 animate-pulse">
+        A carregar...
+      </p>
+    </div>
+  </div>
+);
+// ─────────────────────────────────────────────────────────────
 
 // ── ERROR BOUNDARY ────────────────────────────────────────────
 class ErrorBoundary extends React.Component<
@@ -145,34 +167,21 @@ const AppContent: React.FC = () => {
   }
 
   if (isLoading) {
-    return (
-      <div className="h-screen w-screen flex items-center justify-center bg-[#001A33]">
-        <div className="text-center animate-fade-in">
-          <div className="w-16 h-16 border-4 border-[#E3007E]/30 border-t-[#E3007E] rounded-full animate-spin mx-auto mb-6" />
-          <span
-            className="font-sans font-black text-4xl tracking-tighter text-[#E3007E]"
-            style={{ filter: 'drop-shadow(0 0 16px rgba(227, 0, 126, 0.5))' }}
-          >
-            MG
-          </span>
-          <p className="text-white/40 text-xs uppercase tracking-widest mt-3 animate-pulse">
-            A carregar...
-          </p>
-        </div>
-      </div>
-    );
+    return <PageLoader />;
   }
 
   if (!user) {
     return (
       <Router>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/pending-approval" element={<PendingApproval />} />
-          <Route path="/banned" element={<Banned />} />
-          <Route path="*" element={<Navigate to="/login" replace />} />
-        </Routes>
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/pending-approval" element={<PendingApproval />} />
+            <Route path="/banned" element={<Banned />} />
+            <Route path="*" element={<Navigate to="/login" replace />} />
+          </Routes>
+        </Suspense>
       </Router>
     );
   }
@@ -180,9 +189,11 @@ const AppContent: React.FC = () => {
   if (user.isBanned) {
     return (
       <Router>
-        <Routes>
-          <Route path="*" element={<Banned />} />
-        </Routes>
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
+            <Route path="*" element={<Banned />} />
+          </Routes>
+        </Suspense>
       </Router>
     );
   }
@@ -190,9 +201,11 @@ const AppContent: React.FC = () => {
   if (!user.isApproved) {
     return (
       <Router>
-        <Routes>
-          <Route path="*" element={<PendingApproval />} />
-        </Routes>
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
+            <Route path="*" element={<PendingApproval />} />
+          </Routes>
+        </Suspense>
       </Router>
     );
   }
@@ -206,23 +219,25 @@ const AppContent: React.FC = () => {
               <div className="flex h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-300 overflow-hidden">
                 <Sidebar />
                 <div id="main-content" className="flex-1 overflow-y-auto custom-scrollbar relative">
-                  <Routes>
-                    <Route path="/login" element={<Navigate to="/" replace />} />
-                    <Route path="/register" element={<Navigate to="/" replace />} />
-                    <Route path="/" element={<Dashboard />} />
-                    <Route path="/access-denied" element={<AccessDenied />} />
-                    <Route path="/direct-service" element={<ProtectedRoute permission="direct_service_view"><DirectService /></ProtectedRoute>} />
-                    <Route path="/calendar" element={<ProtectedRoute permission="calendar_view"><GlobalCalendar /></ProtectedRoute>} />
-                    <Route path="/sales" element={<ProtectedRoute permission="sales_view"><Sales /></ProtectedRoute>} />
-                    <Route path="/inventory" element={<ProtectedRoute permission="inventory_view"><Inventory /></ProtectedRoute>} />
-                    <Route path="/prices" element={<ProtectedRoute permission="prices_view"><Prices /></ProtectedRoute>} />
-                    <Route path="/expenses" element={<ProtectedRoute permission="expenses_view"><Expenses /></ProtectedRoute>} />
-                    <Route path="/account" element={<ProtectedRoute permission="finance_view"><AccountStatus /></ProtectedRoute>} />
-                    <Route path="/users" element={<ProtectedRoute permission="admin_users_view"><UserManagement /></ProtectedRoute>} />
-                    <Route path="/audit" element={<ProtectedRoute permission="audit_view"><Audit /></ProtectedRoute>} />
-                    <Route path="/settings" element={<Settings />} />
-                    <Route path="*" element={<Navigate to="/" replace />} />
-                  </Routes>
+                  <Suspense fallback={<PageLoader />}>
+                    <Routes>
+                      <Route path="/login" element={<Navigate to="/" replace />} />
+                      <Route path="/register" element={<Navigate to="/" replace />} />
+                      <Route path="/" element={<Dashboard />} />
+                      <Route path="/access-denied" element={<AccessDenied />} />
+                      <Route path="/direct-service" element={<ProtectedRoute permission="direct_service_view"><DirectService /></ProtectedRoute>} />
+                      <Route path="/calendar" element={<ProtectedRoute permission="calendar_view"><GlobalCalendar /></ProtectedRoute>} />
+                      <Route path="/sales" element={<ProtectedRoute permission="sales_view"><Sales /></ProtectedRoute>} />
+                      <Route path="/inventory" element={<ProtectedRoute permission="inventory_view"><Inventory /></ProtectedRoute>} />
+                      <Route path="/prices" element={<ProtectedRoute permission="prices_view"><Prices /></ProtectedRoute>} />
+                      <Route path="/expenses" element={<ProtectedRoute permission="expenses_view"><Expenses /></ProtectedRoute>} />
+                      <Route path="/account" element={<ProtectedRoute permission="finance_view"><AccountStatus /></ProtectedRoute>} />
+                      <Route path="/users" element={<ProtectedRoute permission="admin_users_view"><UserManagement /></ProtectedRoute>} />
+                      <Route path="/audit" element={<ProtectedRoute permission="audit_view"><Audit /></ProtectedRoute>} />
+                      <Route path="/settings" element={<Settings />} />
+                      <Route path="*" element={<Navigate to="/" replace />} />
+                    </Routes>
+                  </Suspense>
                 </div>
               </div>
             </Router>
@@ -246,3 +261,4 @@ const App: React.FC = () => (
 );
 
 export default App;
+
