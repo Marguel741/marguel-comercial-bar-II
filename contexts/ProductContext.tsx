@@ -402,7 +402,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
 
       let qtyAdded = type === 'SALE' ? -quantity : type === 'PURCHASE' ? quantity : quantity;
       const qtyAfter = Math.max(0, qtyBefore + qtyAdded);
-      const isManual = type === 'ADJUSTMENT' || type === 'MANUAL_ADJUSTMENT' || (!referenceId && (type === 'SALE' || type === 'PURCHASE'));
+            const isManual = type === 'ADJUSTMENT' || type === 'MANUAL_ADJUSTMENT';
 
       setDoc(doc(db, COL.products, productId), { ...product, stock: qtyAfter });
 
@@ -964,7 +964,20 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     try {
       validateAction('EQUIPMENT', {});
       const equip = equipments.find(e => e.id === id);
-      if (equip) setDoc(doc(db, COL.equipments, id), { ...equip, ...updates });
+      if (equip) {
+        setDoc(doc(db, COL.equipments, id), { ...equip, ...updates });
+        const historyLog = {
+          id: generateUUID(),
+          timestamp: Date.now(),
+          date: formatDateISO(new Date()),
+          performedBy: user?.name || 'Sistema',
+          totalItems: updates.qty ?? equip.qty,
+          discrepancies: [],
+          status: 'OK' as const,
+          justification: `Edição: ${equip.name} — ${Object.keys(updates).join(', ')} actualizado`
+        };
+        setDoc(doc(db, COL.inventoryHistory, historyLog.id), historyLog);
+      }
       addAuditLog({ action: 'EDITAR_EQUIPAMENTO', module: 'INVENTARIO', entityId: id, description: `Equipamento ${id} actualizado.`, performedBy: user?.name || 'Sistema' });
     } catch (error) { const msg = error instanceof Error ? error.message : 'Erro'; addLog({ action: 'ERROR' as any, module: 'INVENTARIO', description: `ERRO: ${msg}`, entityId: id }, user); throw error; }
   }, [validateAction, equipments, addAuditLog, addLog, user]);
