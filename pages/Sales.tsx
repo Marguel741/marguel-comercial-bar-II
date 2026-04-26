@@ -1100,14 +1100,7 @@ const Sales: React.FC = () => {
                   </p>
               </div>
               <div className="flex items-center gap-2">
-                  {isAdminOrOwner && (
-                    <button 
-                      onClick={() => { setForceEditMode(true); triggerHaptic('selection'); }}
-                      className="p-3 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-2xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 transition-all shadow-sm flex items-center gap-2 font-bold text-xs uppercase"
-                    >
-                      <Edit3 size={16} /> Forçar Edição
-                    </button>
-                  )}
+                    {/* Forçar Edição temporariamente desabilitado */}
               </div>
           </div>
 
