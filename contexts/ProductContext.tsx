@@ -402,7 +402,8 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
 
       let qtyAdded = type === 'SALE' ? -quantity : type === 'PURCHASE' ? quantity : quantity;
       const qtyAfter = Math.max(0, qtyBefore + qtyAdded);
-            const isManual = type === 'ADJUSTMENT' || type === 'MANUAL_ADJUSTMENT';
+            // REVERTER PARA:
+      const isManual = type === 'ADJUSTMENT' || type === 'MANUAL_ADJUSTMENT' || (!referenceId && (type === 'SALE' || type === 'PURCHASE'));
 
       setDoc(doc(db, COL.products, productId), { ...product, stock: qtyAfter });
 
