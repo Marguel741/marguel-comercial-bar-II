@@ -407,12 +407,13 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
 
       setDoc(doc(db, COL.products, productId), { ...product, stock: qtyAfter });
 
-      const log: StockOperationLog = {
+     const log: StockOperationLog = {
         id: existingLogId || generateUUID(), productId, productName: product.name,
         type: (isManual ? 'MANUAL_ADJUSTMENT' : type) as any,
         qtyBefore, qtyAdded, qtyAfter, previousStock: qtyBefore, newStock: qtyAfter,
         qtyChanged: qtyAdded, responsible: performedBy, timestamp: Date.now(), performedBy,
-        reason: reason || (isManual ? 'Ajuste Manual via Sistema' : 'Movimentação de Stock'), referenceId
+        reason: reason || (isManual ? 'Ajuste Manual via Sistema' : 'Movimentação de Stock'),
+        referenceId: referenceId ?? null
       };
       setDoc(doc(db, COL.stockOperationHistory, log.id), log);
 
