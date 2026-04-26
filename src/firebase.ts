@@ -35,8 +35,10 @@ export { messaging };
 export const requestNotificationPermission = async (): Promise<string | null> => {
   if (!messaging) return null;
   try {
-    const permission = await Notification.requestPermission();
-    if (permission !== 'granted') return null;
+    if (Notification.permission !== 'granted') {
+   const permission = await Notification.requestPermission();
+  if (permission !== 'granted') return null;
+ }
     const token = await getToken(messaging, {
       vapidKey: 'BLhlPpsyHVN8KChO4eG1QRi-4H45C7A-e96IdGbTYVh_hGF1-6QwAE-T168a5zwn9XzliaZ-PUQhYWLtgdSAgRQ'
     });
