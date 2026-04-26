@@ -473,8 +473,10 @@ const Inventory: React.FC = () => {
       setProductModal({ isOpen: false, data: null });
       showToast('Dados do produto atualizados!');
     } catch (error: any) {
+      console.error('ERRO SAVE PRODUCT:', error?.message, error);
       triggerHaptic('error');
       showToast("Não foi possível completar a ação. Verifique os dados.");
+      setProductModal({ isOpen: false, data: null });
     }
   };
 
