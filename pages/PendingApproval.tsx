@@ -1,5 +1,5 @@
 // pages/PendingApproval.tsx
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { Clock, LogOut, RefreshCw } from 'lucide-react';
@@ -12,10 +12,11 @@ const PendingApproval: React.FC = () => {
   const handleLogout = () => { logout(); navigate('/login'); };
 
   // Se entretanto foi aprovado, redirecionar
-  if (user?.isApproved && !user?.isBanned) {
-    navigate('/');
-    return null;
-  }
+ useEffect(() => {
+    if (user?.isApproved && !user?.isBanned) {
+      navigate('/');
+    }
+  }, [user, navigate]);
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-900">
