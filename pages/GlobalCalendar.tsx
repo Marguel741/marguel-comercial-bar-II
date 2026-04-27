@@ -1103,12 +1103,12 @@ const GlobalCalendar: React.FC = () => {
                                               </div>
                                           )}
 
-                                          {dayData.inventory.justification && (
-                                              <div className="mt-4 p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700">
-                                                  <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Justificação:</p>
-                                                  <p className="text-xs text-slate-600 dark:text-slate-400 italic">"{dayData.inventory.justification}"</p>
-                                              </div>
-                                          )}
+                                         {(dayData.inventory.justification || dayData.inventory.status === 'OK') && (
+                              <div className="mt-4 p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700">
+                                  <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Justificação:</p>
+                                  <p className="text-xs text-slate-600 dark:text-slate-400 italic">"{dayData.inventory.justification || 'Contagem realizada sem divergências'}"</p>
+                              </div>
+                          )}
 
                                           <div className="flex items-center justify-between pt-4 mt-4 border-t border-slate-200 dark:border-slate-700">
                                               <div className="flex items-center gap-2 text-[10px] text-slate-400 font-bold uppercase">
