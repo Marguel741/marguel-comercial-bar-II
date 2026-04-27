@@ -466,12 +466,6 @@ const Settings: React.FC = () => {
               </div>
               <p className="text-[10px] text-slate-400 italic">Envia dados técnicos para melhoria do sistema.</p>
 
-              <button 
-                onClick={() => alert(localStorage.getItem('mg_fcm_token') || 'sem token')}
-                className="mt-2 px-3 py-1 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg text-xs font-bold"
-              >
-                Ver Token FCM
-              </button>
             </div>
 
           </div>
