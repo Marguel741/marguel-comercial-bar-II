@@ -326,14 +326,18 @@ const Inventory: React.FC = () => {
       setIsInventoryDone(true);
       
       // Add to History (Global Context)
-      const hasDiscrepancy = discrepancies.length > 0;
+     const hasDiscrepancy = discrepancies.length > 0;
+      const allItems = equipments.map(eq => ({
+          name: eq.name,
+          diff: (countValues[eq.id] ?? eq.qty) - eq.qty
+      }));
       const newLog: InventoryLog = {
           id: generateUUID(),
           timestamp: getSystemDate().getTime(),
           date: formatDateISO(systemDate),
           performedBy: user?.name || 'Desconhecido',
           totalItems: (Object.values(countValues) as number[]).reduce((a, b) => a + b, 0),
-          discrepancies: hasDiscrepancy ? discrepancies : [],
+          discrepancies: allItems,
           status: hasDiscrepancy ? 'DIVERGENTE' : 'OK',
           justification: hasDiscrepancy ? justificationText : undefined
       };
