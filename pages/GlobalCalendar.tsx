@@ -1152,9 +1152,8 @@ const GlobalCalendar: React.FC = () => {
         <footer className="mt-16 py-10 px-6 bg-white rounded-2xl text-center flex flex-col gap-4 font-sans border border-slate-100">
             <p className="text-sm font-bold tracking-[-0.01em] text-[#003366]">
                 Marguel Sistema de Gestão Interna
-           <p className="text-sm font-bold tracking-[-0.01em] text-[#003366]">
-                Marguel Sistema de Gestão Interna
             </p>
+            
             <div className="flex flex-col items-center">
                 <span className="text-xs text-[#6B7280] mb-1">Desenvolvido por</span>
                 <div className="text-xs tracking-[0.5px]">
