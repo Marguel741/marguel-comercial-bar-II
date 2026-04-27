@@ -1,6 +1,12 @@
+Sim, este ficheiro ainda tem todo o código do FCM. Vamos removê-lo completamente.
+
+---
+
+**Ficheiro → `src/firebase.ts` → substituir conteúdo completo por:**
+
+```typescript
 import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
-import { getMessaging, getToken, onMessage } from 'firebase/messaging';
 
 const prodConfig = {
   apiKey: "AIzaSyAgjxTNrME13qW_BsieJ6nziY9_2yDsxPU",
@@ -22,34 +28,10 @@ const testConfig = {
 
 const isProd = import.meta.env.VITE_ENV === 'production';
 const app = initializeApp(isProd ? prodConfig : testConfig);
+
 export const db = getFirestore(app);
+```
 
-let messaging: ReturnType<typeof getMessaging> | null = null;
-try {
-  messaging = getMessaging(app);
-} catch (e) {
-  console.warn('FCM não suportado neste browser');
-}
-export { messaging };
+---
 
-export const requestNotificationPermission = async (): Promise<string | null> => {
-  if (!messaging) return null;
-  try {
-    if (Notification.permission !== 'granted') {
-   const permission = await Notification.requestPermission();
-  if (permission !== 'granted') return null;
- }
-    const token = await getToken(messaging, {
-      vapidKey: 'BLhlPpsyHVN8KChO4eG1QRi-4H45C7A-e96IdGbTYVh_hGF1-6QwAE-T168a5zwn9XzliaZ-PUQhYWLtgdSAgRQ'
-    });
-    return token;
-  } catch (e) {
-    console.warn('Erro ao obter token FCM:', e);
-    return null;
-  }
-};
-
-export const onForegroundMessage = (callback: (payload: any) => void) => {
-  if (!messaging) return () => {};
-  return onMessage(messaging, callback);
-};
+**Passo 2:** Cola o conteúdo actual de `index.tsx` para eu remover as chamadas FCM.
