@@ -105,8 +105,18 @@ const GlobalCalendar: React.FC = () => {
     const dateKey = (r as any).dateISO ? (r as any).dateISO.split('T')[0] : r.date;
     return [cleanDate(dateKey), r];
   })), [getConfirmedSalesReports]);
-  const inventoryMap = useMemo(() => new Map(inventoryHistory.map(h => [cleanDate(h.date), h])), [inventoryHistory]);
-
+  const inventoryMap = useMemo(() => {
+    const map = new Map<string, any[]>();
+    inventoryHistory.forEach(h => {
+      const key = cleanDate(h.date);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(h);
+    });
+    // Ordena para que a ação mais recente do dia apareça no topo
+    map.forEach(logs => logs.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)));
+    return map;
+  }, [inventoryHistory]);
+  
   const monthStats = useMemo(() => {
     let total = 0;
     let count = 0;
@@ -1064,81 +1074,80 @@ const GlobalCalendar: React.FC = () => {
                       </div>
                   )}
 
-                  {activeTab === 'inventory' && (
+{activeTab === 'inventory' && (
                       <div className="space-y-6 animate-slide-up">
                           <div className="bg-white dark:bg-slate-800 p-8 rounded-[32px] border border-slate-100 dark:border-slate-700">
-                              <h3 className="font-black text-[#003366] dark:text-white mb-6 uppercase text-xs tracking-widest">Trabalho Operacional (Contagem)</h3>
-                              {dayData.inventory ? (
-                                  <div className="space-y-6">
-                                      <div className={`p-6 rounded-[24px] border ${dayData.inventory.status === 'OK' ? 'bg-green-50/50 border-green-100 dark:bg-green-900/10 dark:border-green-900/20' : 'bg-amber-50/50 border-amber-100 dark:bg-amber-900/10 dark:border-amber-900/20'}`}>
-                                          <div className="flex justify-between items-center mb-4">
-                                              <div className="flex items-center gap-3">
-                                                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${dayData.inventory.status === 'OK' ? 'bg-green-500 text-white' : 'bg-amber-500 text-white'}`}>
-                                                      {dayData.inventory.status === 'OK' ? <CheckCircle size={20} /> : <AlertTriangle size={20} />}
+                              <h3 className="font-black text-[#003366] dark:text-white mb-6 uppercase text-xs tracking-widest flex items-center gap-2">
+                                  <Package size={20} /> Histórico de Contagens e Edições
+                              </h3>
+                              
+                              {dayData.inventory && dayData.inventory.length > 0 ? (
+                                  <div className="space-y-4 max-h-[55vh] overflow-y-auto pr-2 custom-scrollbar">
+                                      {dayData.inventory.map((log: any, idx: number) => {
+                                          const isManual = log.justification?.toLowerCase().includes('edição');
+                                          const title = isManual ? 'Edição Manual de Equipamento' : 'Contagem Mensal';
+                                          const iconColor = log.status === 'DIVERGENTE' ? 'text-red-500' : 'text-emerald-500';
+                                          
+                                          return (
+                                              <div key={log.id || idx} className={`p-6 rounded-2xl border ${log.status === 'DIVERGENTE' ? 'bg-red-50/70 border-red-200 dark:bg-red-900/10 dark:border-red-800' : 'bg-emerald-50/70 border-emerald-200 dark:bg-emerald-900/10 dark:border-emerald-800'}`}>
+                                                  <div className="flex justify-between items-start mb-4">
+                                                      <div className="flex items-center gap-3">
+                                                          <div className={`w-10 h-10 rounded-2xl flex items-center justify-center bg-white shadow ${iconColor}`}>
+                                                              {log.status === 'DIVERGENTE' ? <AlertTriangle size={22} /> : <CheckCircle size={22} />}
+                                                          </div>
+                                                          <div>
+                                                              <p className="font-bold text-lg">{title}</p>
+                                                              <p className="text-xs text-slate-500">Por: {log.performedBy || 'Admin'}</p>
+                                                          </div>
+                                                      </div>
+                                                      <div className={`px-4 py-1 rounded-full text-xs font-black ${log.status === 'DIVERGENTE' ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                                                          {log.status}
+                                                      </div>
                                                   </div>
-                                                  <div>
-                                                      <p className="text-xs font-black text-slate-400 uppercase">Status da Contagem</p>
-                                                      <p className={`font-black uppercase ${dayData.inventory.status === 'OK' ? 'text-green-600' : 'text-amber-600'}`}>
-                                                          {dayData.inventory.status === 'OK' ? 'Equipamentos OK' : 'Divergência Detectada'}
+
+                                                  <div className="text-sm mb-4">
+                                                      <span className="text-slate-600">Equipamentos no registo:</span>
+                                                      <span className="font-bold ml-2 text-[#003366]">{log.totalItems || 0}</span>
+                                                  </div>
+
+                                                  {log.discrepancies && log.discrepancies.length > 0 && (
+                                                      <div className="mt-4 pt-4 border-t border-red-100 dark:border-red-800">
+                                                          <p className="text-xs font-black text-red-600 mb-3 uppercase tracking-tighter">Itens Alterados / Divergentes:</p>
+                                                          {log.discrepancies.map((d: any, i: number) => (
+                                                              <div key={i} className="flex justify-between items-center bg-white dark:bg-slate-900 p-3 rounded-xl mb-2 text-sm shadow-sm">
+                                                                  <span className="font-medium">{d.name || d}</span>
+                                                                  <span className={`font-bold ${d.diff < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                                                                      {d.diff > 0 ? '+' : ''}{d.diff} un
+                                                                  </span>
+                                                              </div>
+                                                          ))}
+                                                      </div>
+                                                  )}
+
+                                                  <div className="mt-5 p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-700">
+                                                      <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Justificação / Detalhes</p>
+                                                      <p className="text-sm italic text-slate-600 dark:text-slate-300">
+                                                          "{log.justification || 'Contagem realizada sem observações.'}"
                                                       </p>
                                                   </div>
-                                              </div>
-                                              <div className="text-right">
-                                                  <p className="text-xs font-black text-slate-400 uppercase">Itens Conferidos</p>
-                                                  <p className="font-black text-slate-900 dark:text-white">{dayData.inventory.totalItems}</p>
-                                              </div>
-                                          </div>
 
-                                          {dayData.inventory.discrepancies && dayData.inventory.discrepancies.length > 0 && (
-                                              <div className="mt-4 space-y-2">
-                                                  <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Detalhes das Divergências:</p>
-                                                  {dayData.inventory.discrepancies.map((d: any, idx: number) => (
-                                                      <div key={idx} className="flex justify-between items-center text-xs p-2 bg-white dark:bg-slate-800 rounded-lg">
-                                                          <span className="font-medium text-slate-700 dark:text-slate-300">{d.name}</span>
-                                                          <span className={`font-bold ${d.diff < 0 ? 'text-red-500' : 'text-green-500'}`}>
-                                                              {d.diff > 0 ? '+' : ''}{d.diff} unidades
-                                                          </span>
-                                                      </div>
-                                                  ))}
+                                                  <div className="text-[10px] text-slate-400 mt-6 flex justify-between items-center border-t border-slate-50 dark:border-slate-800 pt-4">
+                                                      <span>{new Date(log.timestamp || Date.now()).toLocaleString('pt-AO')}</span>
+                                                      <span className="font-mono bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-[9px]">ID: {(log.id || '').slice(0,8)}</span>
+                                                  </div>
                                               </div>
-                                          )}
-
-                                         {(dayData.inventory.justification || dayData.inventory.status === 'OK') && (
-                              <div className="mt-4 p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700">
-                                  <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Justificação:</p>
-                                  <p className="text-xs text-slate-600 dark:text-slate-400 italic">"{dayData.inventory.justification || 'Contagem realizada sem divergências'}"</p>
-                              </div>
-                          )}
-
-                                          <div className="flex items-center justify-between pt-4 mt-4 border-t border-slate-200 dark:border-slate-700">
-                                              <div className="flex items-center gap-2 text-[10px] text-slate-400 font-bold uppercase">
-                                                  <Clock size={12} />
-                                                  {(() => {
-                                                    const ts = (dayData.inventory as any).timestamp || parseInt(dayData.inventory.id);
-                                                    const d = new Date(ts);
-                                                    return isNaN(d.getTime()) ? '--:--' : d.toLocaleTimeString('pt-AO', { hour: '2-digit', minute: '2-digit' });
-                                                  })()}
-                                              </div>
-                                              <div className="text-[10px] text-slate-400 font-bold uppercase">
-                                                  Realizado por: {dayData.inventory.performedBy}
-                                              </div>
-                                          </div>
-                                      </div>
+                                          );
+                                      })}
                                   </div>
                               ) : (
-                                  <div className="flex flex-col items-center justify-center py-20 text-slate-400 opacity-50">
-                                      <Package size={64} className="mb-4" />
-                                      <p className="font-bold">Nenhuma contagem de equipamentos realizada nesta data.</p>
+                                  <div className="flex flex-col items-center justify-center py-24 text-slate-400">
+                                      <Package size={72} className="mb-6 opacity-30" />
+                                      <p className="font-bold text-lg">Nenhuma atividade de inventário nesta data.</p>
                                   </div>
                               )}
                           </div>
                       </div>
                   )}
-
-               </div>
-            </div>
-         </div>
-       )}
 
         <footer className="mt-16 py-10 px-6 bg-white rounded-2xl text-center flex flex-col gap-4 font-sans border border-slate-100">
             <p className="text-sm font-bold tracking-[-0.01em] text-[#003366]">
