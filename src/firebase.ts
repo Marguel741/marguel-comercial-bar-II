@@ -1,26 +1,25 @@
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import * as Sentry from '@sentry/react';
-import App from './App';
+import { initializeApp } from 'firebase/app';
+import { getFirestore } from 'firebase/firestore';
 
-Sentry.init({
-  dsn: "https://69c998a897eb9eb49d2d1e1a5b103192@o4511280052305920.ingest.us.sentry.io/4511280060170240",
-  environment: "production",
-  tracesSampleRate: 0.1,
-  replaysOnErrorSampleRate: 1.0,
-  integrations: [Sentry.replayIntegration()],
-  beforeSend(event) {
-    const mode = localStorage.getItem('mg_diagnostic_mode');
-    if (mode === 'NEVER') return null;
-    return event;
-  },
-});
+const prodConfig = {
+  apiKey: "AIzaSyAgjxTNrME13qW_BsieJ6nziY9_2yDsxPU",
+  authDomain: "marguel-mobile-ii.firebaseapp.com",
+  projectId: "marguel-mobile-ii",
+  storageBucket: "marguel-mobile-ii.firebasestorage.app",
+  messagingSenderId: "187367850278",
+  appId: "1:187367850278:web:ebbb3d5d1329b3eae2c1e7"
+};
 
-const rootElement = document.getElementById('root');
-if (!rootElement) throw new Error("Could not find root element to mount to");
+const testConfig = {
+  apiKey: "AIzaSyDxkY-10uAvOwt6u7X74NNRB14PP3UET24",
+  authDomain: "marguel-mobile-test.firebaseapp.com",
+  projectId: "marguel-mobile-test",
+  storageBucket: "marguel-mobile-test.firebasestorage.app",
+  messagingSenderId: "919558904555",
+  appId: "1:919558904555:web:9e5ae1f3928c45f5693cae"
+};
 
-ReactDOM.createRoot(rootElement).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+const isProd = import.meta.env.VITE_ENV === 'production';
+const app = initializeApp(isProd ? prodConfig : testConfig);
+
+export const db = getFirestore(app);
