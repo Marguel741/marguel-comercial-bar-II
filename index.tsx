@@ -2,7 +2,6 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import * as Sentry from '@sentry/react';
 import App from './App';
-import { requestNotificationPermission, onForegroundMessage } from './src/firebase';
 
 Sentry.init({
   dsn: "https://69c998a897eb9eb49d2d1e1a5b103192@o4511280052305920.ingest.us.sentry.io/4511280060170240",
@@ -15,19 +14,6 @@ Sentry.init({
     if (mode === 'NEVER') return null;
     return event;
   },
-});
-
-requestNotificationPermission().then(token => {
-  if (token) {
-    localStorage.setItem('mg_fcm_token', token);
-  }
-});
-
-onForegroundMessage((payload) => {
-  const { title, body } = payload.notification || {};
-  if (title) {
-    new Notification(title, { body: body || '' });
-  }
 });
 
 const rootElement = document.getElementById('root');
