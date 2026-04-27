@@ -976,7 +976,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
           totalItems: updates.qty ?? equip.qty,
           discrepancies: [],
           status: 'OK' as const,
-          justification: `Edição: ${equip.name} — ${Object.keys(updates).join(', ')} actualizado`
+          justification: `Edição manual: ${equip.name} — Qtd: ${equip.qty} → ${updates.qty ?? equip.qty}`
         };
         setDoc(doc(db, COL.inventoryHistory, historyLog.id), historyLog);
       }
