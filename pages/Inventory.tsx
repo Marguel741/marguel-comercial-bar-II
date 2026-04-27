@@ -347,16 +347,12 @@ const Inventory: React.FC = () => {
       if (hasDiscrepancy) {
         addNotification({
           type: 'DIVERGENCIA_INVENTARIO',
-          title: '⚠️ Divergência em Contagem Mensal',
-          message: `Divergência detectada por ${user?.name || 'Utilizador'} em ${new Date().toLocaleString('pt-AO')}`,
-          details: {
-            performedBy: user?.name || 'Desconhecido',
-            date: formatDateISO(systemDate),
-            time: new Date().toLocaleTimeString('pt-AO', { hour: '2-digit', minute: '2-digit' }),
-            discrepancies: discrepancies.map(d => `${d.name}: ${d.diff} un`).join(', '),
-            justification: justificationText
-          },
-          targetRoles: ['ADMIN_GERAL', 'PROPRIETARIO']
+          title: '⚠️ Divergência em Contagem',
+          message: `${user?.name || 'Utilizador'} detectou divergência: ${discrepancies.map(d => `${d.name} (${d.diff} un)`).join(', ')}. Justificação: ${justificationText}`,
+          targetRoles: ['ADMIN_GERAL', 'PROPRIETARIO'],
+          performedBy: user?.name || 'Sistema',
+          date: formatDateISO(systemDate),
+          read: false
         });
       }
 
