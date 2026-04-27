@@ -1,10 +1,3 @@
-Sim, este ficheiro ainda tem todo o código do FCM. Vamos removê-lo completamente.
-
----
-
-**Ficheiro → `src/firebase.ts` → substituir conteúdo completo por:**
-
-```typescript
 import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
 
@@ -30,8 +23,3 @@ const isProd = import.meta.env.VITE_ENV === 'production';
 const app = initializeApp(isProd ? prodConfig : testConfig);
 
 export const db = getFirestore(app);
-```
-
----
-
-**Passo 2:** Cola o conteúdo actual de `index.tsx` para eu remover as chamadas FCM.
