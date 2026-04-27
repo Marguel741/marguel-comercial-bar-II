@@ -988,7 +988,20 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     try {
       validateAction('EQUIPMENT', {});
       const equip = equipments.find(e => e.id === id);
-      if (equip) setDoc(doc(db, COL.equipments, id), { ...equip, prevQty: equip.qty, qty: newQty });
+      if (equip) {
+        setDoc(doc(db, COL.equipments, id), { ...equip, prevQty: equip.qty, qty: newQty });
+        const historyLog = {
+          id: generateUUID(),
+          timestamp: Date.now(),
+          date: formatDateISO(new Date()),
+          performedBy: user?.name || 'Sistema',
+          totalItems: newQty,
+          discrepancies: equip.qty !== newQty ? [{ name: equip.name, diff: newQty - equip.qty }] : [],
+          status: (equip.qty !== newQty ? 'DIVERGENTE' : 'OK') as const,
+          justification: `Contagem: ${equip.name} — ${equip.qty} → ${newQty}`
+        };
+        setDoc(doc(db, COL.inventoryHistory, historyLog.id), historyLog);
+      }
       addAuditLog({ action: 'AJUSTE_QTD_EQUIPAMENTO', module: 'INVENTARIO', entityId: id, description: `Quantidade de ${equip?.name || id}: ${equip?.qty} → ${newQty}`, performedBy: user?.name || 'Sistema' });
     } catch (error) { const msg = error instanceof Error ? error.message : 'Erro'; addLog({ action: 'ERROR' as any, module: 'INVENTARIO', description: `ERRO: ${msg}`, entityId: id }, user); throw error; }
   }, [validateAction, equipments, addAuditLog, addLog, user]);
