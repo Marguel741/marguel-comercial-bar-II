@@ -1161,9 +1161,12 @@ const GlobalCalendar: React.FC = () => {
                     <span className="font-extrabold text-[#E3007E]" style={{ textShadow: '0px 0px 5px rgba(227, 0, 126, 0.7)' }}>Marguel CGPS (SU) Lda</span>
                 </div>
             </div>
-        </footer>
+       </footer>
+      </div>
     </div>
   );
 };
+
+export default GlobalCalendar;
 
 export default GlobalCalendar;
