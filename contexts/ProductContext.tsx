@@ -382,7 +382,8 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
         }
       }
     }
-    if (payload.price !== undefined && payload.price <= 0) throw new Error('Preço inválido: O valor deve ser maior que zero.');
+    // #2 FIX: removida validação que bloqueava preço = 0
+    if (payload.price !== undefined && payload.price < 0) throw new Error('Preço inválido: O valor não pode ser negativo.');
     return true;
   }, [products, isDayLocked, getSystemDate]);
 
@@ -402,12 +403,11 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
 
       let qtyAdded = type === 'SALE' ? -quantity : type === 'PURCHASE' ? quantity : quantity;
       const qtyAfter = Math.max(0, qtyBefore + qtyAdded);
-            // REVERTER PARA:
       const isManual = type === 'ADJUSTMENT' || type === 'MANUAL_ADJUSTMENT' || (!referenceId && (type === 'SALE' || type === 'PURCHASE'));
 
       setDoc(doc(db, COL.products, productId), { ...product, stock: qtyAfter });
 
-     const log: StockOperationLog = {
+      const log: StockOperationLog = {
         id: existingLogId || generateUUID(), productId, productName: product.name,
         type: (isManual ? 'MANUAL_ADJUSTMENT' : type) as any,
         qtyBefore, qtyAdded, qtyAfter, previousStock: qtyBefore, newStock: qtyAfter,
@@ -452,7 +452,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       if (category === 'Transferência' || category === 'TRANSFER') targetAccount = 'tpa';
 
       if (targetAccount === 'main') { newCB += type === 'deposit' ? amount : -amount; accountName = 'Conta Corrente'; }
-      else if (targetAccount === 'savings') { newSB += type === 'deposit' ? amount : -amount; accountName = 'Conta Poupança'; }
+      else if (targetAccount === 'savings') { newSB += type === 'deposit' ? amount : -amount; accountName = 'Marguel Reserve'; }
       else if (targetAccount === 'cash') { newCash += type === 'deposit' ? amount : -amount; accountName = 'Caixa (Dinheiro)'; }
       else if (targetAccount === 'tpa') { newTPA += type === 'deposit' ? amount : -amount; accountName = 'TPA'; }
       else {
@@ -476,12 +476,21 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
 
       const targetDate = date || formatDateISO(getSystemDate());
       const transId = existingTrans.length > 0 ? existingTrans[0].id : generateUUID();
+
+      // #1 FIX: todos os campos opcionais passam null em vez de undefined
       const newTrans: Transaction = {
-        id: transId, type: type === 'deposit' ? 'entrada' : 'saida',
-        category: category || accountName || 'Cartão', amount,
+        id: transId,
+        type: type === 'deposit' ? 'entrada' : 'saida',
+        category: category || accountName || 'Cartão',
+        amount,
         date: (date || formatDateISO(getSystemDate())) + ', ' + getSystemDate().toLocaleTimeString('pt-AO', { hour: '2-digit', minute: '2-digit' }),
-        description, referenceId, referenceType, performedBy,
-        accountName: accountName || 'Conta Desconhecida', status: 'ATIVO', operationalDay: targetDate
+        description,
+        referenceId: referenceId ?? null,
+        referenceType: referenceType ?? null,
+        performedBy: performedBy ?? null,
+        accountName: accountName || 'Conta Desconhecida',
+        status: 'ATIVO',
+        operationalDay: targetDate
       };
       setDoc(doc(db, COL.transactions, transId), newTrans);
 
@@ -493,7 +502,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   }, [transactions, cards, user, currentBalance, savingsBalance, cashBalance, tpaBalance, getSystemDate, addAuditLog]);
 
-  // ─── adjustFinancialsForReport — CORRIGIDO: sem duplicação ───────────────
   const adjustFinancialsForReport = useCallback((oldReport: SalesReport, newReport: SalesReport) => {
     const reportDateStr = (newReport.dateISO || newReport.date || '').split('T')[0];
     const newCash = newReport.cash ?? (newReport as any).financials?.cash ?? 0;
@@ -501,7 +509,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     const totalLifted = newCash + newTpa;
     const timeStr = getSystemDate().toLocaleTimeString('pt-AO', { hour: '2-digit', minute: '2-digit' });
 
-    // Apagar transacções antigas do mesmo fecho (todos os formatos de referenceId)
     const existingTrans = transactions.filter(t =>
       (t.referenceId === newReport.id ||
        t.referenceId === `${newReport.id}_cash` ||
@@ -511,7 +518,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     );
     existingTrans.forEach(t => deleteDoc(doc(db, COL.transactions, t.id)));
 
-    // Reverter saldos das transacções apagadas
     let newCB = currentBalance;
     let newCashBal = cashBalance;
     let newTPABal = tpaBalance;
@@ -522,7 +528,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       else if (t.accountName === 'TPA') newTPABal += isEntry ? -t.amount : t.amount;
     });
 
-    // Aplicar novos saldos num só setDoc
     newCB = newCB + totalLifted;
     newCashBal = newCashBal + newCash;
     newTPABal = newTPABal + newTpa;
@@ -533,7 +538,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     setDoc(doc(db, 'appdata', 'balances'), { currentBalance: newCB, savingsBalance, cashBalance: newCashBal, tpaBalance: newTPABal });
     setDoc(doc(db, COL.cards, 'main'), { ...cards.find(c => c.id === 'main'), balance: newCB });
 
-    // 1 transacção visível por fecho (Conta Corrente)
     if (totalLifted > 0) {
       setDoc(doc(db, COL.transactions, `${newReport.id}_closure`), {
         id: `${newReport.id}_closure`, type: 'entrada', category: 'Fecho de Caixa', amount: totalLifted,
@@ -661,7 +665,8 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   const addProduct = useCallback((product: Omit<Product, 'id'>) => {
     try {
       if (!checkPermission('inventory_product_create')) return;
-      validateAction('ADD_PRODUCT', { price: product.sellPrice });
+      // #2 FIX: não valida preço em criação de produto (permitir preço 0)
+      validateAction('ADD_PRODUCT', {});
       const newProduct = { ...product, id: generateUUID() };
       setDoc(doc(db, COL.products, newProduct.id), newProduct);
       addAuditLog({ action: 'CRIAR_PRODUTO', module: 'INVENTARIO', entityId: newProduct.id, description: `Produto ${newProduct.name} criado.`, performedBy: user?.name || 'Sistema' });
@@ -675,9 +680,32 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   const updateProduct = useCallback((id: string, updates: Partial<Product>) => {
     try {
       if (!checkPermission('inventory_product_edit')) return;
-      validateAction('UPDATE_PRODUCT', { price: updates.sellPrice });
+      // #2 FIX: não valida preço em edição de produto (permitir preço 0)
+      validateAction('UPDATE_PRODUCT', {});
       const product = products.find(p => p.id === id);
       if (!product) return;
+
+      // #7 FIX: gravar histórico de preços quando sellPrice ou buyPrice muda
+      if (
+        (updates.sellPrice !== undefined && updates.sellPrice !== product.sellPrice) ||
+        (updates.buyPrice !== undefined && updates.buyPrice !== product.buyPrice)
+      ) {
+        const priceLog: PriceHistoryLog = {
+          id: generateUUID(),
+          productId: id,
+          productName: product.name,
+          oldSellPrice: product.sellPrice,
+          newSellPrice: updates.sellPrice ?? product.sellPrice,
+          oldBuyPrice: product.buyPrice,
+          newBuyPrice: updates.buyPrice ?? product.buyPrice,
+          changedBy: user?.name || 'Sistema',
+          timestamp: Date.now(),
+          date: formatDateISO(getSystemDate()),
+          reason: 'Actualização manual de preço',
+        };
+        setDoc(doc(db, COL.priceHistory, priceLog.id), priceLog);
+      }
+
       if (updates.stock !== undefined && updates.stock !== product.stock) {
         const diff = updates.stock - product.stock;
         handleStockMovement(id, diff, 'MANUAL_ADJUSTMENT', user?.name || 'Sistema', 'Ajuste via Edição de Produto');
@@ -692,7 +720,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       addLog({ action: 'ERROR' as any, module: 'INVENTARIO', description: `ERRO: ${msg}`, entityId: id }, user);
       throw error;
     }
-  }, [checkPermission, validateAction, products, handleStockMovement, addAuditLog, addLog, user]);
+  }, [checkPermission, validateAction, products, handleStockMovement, addAuditLog, addLog, user, getSystemDate]);
 
   const deleteProduct = useCallback((id: string) => {
     try {
@@ -778,7 +806,17 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     setDoc(doc(db, 'appdata', 'balances'), { currentBalance, savingsBalance, cashBalance: newCash, tpaBalance: newTPA });
     const transId = generateUUID();
     const targetDate = date || formatDateISO(getSystemDate());
-    const newTrans: Transaction = { id: transId, type: 'saida', category: `Débito ${origin}`, amount, date: targetDate + ', ' + getSystemDate().toLocaleTimeString('pt-AO', { hour: '2-digit', minute: '2-digit' }), description: note, referenceId, referenceType, performedBy, accountName: origin === 'Cash' ? 'Cash (Mão)' : 'TPA (Banco)', status: 'ATIVO', operationalDay: targetDate };
+    const newTrans: Transaction = {
+      id: transId, type: 'saida', category: `Débito ${origin}`, amount,
+      date: targetDate + ', ' + getSystemDate().toLocaleTimeString('pt-AO', { hour: '2-digit', minute: '2-digit' }),
+      description: note,
+      referenceId: referenceId ?? null,
+      referenceType: referenceType ?? null,
+      performedBy: performedBy ?? null,
+      accountName: origin === 'Cash' ? 'Caixa (Dinheiro)' : 'TPA',
+      status: 'ATIVO',
+      operationalDay: targetDate
+    };
     setDoc(doc(db, COL.transactions, transId), newTrans);
     addAuditLog({ action: 'DEBITO_CASH_TPA', module: 'FINANCEIRO', entityId: transId, description: `Débito ${origin}: ${amount.toLocaleString('pt-AO')} Kz. ${note}`, performedBy: performedBy || user?.name || 'Sistema' });
   }, [validateAction, getSystemDate, cashBalance, tpaBalance, currentBalance, savingsBalance, addAuditLog, user]);
@@ -880,7 +918,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     const report = reportData ?? salesReports.find(r => r.id === reportId);
     if (!report) return;
     const liveReport = salesReports.find(r => r.id === reportId);
-   const isForceReprocess = reportData && reportData.processedFinancials === false;
+    const isForceReprocess = reportData && reportData.processedFinancials === false;
     if (!isForceReprocess && liveReport?.status === ClosureStatus.FECHO_CONFIRMADO && liveReport?.processedFinancials) { console.warn(`[confirmSalesReport] Bloqueado: já confirmado.`); return; }
     const wasAlreadyProcessed = !reportData && (report.processedFinancials === true);
     const wasStockUpdated = !reportData && (report.stockUpdated === true);
@@ -903,7 +941,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       const targetDate = reportDateStr.split('T')[0];
       const timeStr = getSystemDate().toLocaleTimeString('pt-AO', { hour: '2-digit', minute: '2-digit' });
 
-      // Apagar transacções antigas (todos os formatos de referenceId)
       const existingClosureTrans = transactions.filter(t =>
         (t.referenceId === reportId ||
          t.referenceId === `${reportId}_cash` ||
@@ -913,7 +950,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       );
       existingClosureTrans.forEach(t => deleteDoc(doc(db, COL.transactions, t.id)));
 
-      // Reverter saldos das transacções apagadas
       let newCB = currentBalance;
       let newCashBal = cashBalance;
       let newTPABal = tpaBalance;
@@ -924,7 +960,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
         else if (t.accountName === 'TPA') newTPABal += isEntry ? -t.amount : t.amount;
       });
 
-      // Aplicar novos saldos num só setDoc
       newCB = newCB + totalLifted;
       newCashBal = newCashBal + cash;
       newTPABal = newTPABal + (tpaFinal + transferFinal);
@@ -935,7 +970,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       setDoc(doc(db, 'appdata', 'balances'), { currentBalance: newCB, savingsBalance, cashBalance: newCashBal, tpaBalance: newTPABal });
       setDoc(doc(db, COL.cards, 'main'), { ...cards.find(c => c.id === 'main'), balance: newCB });
 
-      // 1 transacção visível por fecho (Conta Corrente)
       if (totalLifted > 0) {
         setDoc(doc(db, COL.transactions, `${reportId}_closure`), {
           id: `${reportId}_closure`, type: 'entrada', category: 'Fecho de Caixa', amount: totalLifted,
@@ -1097,4 +1131,3 @@ export const useProducts = () => {
   if (!context) throw new Error('useProducts must be used within a ProductProvider');
   return context;
 };
-
