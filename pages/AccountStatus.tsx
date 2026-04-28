@@ -683,27 +683,10 @@ const AccountStatus: React.FC = () => {
                  <div className="space-y-3">
                     {[...transactions]
                       .sort((a, b) => {
-                        // Ordena por operationalDay desc, depois por id desc (timestamp embutido no UUID v4 não é fiável,
-                        // mas as transações do mesmo dia devem mostrar fecho ANTES do almoço)
-                        // Usamos referenceType como desempate: day_closure vem antes de expense no mesmo dia
-                        const dateA = a.operationalDay || a.date.split(',')[0] || '';
-                        const dateB = b.operationalDay || b.date.split(',')[0] || '';
-                        if (dateB !== dateA) return dateB.localeCompare(dateA);
-                        
-                        // Mesmo dia: fecho de caixa aparece ANTES de despesas
-                        const priority: Record<string, number> = {
-                          'day_closure': 0,
-                          'sales_report': 1,
-                          'purchase': 2,
-                          'expense': 3,
-                          'withdrawal': 4,
-                          'deposit': 5,
-                          'reversal': 6,
-                        };
-                        const pa = priority[a.referenceType ?? ''] ?? 9;
-                        const pb = priority[b.referenceType ?? ''] ?? 9;
-                        return pa - pb;
-                      })
+  const dateA = a.date || '';
+  const dateB = b.date || '';
+  return dateB.localeCompare(dateA);
+})
                       .map((t) => (
                        <div 
                           key={t.id} 
