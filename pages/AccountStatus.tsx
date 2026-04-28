@@ -682,12 +682,7 @@ const AccountStatus: React.FC = () => {
               <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
                  <div className="space-y-3">
                     {[...transactions]
-                      .sort((a, b) => {
-  const dateA = a.date || '';
-  const dateB = b.date || '';
-  if (dateB !== dateA) return dateB.localeCompare(dateA);
-  return (b.id || '').localeCompare(a.id || '');
-})
+                      .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0))
                       .map((t) => (
                        <div 
                           key={t.id} 
