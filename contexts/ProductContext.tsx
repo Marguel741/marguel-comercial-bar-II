@@ -490,7 +490,8 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
         performedBy: performedBy ?? null,
         accountName: accountName || 'Conta Desconhecida',
         status: 'ATIVO',
-        operationalDay: targetDate
+operationalDay: targetDate,
+timestamp: Date.now()
       };
       setDoc(doc(db, COL.transactions, transId), newTrans);
 
@@ -815,7 +816,8 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       performedBy: performedBy ?? null,
       accountName: origin === 'Cash' ? 'Caixa (Dinheiro)' : 'TPA',
       status: 'ATIVO',
-      operationalDay: targetDate
+      operationalDay: targetDate,
+      timestamp: Date.now()
     };
     setDoc(doc(db, COL.transactions, transId), newTrans);
     addAuditLog({ action: 'DEBITO_CASH_TPA', module: 'FINANCEIRO', entityId: transId, description: `Débito ${origin}: ${amount.toLocaleString('pt-AO')} Kz. ${note}`, performedBy: performedBy || user?.name || 'Sistema' });
