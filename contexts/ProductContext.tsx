@@ -545,7 +545,7 @@ timestamp: Date.now()
         date: `${reportDateStr}, ${timeStr}`,
         description: `Fecho Editado (${reportDateStr}) — Cash: ${newCash.toLocaleString('pt-AO')} Kz | TPA: ${newTpa.toLocaleString('pt-AO')} Kz`,
         referenceId: newReport.id, referenceType: 'day_closure', performedBy: user?.name || 'Sistema',
-        accountName: 'Conta Corrente', status: 'ATIVO', operationalDay: reportDateStr
+        accountName: 'Conta Corrente', status: 'ATIVO', operationalDay: reportDateStr, timestamp: Date.now()
       });
     }
   }, [user, transactions, currentBalance, savingsBalance, cashBalance, tpaBalance, cards, getSystemDate]);
@@ -978,7 +978,7 @@ timestamp: Date.now()
           date: `${targetDate}, ${timeStr}`,
           description: `Fecho (${targetDate}) — Cash: ${cash.toLocaleString('pt-AO')} Kz | TPA: ${(tpaFinal + transferFinal).toLocaleString('pt-AO')} Kz`,
           referenceId: reportId, referenceType: 'day_closure', performedBy: confirmedBy,
-          accountName: 'Conta Corrente', status: 'ATIVO', operationalDay: targetDate
+          accountName: 'Conta Corrente', status: 'ATIVO', operationalDay: targetDate, timestamp: Date.now()
         });
       }
     }
