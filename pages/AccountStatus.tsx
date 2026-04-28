@@ -685,7 +685,8 @@ const AccountStatus: React.FC = () => {
                       .sort((a, b) => {
   const dateA = a.date || '';
   const dateB = b.date || '';
-  return dateB.localeCompare(dateA);
+  if (dateB !== dateA) return dateB.localeCompare(dateA);
+  return (b.id || '').localeCompare(a.id || '');
 })
                       .map((t) => (
                        <div 
