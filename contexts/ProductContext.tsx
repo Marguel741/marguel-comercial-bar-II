@@ -618,13 +618,19 @@ timestamp: Date.now()
     if (!checkPermission('expenses_execute')) return;
     const expense = expenses.find(e => e.id === id);
     if (!expense || expense.status === 'REVERSED' || expense.isReverted) return;
+    // PROD-6: despesas informativas (almoço) não criam estorno financeiro
+    if (expense.isInformativeOnly) {
+      deleteDoc(doc(db, COL.expenses, id));
+      addAuditLog({ action: 'REMOVER_DESPESA_INFORMATIVA', module: 'FINANCEIRO', entityId: id, description: `Despesa informativa "${expense.title}" removida por ${deletedBy}. Sem impacto financeiro.`, performedBy: deletedBy });
+      return;
+    }
     setDoc(doc(db, COL.expenses, id), { ...expense, status: 'REVERSED', isReverted: true });
     const reversalExpense: Expense = { ...expense, id: `rev_${expense.id}_${generateUUID()}`, title: `ESTORNO: ${expense.title}`, amount: -expense.amount, notes: `Estorno por ${deletedBy}. Ref: ${expense.id}`, timestamp: getSystemDate().getTime(), user: deletedBy, status: 'REVERSAL', isReverted: true };
     setDoc(doc(db, COL.expenses, reversalExpense.id), reversalExpense);
     if (expense.amount > 0) processTransaction('deposit', 'main', expense.amount, `Estorno: ${expense.title}`, 'Estorno', expense.id, 'reversal', deletedBy);
     addAuditLog({ action: 'ESTORNO_DESPESA', module: 'FINANCEIRO', entityId: id, description: `Estorno de ${expense.title} por ${deletedBy}`, performedBy: deletedBy });
   }, [checkPermission, expenses, getSystemDate, processTransaction, addAuditLog]);
-
+  
   const updateExpense = useCallback((updated: Expense) => {
     setDoc(doc(db, COL.expenses, updated.id), updated);
     addAuditLog({ action: 'EDITAR_DESPESA', module: 'FINANCEIRO', entityId: updated.id, description: `Despesa editada: ${updated.title}`, performedBy: user?.name || 'Sistema' });
