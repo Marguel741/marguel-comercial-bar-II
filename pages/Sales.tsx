@@ -18,7 +18,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { UserRole, ClosureStatus, StockOperationLog } from '../types';
 import { hasPermission } from '../src/utils/permissions';
 import { formatDisplayDate, formatDateISO, generateUUID } from '../src/utils';
-import { useFinance } from '../contexts/FinanceContext';
 import SyncStatus from '../components/SyncStatus';
 
 interface DailyReport {
@@ -87,7 +86,6 @@ const Sales: React.FC = () => {
   } = useProducts();
   const { sidebarMode, triggerHaptic } = useLayout();
   const { user } = useAuth();
-  const { addTransaction } = useFinance();
 
   // Use context reports, cast to DailyReport[] if needed
   const salesReports = contextSalesReports as unknown as DailyReport[];
@@ -104,7 +102,6 @@ const Sales: React.FC = () => {
   });
 
   // Sync reportDate with systemDate only on mount
-  // Removed auto-sync to allow viewing other days
   useEffect(() => {
     setReportDate(todayISO);
   }, []);
@@ -114,7 +111,6 @@ const Sales: React.FC = () => {
     if (reportDate > todayISO) {
       setReportDate(todayISO);
     }
-    // Ano inicial do sistema deve ser 2025
     const year = reportDate.split('-')[0];
     if (year && parseInt(year) < 2025) {
       setReportDate('2025-01-01');
@@ -137,19 +133,16 @@ const Sales: React.FC = () => {
   const [endingStock, setEndingStock] = useState<Record<string, string>>({});
   
   const purchasedStock = useMemo(() => {
-    // Convert reportDate (YYYY-MM-DD) to pt-AO format for matching purchases
     const d = new Date(reportDate + 'T12:00:00');
     return getPurchasesByDate(formatDateISO(d));
   }, [getPurchasesByDate, products, reportDate]);
 
-  // Effect to handle Initial Stock Snapshot and Report Loading
   useEffect(() => {
     if (hasManuallyOpened) return;
 
     const dateChanged = prevDateRef.current !== reportDate;
     prevDateRef.current = reportDate;
 
-    // 1. Check if a finalized report exists for this date in the context
     const existingReport = salesReports.find(r => {
       const reportDateISO = r.dateISO ? r.dateISO.split('T')[0] : r.date;
       return reportDateISO === reportDate;
@@ -160,7 +153,6 @@ const Sales: React.FC = () => {
       const end: Record<string, string> = {};
       const bds: Record<string, any> = {};
       
-      // Load from itemsSnapshot if available, otherwise from stockSnapshot
       if (existingReport.itemsSnapshot) {
         existingReport.itemsSnapshot.forEach((item: any) => {
           init[item.id] = item.init.toString();
@@ -178,8 +170,6 @@ const Sales: React.FC = () => {
       setCurrentReportId(existingReport.id);
       setIsFinancialsConfirmed(true);
       
-      // Só atualiza financials se a data mudou ou se estiverem vazios
-      // Isso evita apagar o que o utilizador está a digitar na UI principal
       if (dateChanged || (financials.cash === '' && financials.transfer === '')) {
         const fin = existingReport.financials || {
           cash: existingReport.cash || 0,
@@ -200,7 +190,6 @@ const Sales: React.FC = () => {
       return;
     }
 
-    // 2. If no finalized report, handle snapshot logic
     if (dateChanged) {
       setCurrentReportId(null);
       setIsFinancialsConfirmed(false);
@@ -214,22 +203,16 @@ const Sales: React.FC = () => {
     const savedSnapshot = localStorage.getItem(snapshotKey);
     
     if (isToday) {
-      // For today, if not closed, we derive initial stock from current inventory
-      // This ensures that any adjustments in Inventory page are reflected here
       const dynamicInitial: Record<string, string> = {};
       products.forEach(p => {
         const buy = purchasedStock[p.id] || 0;
-        // Initial = Current - Purchases Today
-        // This works because confirmed sales haven't deducted from products.stock yet
         dynamicInitial[p.id] = Math.max(0, p.stock - buy).toString();
       });
       setInitialStock(dynamicInitial);
-      // We also update localStorage to keep it consistent, but we don't rely on it for "today"
       localStorage.setItem(snapshotKey, JSON.stringify(dynamicInitial));
     } else if (savedSnapshot) {
       setInitialStock(JSON.parse(savedSnapshot));
     } else if (dateChanged) {
-      // Fallback for past days without snapshot
       const newSnapshot: Record<string, string> = {};
       products.forEach(p => {
         newSnapshot[p.id] = p.stock.toString();
@@ -254,7 +237,6 @@ const Sales: React.FC = () => {
     discrepancyJustification: ''
   });
 
-  // Estado para o formulário de fecho no modal
   const [formValues, setFormValues] = useState({
     cash: 0,
     tpa: 0,
@@ -282,12 +264,10 @@ const Sales: React.FC = () => {
 
   const [toast, setToast] = useState<{show: boolean, message: string}>({ show: false, message: '' });
   
-  // NOVO: Modal Mix & Match compacto
   const [showMixMatchModal, setShowMixMatchModal] = useState(false);
   const [selectedProductForMix, setSelectedProductForMix] = useState<any>(null);
   const [showManualHistoryModal, setShowManualHistoryModal] = useState(false);
   
-  // NOVO: Estados para confirmação de edição
   const INACTIVITY_THRESHOLD_HOURS = 24;
   const [showConfirmEditModal, setShowConfirmEditModal] = useState(false);
   const [editConfirmationData, setEditConfirmationData] = useState<any>(null);
@@ -360,7 +340,7 @@ const Sales: React.FC = () => {
                           <ChevronRight size={20} />
                         </div>
                         <div className="text-center">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Atual</p>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Actual</p>
                           <p className="font-black text-[#003366] dark:text-white">{log.newStock ?? log.qtyAfter}</p>
                         </div>
                         <div className={`px-4 py-2 rounded-xl font-black text-sm min-w-[80px] text-center ${
@@ -394,7 +374,7 @@ const Sales: React.FC = () => {
     );
   };
 
-  // ==================== POPUP MIX MATCH REDESENHADO ====================
+  // ==================== POPUP MIX MATCH ====================
   const openMixMatchModal = (product: any) => {
     setSelectedProductForMix(product);
     setShowMixMatchModal(true);
@@ -424,14 +404,12 @@ const Sales: React.FC = () => {
           </div>
           
           <div className="p-6 space-y-6">
-            {/* Total Vendido (Visualização) */}
             <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700/30 rounded-2xl border border-slate-100 dark:border-slate-700">
               <span className="text-xs font-black text-slate-500 uppercase">Total Vendido</span>
               <span className="text-xl font-black text-[#003366] dark:text-white">{soldQty} un</span>
             </div>
 
             <div className="grid grid-cols-1 gap-6">
-              {/* Avulsas (Editável) */}
               <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl border-2 border-blue-100 dark:border-blue-900/30 shadow-sm">
                 <div className="flex justify-between items-center mb-3">
                   <label className="text-xs font-black text-blue-600 dark:text-blue-400 uppercase">Unidades Avulsas</label>
@@ -447,7 +425,6 @@ const Sales: React.FC = () => {
                 />
               </div>
 
-              {/* Grupos de Mix Match (Editável) */}
               <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl border-2 border-purple-100 dark:border-purple-900/30 shadow-sm">
                 <div className="flex justify-between items-center mb-3">
                   <label className="text-xs font-black text-purple-600 dark:text-purple-400 uppercase">Grupos de Mix Match</label>
@@ -463,7 +440,6 @@ const Sales: React.FC = () => {
               </div>
             </div>
 
-            {/* Mensagens Dinâmicas */}
             <div className={`p-4 rounded-2xl flex items-center gap-3 border ${
               isValid 
                 ? 'bg-green-100/50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-400' 
@@ -495,22 +471,19 @@ const Sales: React.FC = () => {
       </div>
     );
   };
-  // =================================================================
 
-  // States for Breakdown (Mix & Match)
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
   const [breakdowns, setBreakdowns] = useState<Record<string, { packs: number, singles: number, waste: number }>>({});
 
   const isAdminOrOwner = user?.role === UserRole.PROPRIETARIO || user?.role === UserRole.ADMIN_GERAL;
   const canEditInitialStock = hasPermission(user, 'sales_edit') && (!isDayLocked(reportDate) || isAdminOrOwner);
   const canExecuteSales = hasPermission(user, 'sales_execute');
-  const canCloseDay = true; // Any user can perform a partial or final closure as requested
+  const canCloseDay = true;
   const canViewMargins = hasPermission(user, 'sales_view_margins');
   
   const isLocked = isDayLocked(reportDate);
   const isNotToday = reportDate !== todayISO;
 
-  // Verifica se existe algum fecho confirmado num dia posterior a reportDate
   const hasConfirmedClosureAfter = useMemo(() => {
     return contextSalesReports.some(r => {
       const rDate = (r as any).dateISO ? (r as any).dateISO.split('T')[0] : r.date;
@@ -601,7 +574,6 @@ const Sales: React.FC = () => {
       
       if (soldQty < 0) hasStockError = true;
 
-      // Mix & Match / Breakdown Logic Redesenhada
       const isPromo = !!(product.isMixMatchActive || (product as any).isPromoActive);
       const promoQty = product.mixMatchQty || (product as any).promoQty || 3;
       const promoPrice = product.mixMatchPrice || (product as any).promoPrice || 1000;
@@ -612,7 +584,6 @@ const Sales: React.FC = () => {
 
       if (isPromo && soldQty > 0) {
           const manual = breakdowns[product.id];
-          // Se manual, usa o valor de singles definido. Se não, usa o resto da divisão.
           const singles = manual ? manual.singles : (soldQty % promoQty);
           const remainingForMix = soldQty - singles;
           
@@ -624,7 +595,6 @@ const Sales: React.FC = () => {
           revenue = (packs * promoPrice) + (singles * product.sellPrice);
           breakdown = { packs, singles, waste: 0 };
       } else {
-          // Standard calculation
           revenue = soldQty * product.sellPrice;
       }
 
@@ -695,7 +665,22 @@ const Sales: React.FC = () => {
     setIsFinancialsConfirmed(false);
   };
 
+  // PROD-4: verificar se dia anterior tem fecho registado
   const handleInitialClose = () => {
+    const yesterday = new Date(reportDate + 'T12:00:00');
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = formatDateISO(yesterday);
+    const hasYesterdayReport = contextSalesReports.some(r => {
+      const rDate = (r as any).dateISO ? (r as any).dateISO.split('T')[0] : r.date;
+      return rDate === yesterdayStr;
+    });
+    if (!hasYesterdayReport) {
+      const continuar = window.confirm(
+        `Atenção: o dia de ontem (${yesterdayStr}) não tem fecho registado.\n\nTens a certeza que queres fazer o fecho de hoje?\n\nPodes cancelar e registar o dia de ontem primeiro.`
+      );
+      if (!continuar) return;
+    }
+
     if (!canCloseDay) {
         triggerHaptic('error');
         showToast("Sem permissão para realizar fecho.");
@@ -728,7 +713,6 @@ const Sales: React.FC = () => {
         return;
     }
 
-    // Inicializar formValues com os valores atuais da UI principal
     setFormValues({
       cash: Number(financials.cash) || 0,
       tpa: Number(financials.ticket) || 0,
@@ -800,15 +784,12 @@ const Sales: React.FC = () => {
         discountAmount: item.discountAmount
       })),
       closedBy: user?.name || 'Vendedor',
-      status: ClosureStatus.FECHO_PARCIAL_FUNCIONARIO,   // ← SEMPRE parcial no primeiro fecho
+      status: ClosureStatus.FECHO_PARCIAL_FUNCIONARIO,
       timestamp: Date.now(),
       editedBy: existingReport ? (user?.name || 'Sistema') : null
     };
 
     setShowCloseModal(false);
-
-    // ✅ CORRECTO: Guarda APENAS como parcial. Sem abrir modal de confirmação.
-    // A confirmação final é um acto MANUAL e SEPARADO, feito pelo relatório.
     await executeSync(newReport);
   };
 
@@ -816,11 +797,9 @@ const Sales: React.FC = () => {
     triggerHaptic('impact');
     setSyncState({ status: 'syncing', currentStep: 0, completedSteps: [] });
 
-    // Step 1: Sincronização Segura
     await new Promise(resolve => setTimeout(resolve, 1200));
     setSyncState(prev => ({ ...prev, completedSteps: [...prev.completedSteps, 'security'], currentStep: 1 }));
     
-    // Step 2: Dados do Sistema
     await new Promise(resolve => setTimeout(resolve, 1000));
     setSyncState(prev => ({ ...prev, completedSteps: [...prev.completedSteps, 'database'], currentStep: 2 }));
     
@@ -831,15 +810,12 @@ const Sales: React.FC = () => {
         return;
     }
 
-    // Step 3: Servidores
     await new Promise(resolve => setTimeout(resolve, 1000));
     setSyncState(prev => ({ ...prev, completedSteps: [...prev.completedSteps, 'server'], currentStep: 3 }));
 
-    // Step 4: Usuários e Admin
     await new Promise(resolve => setTimeout(resolve, 1000));
     setSyncState(prev => ({ ...prev, completedSteps: [...prev.completedSteps, 'users'], currentStep: 4 }));
 
-    // Step 5: Sistema Financeiro
     await new Promise(resolve => setTimeout(resolve, 1000));
     setSyncState(prev => ({ ...prev, completedSteps: [...prev.completedSteps, 'finance'], currentStep: 5 }));
 
@@ -858,25 +834,22 @@ const Sales: React.FC = () => {
 
         setTimeout(() => {
             setSyncState({ status: 'idle', currentStep: -1, completedSteps: [] });
-            setForceEditMode(false); // Redirect to report view after successful closure
-            setViewHistoryReport(null); // Clear history view if any
-            setEditConfirmationData(null);   // Limpa dados residuais de edições anteriores
-            setShowConfirmEditModal(false);  // Garante que o modal não fica em estado aberto
+            setForceEditMode(false);
+            setViewHistoryReport(null);
+            setEditConfirmationData(null);
+            setShowConfirmEditModal(false);
             pageTopRef.current?.scrollIntoView({ behavior: 'smooth' });
         }, 1500);
     } catch (error: any) {
-    console.error('ERRO NO FECHO:', error);
-    console.error('MENSAGEM:', error?.message);
-    console.error('STACK:', error?.stack);
-    setSyncState(prev => ({ ...prev, status: 'error' }));
-    triggerHaptic('error');
-    alert("Não foi possível completar a ação. Verifique os dados.");
+      console.error('ERRO NO FECHO:', error);
+      setSyncState(prev => ({ ...prev, status: 'error' }));
+      triggerHaptic('error');
+      alert("Não foi possível completar a acção. Verifique os dados.");
     }
   };
 
   // Modal de Confirmação de Edição Final
   const ConfirmEditModal = () => {
-    // Guarda dupla: sem dados válidos, nunca renderiza nada
     if (!showConfirmEditModal || !editConfirmationData?.id) return null;
 
     const lastActor = editConfirmationData?.editedBy || editConfirmationData?.closedBy || 'Desconhecido';
@@ -888,100 +861,94 @@ const Sales: React.FC = () => {
     const isUnilateralAllowed = isAdminOrOwner;
 
     return (
-      (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[300] flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-white dark:bg-slate-800 rounded-[40px] p-10 w-full max-w-lg shadow-2xl border border-slate-100 dark:border-slate-700 text-center relative">
-            <button onClick={() => setShowConfirmEditModal(false)} className="absolute top-6 right-6 p-2 text-slate-400 hover:text-red-500 transition-colors">
-              <X size={24} />
-            </button>
+      <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[300] flex items-center justify-center p-4 animate-fade-in">
+        <div className="bg-white dark:bg-slate-800 rounded-[40px] p-10 w-full max-w-lg shadow-2xl border border-slate-100 dark:border-slate-700 text-center relative">
+          <button onClick={() => setShowConfirmEditModal(false)} className="absolute top-6 right-6 p-2 text-slate-400 hover:text-red-500 transition-colors">
+            <X size={24} />
+          </button>
 
-            <div className="w-20 h-20 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-full flex items-center justify-center mx-auto mb-6">
-              <ShieldCheck size={40} />
-            </div>
-            
-            <h2 className="text-2xl font-black text-[#003366] dark:text-white uppercase mb-4">Segunda Confirmação Necessária</h2>
-            
-            <div className="bg-slate-50 dark:bg-slate-700/50 p-6 rounded-3xl mb-8 border border-slate-100 dark:border-slate-600">
-              <p className="text-slate-600 dark:text-slate-400 font-medium leading-relaxed mb-4">
-                Esta edição foi realizada por <strong className="text-[#003366] dark:text-blue-400">{lastActor}</strong>.
+          <div className="w-20 h-20 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-full flex items-center justify-center mx-auto mb-6">
+            <ShieldCheck size={40} />
+          </div>
+          
+          <h2 className="text-2xl font-black text-[#003366] dark:text-white uppercase mb-4">Segunda Confirmação Necessária</h2>
+          
+          <div className="bg-slate-50 dark:bg-slate-700/50 p-6 rounded-3xl mb-8 border border-slate-100 dark:border-slate-600">
+            <p className="text-slate-600 dark:text-slate-400 font-medium leading-relaxed mb-4">
+              Esta edição foi realizada por <strong className="text-[#003366] dark:text-blue-400">{lastActor}</strong>.
+            </p>
+            {isAdminOrOwner ? (
+              <p className="text-sm text-green-600 dark:text-green-500 font-bold italic">
+                Como Administrador/Proprietário, tem permissão para realizar a confirmação unilateral desta alteração.
               </p>
-              {isAdminOrOwner ? (
-                <p className="text-sm text-green-600 dark:text-green-500 font-bold italic">
-                  Como Administrador/Proprietário, você tem permissão para realizar a confirmação unilateral desta alteração.
-                </p>
-              ) : (
-                <p className="text-sm text-slate-500 dark:text-slate-400 italic">
-                  Para garantir a integridade, a confirmação final deve ser feita por um utilizador diferente daquele que realizou a edição.
-                </p>
-              )}
-            </div>
-
-            {!canConfirm && (
-              <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-2xl flex items-center gap-3 text-left">
-                <AlertTriangle size={20} className="text-red-500 shrink-0" />
-                <p className="text-xs font-bold text-red-600 dark:text-red-400 uppercase">
-                  Você não pode confirmar sua própria edição. Solicite a validação de outro colega ou administrador.
-                </p>
-              </div>
+            ) : (
+              <p className="text-sm text-slate-500 dark:text-slate-400 italic">
+                Para garantir a integridade, a confirmação final deve ser feita por um utilizador diferente daquele que realizou a edição.
+              </p>
             )}
-            
-            <div className="flex flex-col gap-3">
-              <button 
-                disabled={!canConfirm}
-                onClick={async () => {
-                  if (!editConfirmationData?.id) return;
+          </div>
 
-                  // GUARDA DE SEGURANÇA: Só confirma se o relatório ainda estiver em estado parcial.
-                  // Isso impede que uma segunda chamada acidental confirme um relatório já confirmado.
-                  const currentReport = salesReports.find(r => r.id === editConfirmationData.id);
-                  if (currentReport?.status === ClosureStatus.FECHO_CONFIRMADO) {
-                    showToast("Este fecho já foi confirmado anteriormente.");
-                    setShowConfirmEditModal(false);
-                    return;
-                  }
-
-                  const finalReport = {
-                    ...editConfirmationData,
-                    status: ClosureStatus.FECHO_CONFIRMADO,
-                    confirmedBy: user?.name || 'Sistema',
-                    confirmationTimestamp: Date.now(),
-                    unilateralAdminConfirmation: isUnilateralAllowed,
-                    stockUpdated: false,           // ← força o context a deduzir stock
-                    processedFinancials: false,    // ← força o context a criar transações financeiras
-                    _deltaApplied: false,
-                    isFinalClosure: true,
-                    editedBy: editConfirmationData.editedBy || user?.name || 'Admin',
-                    // Adicionando campos root para compatibilidade total com SalesReport
-                    totalLifted: editConfirmationData.totals?.lifted,
-                    cash: editConfirmationData.financials?.cash,
-                    tpa: editConfirmationData.financials?.ticket,
-                    transfer: editConfirmationData.financials?.transfer,
-                    lunchExpense: editConfirmationData.financials?.lunch,
-                  };
-
-                 // confirmSalesReport trata tudo — não chamar updateSalesReport antes
-                  await confirmSalesReport(finalReport.id, user?.name || 'Sistema', isUnilateralAllowed, finalReport);
-
-                  setShowConfirmEditModal(false);
-                  setForceEditMode(false);
-                  showToast("✅ Fecho confirmado e propagado para todo o sistema!");
-                  triggerHaptic('success');
-                }}
-                className={`w-full py-5 font-black rounded-2xl shadow-xl transition-all uppercase tracking-widest ${
-                  canConfirm 
-                    ? 'bg-[#003366] text-white hover:opacity-90 active:scale-95' 
-                    : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                }`}
-              >
-                Confirmar Fecho Definitivo
-              </button>
-              <button onClick={() => setShowConfirmEditModal(false)} className="w-full py-4 bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 font-black rounded-2xl hover:bg-slate-200 transition-all uppercase text-sm">
-                Voltar e Revisar
-              </button>
+          {!canConfirm && (
+            <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-2xl flex items-center gap-3 text-left">
+              <AlertTriangle size={20} className="text-red-500 shrink-0" />
+              <p className="text-xs font-bold text-red-600 dark:text-red-400 uppercase">
+                Não pode confirmar a sua própria edição. Solicite a validação de outro colega ou administrador.
+              </p>
             </div>
+          )}
+          
+          <div className="flex flex-col gap-3">
+            <button 
+              disabled={!canConfirm}
+              onClick={async () => {
+                if (!editConfirmationData?.id) return;
+
+                const currentReport = salesReports.find(r => r.id === editConfirmationData.id);
+                if (currentReport?.status === ClosureStatus.FECHO_CONFIRMADO) {
+                  showToast("Este fecho já foi confirmado anteriormente.");
+                  setShowConfirmEditModal(false);
+                  return;
+                }
+
+                const finalReport = {
+                  ...editConfirmationData,
+                  status: ClosureStatus.FECHO_CONFIRMADO,
+                  confirmedBy: user?.name || 'Sistema',
+                  confirmationTimestamp: Date.now(),
+                  unilateralAdminConfirmation: isUnilateralAllowed,
+                  stockUpdated: false,
+                  processedFinancials: false,
+                  _deltaApplied: false,
+                  isFinalClosure: true,
+                  editedBy: editConfirmationData.editedBy || user?.name || 'Admin',
+                  totalLifted: editConfirmationData.totals?.lifted,
+                  cash: editConfirmationData.financials?.cash,
+                  tpa: editConfirmationData.financials?.ticket,
+                  transfer: editConfirmationData.financials?.transfer,
+                  lunchExpense: editConfirmationData.financials?.lunch,
+                };
+
+                await confirmSalesReport(finalReport.id, user?.name || 'Sistema', isUnilateralAllowed, finalReport);
+
+                setShowConfirmEditModal(false);
+                setForceEditMode(false);
+                showToast("✅ Fecho confirmado e propagado para todo o sistema!");
+                triggerHaptic('success');
+              }}
+              className={`w-full py-5 font-black rounded-2xl shadow-xl transition-all uppercase tracking-widest ${
+                canConfirm 
+                  ? 'bg-[#003366] text-white hover:opacity-90 active:scale-95' 
+                  : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+              }`}
+            >
+              Confirmar Fecho Definitivo
+            </button>
+            <button onClick={() => setShowConfirmEditModal(false)} className="w-full py-4 bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 font-black rounded-2xl hover:bg-slate-200 transition-all uppercase text-sm">
+              Voltar e Rever
+            </button>
           </div>
         </div>
-      )
+      </div>
     );
   };
 
@@ -991,7 +958,6 @@ const Sales: React.FC = () => {
     if (!isFinancialsConfirmed) return 'bg-slate-200 text-slate-600 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-300';
     return 'bg-[#003366] text-white hover:opacity-90 shadow-blue-200';
   };
-
 
   const getCloseButtonText = () => {
     if (isNotToday) return 'Visualização';
@@ -1012,13 +978,12 @@ const Sales: React.FC = () => {
           weekday: '',
           generatedAt: ''
       };
-      if (report.totals) return report; // New format
+      if (report.totals) return report;
       
-      // Old format (SalesReport)
       return {
           ...report,
           displayDate: report.date || '', 
-          status: report.status || ClosureStatus.FECHO_CONFIRMADO, // Assume old ones are confirmed
+          status: report.status || ClosureStatus.FECHO_CONFIRMADO,
           totals: {
               soldStock: report.totalExpected || 0,
               lifted: report.totalLifted || 0,
@@ -1037,7 +1002,6 @@ const Sales: React.FC = () => {
       };
   };
 
-  // === CONDIÇÃO CORRIGIDA (só mostra relatório se já estiver CONFIRMADO) ===
   const isPartialClosure = existingReport && (
     existingReport.status === ClosureStatus.FECHO_PARCIAL_FUNCIONARIO ||
     existingReport.status === ClosureStatus.FECHO_PARCIAL_GERENTE ||
@@ -1047,12 +1011,8 @@ const Sales: React.FC = () => {
 
   if ((viewHistoryReport || (existingReport && (existingReport.status === ClosureStatus.FECHO_CONFIRMADO || existingReport.status === ClosureStatus.BLOQUEADO || isPartialClosure))) && !forceEditMode) {
     const rawReport = viewHistoryReport || existingReport!;
-    
     const reportData = getReportData(rawReport);
-    
     const isConfirmed = reportData.status === ClosureStatus.FECHO_CONFIRMADO || reportData.status === ClosureStatus.BLOQUEADO;
-    
-    // Regra definitiva: Admin/Proprietário confirmam sempre. Outros apenas se forem utilizadores diferentes do autor ou após 24h.
     const lastActor = reportData.editedBy || reportData.closedBy || reportData.initiatedBy || 'Desconhecido';
     const hasClosurePermission = hasPermission(user, 'sales_closure');
     const canConfirm = !isConfirmed && hasClosurePermission && (!( user?.name === lastActor) || isAdminOrOwner);
@@ -1074,7 +1034,6 @@ const Sales: React.FC = () => {
         unilateralAdminConfirmation: isUnilateralAllowed,
         stockUpdated: false,
         processedFinancials: false,
-        // Adicionando campos root para compatibilidade total com SalesReport
         totalLifted: reportData.totals?.lifted,
         cash: reportData.financials?.cash,
         tpa: reportData.financials?.ticket,
@@ -1091,7 +1050,6 @@ const Sales: React.FC = () => {
 
     return (
       <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-8 animate-fade-in pb-32">
-          {/* Header do Relatório */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
                   <h1 className="text-3xl font-black text-[#003366] dark:text-white uppercase tracking-tight ml-8">Relatório de Vendas</h1>
@@ -1114,16 +1072,11 @@ const Sales: React.FC = () => {
                            </div>
                            <h3 className="font-black text-xl text-[#003366] dark:text-white uppercase">Resumo Financeiro</h3>
                         </div>
+                        {/* PROD-2: sempre Sincronizado — Firestore garante sync */}
                         <div className="flex items-center gap-2">
-                          {reportData.syncStatus === 'synced' ? (
-                            <div className="flex items-center gap-1.5 px-3 py-1 bg-green-50 text-green-600 rounded-full text-[10px] font-black uppercase border border-green-100">
-                              <Cloud size={12} /> Sincronizado
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-600 rounded-full text-[10px] font-black uppercase border border-amber-100">
-                              <CloudOff size={12} /> Local
-                            </div>
-                          )}
+                          <div className="flex items-center gap-1.5 px-3 py-1 bg-green-50 text-green-600 rounded-full text-[10px] font-black uppercase border border-green-100">
+                            <Cloud size={12} /> Sincronizado
+                          </div>
                         </div>
                      </div>
 
@@ -1199,7 +1152,7 @@ const Sales: React.FC = () => {
                                 <h3 className="font-bold text-[#003366] dark:text-blue-300">Segunda Confirmação Necessária</h3>
                                 <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
                                    Este fecho foi registado como <strong>{reportData.status.replace(/_/g, ' ')}</strong>. 
-                                   Para que o stock e o financeiro sejam atualizados globalmente, é necessária uma segunda confirmação por um administrador ou gerente diferente (ou confirmação unilateral do proprietário).
+                                   Para que o stock e o financeiro sejam actualizados globalmente, é necessária uma segunda confirmação por um administrador ou gerente diferente (ou confirmação unilateral do proprietário).
                                 </p>
                                 
                                 {(canConfirm || isUnilateralAllowed) && (
@@ -1246,14 +1199,13 @@ const Sales: React.FC = () => {
                      </div>
                   </SoftCard>
 
-                  {/* Detailed Breakdown Section */}
                   <SoftCard className="p-0 overflow-hidden relative">
                      <div className="p-4 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
                         <h3 className="font-bold text-[#003366] dark:text-white">Resumo de Vendas</h3>
                         <button 
                           onClick={() => { setIsSummaryFullscreen(true); triggerHaptic('selection'); }}
                           className="p-2 text-slate-400 hover:text-[#003366] dark:hover:text-blue-400 transition-colors"
-                          title="Ver em tela cheia"
+                          title="Ver em ecrã cheio"
                         >
                           <Maximize2 size={18} />
                         </button>
@@ -1302,7 +1254,6 @@ const Sales: React.FC = () => {
                         </table>
                      </div>
 
-                      {/* Fullscreen Overlay */}
                       {isSummaryFullscreen && (
                         <div className="fixed inset-0 z-[300] bg-black/90 backdrop-blur-md flex items-center justify-center p-2 md:p-4 animate-fade-in">
                           <div className="bg-white dark:bg-slate-800 rounded-[32px] w-full max-w-none h-full md:h-[95vh] shadow-2xl flex flex-col overflow-hidden border border-slate-200 dark:border-slate-700">
@@ -1396,7 +1347,6 @@ const Sales: React.FC = () => {
       )}
       {syncState.status !== 'idle' && (
         <div className="fixed inset-0 z-[200] bg-[#001A33] flex items-center justify-center p-4 md:p-8 animate-fade-in overflow-hidden">
-          {/* Background Elements */}
           <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-20">
             <div className="absolute -top-24 -left-24 w-96 h-96 bg-blue-500 rounded-full blur-[120px] animate-pulse" />
             <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-indigo-500 rounded-full blur-[120px] animate-pulse delay-700" />
@@ -1432,16 +1382,16 @@ const Sales: React.FC = () => {
                     <RefreshCw size={14} className="animate-spin" /> Sincronização em Curso
                   </div>
                   <h2 className="text-3xl md:text-4xl font-black text-white">Processando Fecho</h2>
-                  <p className="text-blue-300/60 font-medium mt-2">Aguarde enquanto validamos e salvamos os dados do dia.</p>
+                  <p className="text-blue-300/60 font-medium mt-2">Aguarde enquanto validamos e guardamos os dados do dia.</p>
                 </div>
 
                 <div className="space-y-4">
                   {[
                     { id: 'security', label: 'Sincronização Segura', desc: 'Validando integridade de dados', icon: ShieldCheck },
-                    { id: 'database', label: 'Dados do Sistema', desc: 'Salvando registros do dia', icon: Database },
-                    { id: 'server', label: 'Servidores', desc: 'Atualizando servidores remotos', icon: Server },
-                    { id: 'users', label: 'Usuários e Admin', desc: 'Notificando responsáveis', icon: Smartphone },
-                    { id: 'finance', label: 'Sistema Financeiro', desc: 'Atualizando fluxos de caixa', icon: CreditCard },
+                    { id: 'database', label: 'Dados do Sistema', desc: 'Guardando registos do dia', icon: Database },
+                    { id: 'server', label: 'Servidores', desc: 'Actualizando servidores remotos', icon: Server },
+                    { id: 'users', label: 'Utilizadores e Admin', desc: 'Notificando responsáveis', icon: Smartphone },
+                    { id: 'finance', label: 'Sistema Financeiro', desc: 'Actualizando fluxos de caixa', icon: CreditCard },
                   ].map((step, idx) => {
                     const isCompleted = syncState.completedSteps.includes(step.id);
                     const isCurrent = syncState.currentStep === idx;
@@ -1478,7 +1428,7 @@ const Sales: React.FC = () => {
                               </span>
                             ) : isCurrent ? (
                               <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest animate-pulse">
-                                Processando...
+                                A processar...
                               </span>
                             ) : (
                               <span className="text-[10px] font-black text-white/20 uppercase tracking-widest">
@@ -1495,7 +1445,6 @@ const Sales: React.FC = () => {
                   })}
                 </div>
 
-                {/* Overall Progress Bar */}
                 <div className="pt-6">
                   <div className="flex justify-between text-[10px] font-black text-blue-300/40 uppercase tracking-widest mb-2">
                     <span>Progresso Geral</span>
@@ -1574,9 +1523,7 @@ const Sales: React.FC = () => {
         <div className="flex-1 flex items-center justify-center md:justify-end w-full md:w-auto gap-4">
           <SyncStatus />
           {existingReport && existingReport.status === ClosureStatus.ABERTO && (
-             <button onClick={() => {
-               // Forçar visualização do relatório mesmo estando aberto
-             }} className="hidden">
+             <button onClick={() => {}} className="hidden">
                Ver Relatório Parcial
              </button>
           )}
@@ -1665,7 +1612,7 @@ const Sales: React.FC = () => {
                                     </h4>
                                     {!item.isBalanced && (
                                         <span className="text-xs font-bold text-red-500 flex items-center gap-1">
-                                            <AlertTriangle size={12} /> Soma incorreta ({((item.breakdown?.packs || 0) * item.promoQty + (item.breakdown?.singles || 0) + (item.breakdown?.waste || 0))} vs {item.soldQty})
+                                            <AlertTriangle size={12} /> Soma incorrecta ({((item.breakdown?.packs || 0) * item.promoQty + (item.breakdown?.singles || 0) + (item.breakdown?.waste || 0))} vs {item.soldQty})
                                         </span>
                                     )}
                                 </div>
@@ -1722,7 +1669,7 @@ const Sales: React.FC = () => {
                         onChange={(e) => setNewProductPrice(e.target.value)} 
                         className="w-32 p-2 rounded-lg border-none dark:bg-slate-700 dark:text-white" 
                       />
-                      <button onClick={handleAddNewProduct} className="bg-green-500 text-white px-4 py-2 rounded-lg font-bold">Salvar</button>
+                      <button onClick={handleAddNewProduct} className="bg-green-500 text-white px-4 py-2 rounded-lg font-bold">Guardar</button>
                     </div>
                   )}
                 </td>
@@ -1939,7 +1886,6 @@ const Sales: React.FC = () => {
         </div>
       )}
 
-      {/* Rodapé Atualizado */}
       <footer className="mt-16 py-10 px-6 bg-white rounded-2xl text-center flex flex-col gap-4 font-sans border border-slate-100">
           <p className="text-sm font-bold tracking-[-0.01em] text-[#003366]">
               Marguel Sistema de Gestão Interna
@@ -1954,7 +1900,6 @@ const Sales: React.FC = () => {
           </div>
       </footer>
 
-      {/* Modal Mix Match */}
       <MixMatchModal />
       <ConfirmEditModal />
       <ManualHistoryModal />
