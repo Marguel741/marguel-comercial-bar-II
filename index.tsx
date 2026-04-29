@@ -8,7 +8,10 @@ Sentry.init({
   environment: "production",
   tracesSampleRate: 0.1,
   replaysOnErrorSampleRate: 1.0,
-  integrations: [Sentry.replayIntegration()],
+  integrations: [Sentry.replayIntegration({
+    maskAllInputs: true,
+    blockAllMedia: false,
+  })],
   beforeSend(event) {
     const mode = localStorage.getItem('mg_diagnostic_mode');
     if (mode === 'NEVER') return null;
