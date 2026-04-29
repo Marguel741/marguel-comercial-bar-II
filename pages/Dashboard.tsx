@@ -145,7 +145,7 @@ const Dashboard: React.FC = () => {
               return rDate === dateStr;
             });
             const dayExpenses = expenses
-                .filter(e => e.date === dateStr)
+                .filter(e => e.date === dateStr && !e.isInformativeOnly)
                 .reduce((sum, e) => sum + e.amount, 0);
 
             dataPoints.push({
@@ -156,7 +156,7 @@ const Dashboard: React.FC = () => {
                 expenses: dayExpenses,
                 details: {
                     report,
-                    expenseList: expenses.filter(e => e.date === dateStr)
+                    expenseList: expenses.filter(e => e.date === dateStr && !e.isInformativeOnly)
                 }
             });
         }
@@ -171,7 +171,7 @@ const Dashboard: React.FC = () => {
               return rDate === dateStr;
             });
             const dayExpenses = expenses
-                .filter(e => e.date === dateStr)
+                .filter(e => e.date === dateStr && !e.isInformativeOnly)
                 .reduce((sum, e) => sum + e.amount, 0);
 
             dataPoints.push({
@@ -182,7 +182,7 @@ const Dashboard: React.FC = () => {
                 expenses: dayExpenses,
                 details: {
                     report,
-                    expenseList: expenses.filter(e => e.date === dateStr)
+                    expenseList: expenses.filter(e => e.date === dateStr && !e.isInformativeOnly)
                 }
             });
         }
