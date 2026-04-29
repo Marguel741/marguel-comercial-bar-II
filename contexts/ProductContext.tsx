@@ -173,6 +173,7 @@ interface ProductContextType {
   addNotification: (notif: any) => void;
   markNotificationRead: (id: string) => void;
   clearNotifications: () => void;
+  resolveNotification: (id: string, resolvedBy: string, note?: string) => void;
 }
 
 const ProductContext = createContext<ProductContextType | undefined>(undefined);
@@ -560,6 +561,18 @@ timestamp: Date.now()
     if (notif) setDoc(doc(db, COL.notifications, id), { ...notif, read: true });
   }, [notifications]);
 
+  const resolveNotification = useCallback((id: string, resolvedBy: string, note?: string) => {
+  const notif = notifications.find(n => n.id === id);
+  if (!notif) return;
+  setDoc(doc(db, COL.notifications, id), {
+    ...notif,
+    resolved: true,
+    resolvedBy,
+    resolvedAt: Date.now(),
+    resolvedNote: note ?? null,
+  });
+}, [notifications]);
+  
   const clearNotifications = useCallback(() => {
     notifications.forEach(n => deleteDoc(doc(db, COL.notifications, n.id)));
   }, [notifications]);
@@ -1108,7 +1121,7 @@ timestamp: Date.now()
     addCard, updateCard, deleteCard, resetTestData, runSystemDiagnostic,
     isSyncing, hasPendingChanges, syncData, handleStockMovement,
     ignoreLockedDayWithoutClosure,
-    notifications, addNotification, markNotificationRead, clearNotifications,
+   notifications, addNotification, markNotificationRead, clearNotifications, resolveNotification,
   }), [
     products, categories, purchases, currentBalance, savingsBalance, cashBalance, tpaBalance, cards, transactions, salesReports,
     expenses, expenseCategories, inventoryHistory, priceHistory, lockedDays, systemDate,
@@ -1124,7 +1137,7 @@ timestamp: Date.now()
     addCard, updateCard, deleteCard, resetTestData, runSystemDiagnostic,
     isSyncing, hasPendingChanges, syncData, handleStockMovement,
     ignoreLockedDayWithoutClosure,
-    notifications, addNotification, markNotificationRead, clearNotifications,
+    notifications, addNotification, markNotificationRead, clearNotifications, resolveNotification,
   ]);
 
   return (
