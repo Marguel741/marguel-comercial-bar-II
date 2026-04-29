@@ -39,39 +39,39 @@ const GlobalCalendar: React.FC = () => {
   const { triggerHaptic } = useLayout();
   const { user } = useAuth();
   const { isOnline } = useSettings();
-  
-  useEffect(() => {
-    addAuditLog({
-      action: 'ACESSO_PAGINA',
-      entity: 'Page',
-      entityId: 'GlobalCalendar',
-      details: `Usuário ${user?.name} acessou o Calendário Marguel.`,
-      performedBy: user?.name || 'Sistema'
-    });
-  }, [user, addAuditLog]);
 
-  if (!hasPermission(user, 'calendar_view')) {
-    return <AccessDenied />;
-  }
-
+  // APP-2: TODOS os hooks antes de qualquer return condicional
   const [viewDate, setViewDate] = useState(systemDate);
-
-  useEffect(() => {
-    setViewDate(systemDate);
-  }, [systemDate]);
-
   const [selectedDayDetail, setSelectedDayDetail] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'sales' | 'inventory' | 'finance' | 'purchases'>('overview');
-  
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [printPeriod, setPrintPeriod] = useState<'day' | 'week' | 'month' | 'quarter' | 'year'>('day');
   const [printDate, setPrintDate] = useState(formatDateISO(systemDate));
 
   useEffect(() => {
-      if (isOnline && hasPendingChanges) {
-          syncData();
-      }
+    addAuditLog({
+      action: 'ACESSO_PAGINA',
+      entity: 'Page',
+      entityId: 'GlobalCalendar',
+      details: `Utilizador ${user?.name} acedeu ao Calendário Marguel.`,
+      performedBy: user?.name || 'Sistema'
+    });
+  }, [user, addAuditLog]);
+
+  useEffect(() => {
+    setViewDate(systemDate);
+  }, [systemDate]);
+
+  useEffect(() => {
+    if (isOnline && hasPendingChanges) {
+      syncData();
+    }
   }, [isOnline, hasPendingChanges, syncData]);
+
+  // Return condicional APÓS todos os hooks
+  if (!hasPermission(user, 'calendar_view')) {
+    return <AccessDenied />;
+  }
 
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
@@ -144,8 +144,8 @@ const GlobalCalendar: React.FC = () => {
     const dayTrans = transactions.filter(t => cleanDate(t.date) === cleanSelected);
     
     const dayPriceChanges = priceHistory?.filter(l => {
-        const logDate = formatDateISO(new Date(parseInt(l.id)));
-        return cleanDate(logDate) === cleanSelected;
+      const logDate = formatDateISO(new Date(parseInt(l.id)));
+      return cleanDate(logDate) === cleanSelected;
     }) || [];
 
     const isConfirmed = report?.status === ClosureStatus.FECHO_CONFIRMADO;
@@ -366,7 +366,7 @@ const GlobalCalendar: React.FC = () => {
                               : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 hover:bg-green-200 cursor-pointer'
                   }`}>
                   {isSyncing ? <Loader2 size={14} className="animate-spin" /> : isOnline ? <Wifi size={14} /> : <WifiOff size={14} />}
-                  <span className="hidden md:inline">{isSyncing ? 'Sincronizando...' : isOnline ? 'Online (Sincronizar)' : 'Offline'}</span>
+                  <span className="hidden md:inline">{isSyncing ? 'A sincronizar...' : isOnline ? 'Online (Sincronizar)' : 'Offline'}</span>
               </button>
               <div className="flex items-center gap-4 bg-white dark:bg-slate-800 p-2 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
                  <button onClick={() => { triggerHaptic('selection'); setIsPrintModalOpen(true); }} className="p-2 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-full text-blue-600 transition-colors" title="Gerar Relatório PDF/Impressão">
@@ -446,7 +446,6 @@ const GlobalCalendar: React.FC = () => {
           </div>
        </div>
 
-       {/* MODAL DE IMPRESSÃO */}
        {isPrintModalOpen && (
            <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-fade-in" onClick={() => setIsPrintModalOpen(false)}>
                <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-[40px] shadow-2xl overflow-hidden border border-white/20" onClick={e => e.stopPropagation()}>
@@ -490,7 +489,6 @@ const GlobalCalendar: React.FC = () => {
            </div>
        )}
 
-       {/* MODAL DETALHADO */}
        {selectedDayDetail && dayData && (
          <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[80] flex items-center justify-center p-4 animate-fade-in" onClick={() => setSelectedDayDetail(null)}>
             <div className="bg-white dark:bg-slate-900 w-full max-w-5xl h-[85vh] rounded-[40px] shadow-2xl flex flex-col overflow-hidden border border-white/20" onClick={e => e.stopPropagation()}>
@@ -566,7 +564,7 @@ const GlobalCalendar: React.FC = () => {
                                 <div className="flex justify-between items-center text-sm">
                                     <span className="text-slate-500 font-medium">Venda Bruta (Total Vendido)</span>
                                     <span className={`font-bold ${dayData.isConfirmed ? 'text-[#003366] dark:text-white' : 'text-amber-600 italic'}`}>
-                                        {dayData.isConfirmed ? formatKz((dayData.report as any)?.totals?.expected || (dayData.report as any)?.totals?.soldStock || dayData.report?.totalExpected || 0) : 'Aguardando Confirmação'}
+                                        {dayData.isConfirmed ? formatKz((dayData.report as any)?.totals?.expected || (dayData.report as any)?.totals?.soldStock || dayData.report?.totalExpected || 0) : 'A aguardar Confirmação'}
                                     </span>
                                 </div>
                                 <div className="flex justify-between items-center text-sm">
@@ -658,7 +656,7 @@ const GlobalCalendar: React.FC = () => {
                               {!dayData.report && (
                                   <div className="p-4 bg-slate-100 dark:bg-slate-800 text-slate-500 rounded-2xl border border-dashed border-slate-300 flex items-center gap-3">
                                       <Clock size={20} />
-                                      <p className="text-xs font-bold uppercase italic">Aguardando Fecho de Caixa Final</p>
+                                      <p className="text-xs font-bold uppercase italic">A aguardar Fecho de Caixa Final</p>
                                   </div>
                               )}
                            </div>
@@ -684,7 +682,7 @@ const GlobalCalendar: React.FC = () => {
                                             ))}
                                         </div>
                                     ) : (
-                                        <p className="text-xs text-slate-400 italic">Nenhuma compra registrada.</p>
+                                        <p className="text-xs text-slate-400 italic">Nenhuma compra registada.</p>
                                     )}
                                 </div>
                            </div>
@@ -711,7 +709,7 @@ const GlobalCalendar: React.FC = () => {
                                             ))}
                                         </div>
                                     ) : (
-                                        <p className="text-xs text-slate-400 italic">Nenhuma despesa registrada.</p>
+                                        <p className="text-xs text-slate-400 italic">Nenhuma despesa registada.</p>
                                     )}
                                 </div>
                            </div>
@@ -916,7 +914,7 @@ const GlobalCalendar: React.FC = () => {
                               ) : (
                                   <div className="flex flex-col items-center justify-center py-24 text-slate-400">
                                       <Package size={72} className="mb-6 opacity-30" />
-                                      <p className="font-bold text-lg">Nenhuma atividade de inventário nesta data.</p>
+                                      <p className="font-bold text-lg">Nenhuma actividade de inventário nesta data.</p>
                                   </div>
                               )}
                           </div>
