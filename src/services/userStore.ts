@@ -11,13 +11,16 @@ export const ADMIN_ID = 'usr_marguel_admin_geral';
 
 const USERS_COLLECTION = 'users';
 
+// SEC-6: PINs vazios — devem ser definidos manualmente no primeiro login
+// Os utilizadores de sistema já existem no Firestore com os PINs reais.
+// Este bloco só é executado em instalações completamente novas (Firestore vazio).
 const INITIAL_USERS: User[] = [
   {
     id: OWNER_ID,
     name: 'Proprietário Marguel',
     username: 'marguel',
     email: 'dono@marguel.com',
-    pin: '1234',
+    pin: '',
     role: UserRole.PROPRIETARIO,
     isApproved: true,
     isBanned: false,
@@ -34,7 +37,7 @@ const INITIAL_USERS: User[] = [
     name: 'Admin Geral',
     username: 'admin',
     email: 'admin@marguel.com',
-    pin: '0000',
+    pin: '',
     role: UserRole.ADMIN_GERAL,
     isApproved: true,
     isBanned: false,
