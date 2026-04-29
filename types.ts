@@ -370,6 +370,26 @@ export interface SalesReport {
   _deltaApplied?: boolean;
 }
 
+export interface Notification {
+  id: string;
+  type: 'STOCK_CRITICO' | 'STOCK_BAIXO' | 'DIVERGENCIA' | 'FECHO_PENDENTE' | 'CUSTOM' | 'SISTEMA';
+  title: string;
+  message: string;
+  timestamp: number;
+  date: string;
+  read: boolean;
+  // PROD-7: campos de resolução
+  resolved?: boolean;
+  resolvedBy?: string;
+  resolvedAt?: number;
+  resolvedNote?: string;
+  // Referência opcional
+  referenceId?: string;
+  referenceType?: string;
+  color?: 'red' | 'amber' | 'blue' | 'green';
+  icon?: string;
+}
+
 export interface AuditLog {
   id: string;
   action: string;
