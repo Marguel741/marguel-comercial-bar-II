@@ -7,7 +7,7 @@ import { saveUser, onUsersSnapshot } from '../src/services/userStore';
 import { DEFAULT_PERMISSIONS } from '../src/utils/permissions';
 import { useAudit } from './AuditContext';
 import { db } from '../src/firebase';
-import { collection, addDoc, query, where, getDocs, deleteDoc, doc } from 'firebase/firestore';
+import { collection, addDoc, query, where, getDocs, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 
 interface AuthContextType {
   user: User | null;
@@ -157,13 +157,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const generateRecoveryCode = useCallback(async (userId: string, userName: string): Promise<string | null> => {
     try {
-      // Apagar códigos anteriores do mesmo utilizador
       const q = query(collection(db, 'recovery_codes'), where('userId', '==', userId));
       const existing = await getDocs(q);
       await Promise.all(existing.docs.map(d => deleteDoc(doc(db, 'recovery_codes', d.id))));
 
       const code = generateCode();
-      const expiresAt = Date.now() + 30 * 60 * 1000; // 30 min
+      const expiresAt = Date.now() + 30 * 60 * 1000;
 
       await addDoc(collection(db, 'recovery_codes'), {
         userId,
@@ -204,16 +203,23 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return { valid: false, userId: null, message: 'Código inválido ou já utilizado.' };
       }
 
-      const data = snapshot.docs[0].data();
+      const docRef = snapshot.docs[0];
+      const data = docRef.data();
 
       if (!data.userName.toLowerCase().includes(userName.toLowerCase())) {
         return { valid: false, userId: null, message: 'Nome não corresponde ao código.' };
       }
 
       if (Date.now() > data.expiresAt) {
-        await deleteDoc(doc(db, 'recovery_codes', snapshot.docs[0].id));
+        await deleteDoc(doc(db, 'recovery_codes', docRef.id));
         return { valid: false, userId: null, message: 'Código expirado. Pede um novo ao administrador.' };
       }
+
+      // SEC-8: Marcar código como usado imediatamente após validação
+      await updateDoc(doc(db, 'recovery_codes', docRef.id), {
+        used: true,
+        usedAt: Date.now(),
+      });
 
       return { valid: true, userId: data.userId, message: 'Código válido!' };
     } catch (error) {
@@ -229,7 +235,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const targetUser = allUsers.find(u => u.id === userId);
       if (!targetUser) return 'Utilizador não encontrado.';
 
-      // Apagar código usado
+      // Apagar código usado (já marcado como used:true — apaga para limpeza)
       const q = query(collection(db, 'recovery_codes'), where('code', '==', code.toUpperCase()));
       const snapshot = await getDocs(q);
       if (!snapshot.empty) {
