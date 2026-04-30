@@ -352,14 +352,25 @@ const Sales: React.FC = () => {
 
   useEffect(() => { setReportDate(todayISO); }, []);
 
-  useEffect(() => {
+ useEffect(() => {
     if (reportDate > todayISO) setReportDate(todayISO);
     const year = reportDate.split('-')[0];
     if (year && parseInt(year) < 2025) setReportDate('2025-01-01');
     setHasManuallyOpened(false);
     setForceEditMode(false);
-  }, [reportDate, todayISO]);
 
+    // Ao navegar para outro dia, abrir resumo automaticamente se existir fecho
+    const report = salesReports.find(r => {
+      const rDate = r.dateISO ? r.dateISO.split('T')[0] : r.date;
+      return rDate === reportDate;
+    });
+    if (report) {
+      setViewHistoryReport(report);
+    } else {
+      setViewHistoryReport(null);
+    }
+  }, [reportDate, todayISO]);
+  
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') setIsSummaryFullscreen(false); };
     if (isSummaryFullscreen) window.addEventListener('keydown', handleEsc);
