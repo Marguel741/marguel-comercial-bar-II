@@ -719,18 +719,30 @@ const Sales: React.FC = () => {
     const canConfirm = !isConfirmed && hasClosurePermission && (!(user?.name === lastActor) || isAdminOrOwner);
     const isUnilateralAllowed = isAdminOrOwner;
 
+    // DEPOIS:
     const handleConfirmClose = async () => {
       if (isDayLocked(reportDate)) { triggerHaptic('error'); showToast('Dia bloqueado. Desbloqueie primeiro para confirmar o fecho.'); return; }
       if (!reportDate) return;
-      const finalReport = {
-        ...reportData, status: ClosureStatus.FECHO_CONFIRMADO,
-        confirmedBy: user?.name || 'Sistema', confirmationTimestamp: Date.now(),
-        unilateralAdminConfirmation: isUnilateralAllowed, stockUpdated: false, processedFinancials: false,
-        totalLifted: reportData.totals?.lifted, cash: reportData.financials?.cash,
-        tpa: reportData.financials?.ticket, transfer: reportData.financials?.transfer, lunchExpense: reportData.financials?.lunch,
-      };
-      await confirmSalesReport(finalReport.id, user?.name || 'Sistema', isUnilateralAllowed, finalReport);
-      setForceEditMode(false); showToast("Fecho confirmado e propagado com sucesso!"); triggerHaptic('success');
+      try {
+        const finalReport = {
+          ...reportData, status: ClosureStatus.FECHO_CONFIRMADO,
+          confirmedBy: user?.name || 'Sistema', confirmationTimestamp: Date.now(),
+          unilateralAdminConfirmation: isUnilateralAllowed,
+          stockUpdated: true,   // ← marca como já actualizado para não tentar dar baixa de novo
+          processedFinancials: false,
+          totalLifted: reportData.totals?.lifted, cash: reportData.financials?.cash,
+          tpa: reportData.financials?.ticket, transfer: reportData.financials?.transfer, lunchExpense: reportData.financials?.lunch,
+        };
+        await confirmSalesReport(finalReport.id, user?.name || 'Sistema', isUnilateralAllowed, finalReport);
+        setViewHistoryReport(null);
+        setForceEditMode(false);
+        showToast("✅ Fecho confirmado e propagado com sucesso!");
+        triggerHaptic('success');
+      } catch (err) {
+        console.error('Erro ao confirmar fecho:', err);
+        showToast("Erro ao confirmar. Tente novamente.");
+        triggerHaptic('error');
+      }
     };
 
     return (
@@ -755,9 +767,15 @@ const Sales: React.FC = () => {
             <button onClick={() => navigateDay('next')} disabled={reportDate >= todayISO} className="p-2 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl hover:bg-slate-200 transition-all disabled:opacity-40 disabled:cursor-not-allowed" title="Dia seguinte">
               <ChevronRight size={20} />
             </button>
+            // DEPOIS:
             <button onClick={() => setReportDate(todayISO)} className="px-3 py-1.5 bg-emerald-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-emerald-600 transition-all shadow-md">
               <RefreshCw size={14} /> Voltar ao Hoje
             </button>
+            {!isLocked && (
+              <button onClick={() => { setForceEditMode(true); triggerHaptic('selection'); }} className="px-3 py-1.5 bg-amber-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-amber-600 transition-all shadow-md">
+                <Edit3 size={14} /> Editar Fecho
+              </button>
+            )}
           </div>
         </div>
 
