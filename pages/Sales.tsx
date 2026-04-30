@@ -369,7 +369,7 @@ const Sales: React.FC = () => {
     } else {
       setViewHistoryReport(null);
     }
-  }, [reportDate, todayISO]);
+  }, [reportDate, todayISO, salesReports]);
   
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') setIsSummaryFullscreen(false); };
@@ -470,6 +470,15 @@ const Sales: React.FC = () => {
   const [editConfirmationData, setEditConfirmationData] = useState<any>(null);
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
   const [breakdowns, setBreakdowns] = useState<Record<string, { packs: number, singles: number, waste: number }>>({});
+
+  // Manter viewHistoryReport sincronizado com Firestore após confirmações
+  useEffect(() => {
+    if (!viewHistoryReport) return;
+    const updated = salesReports.find(r => r.id === viewHistoryReport.id);
+    if (updated && updated.status !== viewHistoryReport.status) {
+      setViewHistoryReport(updated as unknown as DailyReport);
+    }
+  }, [salesReports]);
 
   const isAdminOrOwner = user?.role === UserRole.PROPRIETARIO || user?.role === UserRole.ADMIN_GERAL;
   const canEditInitialStock = hasPermission(user, 'sales_edit') && (!isDayLocked(reportDate) || isAdminOrOwner);
@@ -660,7 +669,9 @@ const Sales: React.FC = () => {
     setSyncState(prev => ({ ...prev, completedSteps: [...prev.completedSteps, 'finance'], currentStep: 5 }));
     await new Promise(resolve => setTimeout(resolve, 800));
     try {
-      if (existingReport) updateSalesReport(reportData.id, reportData);
+      // Verificar directamente nos salesReports actuais, não no closure stale
+      const reportExists = salesReports.some(r => r.id === reportData.id);
+      if (reportExists) updateSalesReport(reportData.id, reportData);
       else addSalesReport(reportData);
       setSyncState(prev => ({ ...prev, status: 'success' }));
       triggerHaptic('success');
@@ -679,9 +690,9 @@ const Sales: React.FC = () => {
   };
 
   const getCloseButtonColor = () => {
-    if (isNotToday) return 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500';
     if (calculatedData.hasStockError) return 'bg-red-500 text-white';
     if (!isFinancialsConfirmed) return 'bg-slate-200 text-slate-600 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-300';
+    if (isNotToday) return 'bg-amber-500 text-white hover:opacity-90 shadow-amber-200';
     return 'bg-[#003366] text-white hover:opacity-90 shadow-blue-200';
   };
 
@@ -689,6 +700,7 @@ const Sales: React.FC = () => {
     if (isLocked) return 'Dia Encerrado';
     if (calculatedData.hasStockError) return 'Erro de Stock';
     if (!isFinancialsConfirmed) return 'Confirmar Valores';
+    if (isNotToday) return 'Fechar Dia Anterior';
     return 'Fechar o Dia';
   };
 
@@ -719,7 +731,6 @@ const Sales: React.FC = () => {
     const canConfirm = !isConfirmed && hasClosurePermission && (!(user?.name === lastActor) || isAdminOrOwner);
     const isUnilateralAllowed = isAdminOrOwner;
 
-    // DEPOIS:
     const handleConfirmClose = async () => {
       if (isDayLocked(reportDate)) { triggerHaptic('error'); showToast('Dia bloqueado. Desbloqueie primeiro para confirmar o fecho.'); return; }
       if (!reportDate) return;
@@ -728,7 +739,7 @@ const Sales: React.FC = () => {
           ...reportData, status: ClosureStatus.FECHO_CONFIRMADO,
           confirmedBy: user?.name || 'Sistema', confirmationTimestamp: Date.now(),
           unilateralAdminConfirmation: isUnilateralAllowed,
-          stockUpdated: true,   // ← marca como já actualizado para não tentar dar baixa de novo
+          stockUpdated: false,  // ← deixar o confirmSalesReport fazer a dedução correctamente
           processedFinancials: false,
           totalLifted: reportData.totals?.lifted, cash: reportData.financials?.cash,
           tpa: reportData.financials?.ticket, transfer: reportData.financials?.transfer, lunchExpense: reportData.financials?.lunch,
@@ -767,7 +778,6 @@ const Sales: React.FC = () => {
             <button onClick={() => navigateDay('next')} disabled={reportDate >= todayISO} className="p-2 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl hover:bg-slate-200 transition-all disabled:opacity-40 disabled:cursor-not-allowed" title="Dia seguinte">
               <ChevronRight size={20} />
             </button>
-            // DEPOIS:
             <button onClick={() => setReportDate(todayISO)} className="px-3 py-1.5 bg-emerald-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-emerald-600 transition-all shadow-md">
               <RefreshCw size={14} /> Voltar ao Hoje
             </button>
