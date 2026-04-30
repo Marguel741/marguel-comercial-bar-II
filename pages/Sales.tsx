@@ -460,11 +460,12 @@ const Sales: React.FC = () => {
       }
       setInitialStock(dynamicInitial);
       localStorage.setItem(snapshotKey, JSON.stringify(dynamicInitial));
-    } else if (hasPrevSnapshot && !savedSnapshot) {
-      setInitialStock(prevSnapshot);
-      localStorage.setItem(snapshotKey, JSON.stringify(prevSnapshot));
-    } else if (savedSnapshot) {
-      setInitialStock(JSON.parse(savedSnapshot));
+   } else if (!isToday) {
+      if (hasPrevSnapshot) {
+        setInitialStock(prevSnapshot);
+        localStorage.setItem(snapshotKey, JSON.stringify(prevSnapshot));
+      } else if (savedSnapshot) {
+        setInitialStock(JSON.parse(savedSnapshot));
     } else if (dateChanged) {
       const newSnapshot: Record<string, string> = {};
       products.forEach(p => { newSnapshot[p.id] = p.stock.toString(); });
