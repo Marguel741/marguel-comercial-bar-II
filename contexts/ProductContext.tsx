@@ -388,7 +388,12 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   }, [lockedDays]);
 
   const validateAction = useCallback((type: string, payload: any) => {
-    if (isDayLocked(getSystemDate())) throw new Error('Operação Negada: O dia actual está bloqueado.');
+    // Só bloquear se for uma operação do dia actual E o dia actual estiver bloqueado
+    // Fechos de dias históricos (SALES_CLOSURE) nunca são bloqueados por esta validação
+    const isHistoricalClosure = type === 'SALES_CLOSURE' || payload?.isHistorical === true;
+    if (!isHistoricalClosure && isDayLocked(getSystemDate())) {
+      throw new Error('Operação Negada: O dia actual está bloqueado.');
+    }
     if (type === 'SALE' || type === 'SALES_REPORT' || type === 'UPDATE_STOCK') {
       const items = payload.items || (payload.productId ? [{ productId: payload.productId, qty: payload.qty }] : []);
       for (const item of items) {
@@ -396,9 +401,8 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
         if (product) {
           const finalStock = (type === 'SALE' || type === 'SALES_REPORT') ? product.stock - item.qty : product.stock + item.qty;
           if (finalStock < 0) {
-            const isSaleRelated = type === 'SALE' || type === 'SALES_REPORT' || (type === 'UPDATE_STOCK' && item.qty < 0);
-            if (!isSaleRelated) throw new Error(`Stock insuficiente para ${product.name}. Disponível: ${product.stock}`);
-            else console.warn(`Stock insuficiente para ${product.name}. Permitindo stock negativo.`);
+            // Vendas e fechos sempre permitem stock negativo com aviso
+            console.warn(`Stock insuficiente para ${product.name}. Stock actual: ${product.stock}. Permitindo stock negativo.`);
           }
         }
       }
@@ -410,7 +414,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   const handleStockMovement = useCallback((productId: string, quantity: number, type: 'SALE' | 'PURCHASE' | 'ADJUSTMENT' | 'MANUAL_ADJUSTMENT', performedBy: string, reason: string, referenceId?: string) => {
     try {
       if ((type === 'ADJUSTMENT' || type === 'MANUAL_ADJUSTMENT') && !reason) throw new Error('Um motivo é obrigatório para ajustes manuais de stock.');
-      validateAction('UPDATE_STOCK', { productId, qty: type === 'SALE' ? -quantity : quantity });
+     validateAction('UPDATE_STOCK', { productId, qty: type === 'SALE' ? -quantity : quantity, isHistorical: true });
       const product = products.find(p => p.id === productId);
       if (!product) return;
 
