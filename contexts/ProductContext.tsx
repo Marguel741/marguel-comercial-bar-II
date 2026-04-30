@@ -90,8 +90,10 @@ const INITIAL_EXPENSE_CATEGORIES: ExpenseCategory[] = [
   { id: '9', name: 'DESPESA_OPERACIONAL', isActive: true },
 ];
 
+// PROD-3: Conta Corrente → Conta Bancária, novo cartão Em Mão
 const INITIAL_CARDS: Card[] = [
-  { id: 'main', name: 'Conta Corrente', holder: 'Marguel Bar', balance: 0, color: 'bg-gradient-to-bl from-[#003366] via-[#004488] to-[#0054A6]', type: 'Corrente', validity: '12/28' },
+  { id: 'main', name: 'Conta Bancária', holder: 'Marguel Bar', balance: 0, color: 'bg-gradient-to-bl from-[#003366] via-[#004488] to-[#0054A6]', type: 'Corrente', validity: '12/28' },
+  { id: 'cash_in_hand', name: 'Em Mão', holder: 'Marguel Bar', balance: 0, color: 'bg-gradient-to-br from-emerald-600 via-teal-700 to-emerald-900', type: 'Corrente', validity: '12/28' },
   { id: 'savings', name: 'Marguel Reserve', holder: 'Marguel Reserve', balance: 0, color: 'bg-gradient-to-br from-[#F5DF4D] via-[#D4AF37] to-[#AA6C39]', type: 'Poupança', validity: '06/30' },
 ];
 
@@ -112,6 +114,8 @@ interface ProductContextType {
   savingsBalance: number;
   cashBalance: number;
   tpaBalance: number;
+  cashInHandBalance: number;
+  totalBalance: number;
   cards: Card[];
   transactions: Transaction[];
   salesReports: SalesReport[];
@@ -174,6 +178,7 @@ interface ProductContextType {
   markNotificationRead: (id: string) => void;
   clearNotifications: () => void;
   resolveNotification: (id: string, resolvedBy: string, note?: string) => void;
+  transferBetweenCards: (fromId: string, toId: string, amount: number, note: string, performedBy: string) => void;
 }
 
 const ProductContext = createContext<ProductContextType | undefined>(undefined);
@@ -185,7 +190,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   const checkPermission = useCallback((permission: keyof UserPermissions) => {
     if (!hasPermission(user, permission)) {
       console.error(`Acesso negado: ${permission}`);
-      alert(`Sem permissão para executar esta ação: ${permission}`);
+      alert(`Sem permissão para executar esta acção: ${permission}`);
       return false;
     }
     return true;
@@ -208,6 +213,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [savingsBalance, setSavingsBalance] = useState<number>(0);
   const [cashBalance, setCashBalance] = useState<number>(0);
   const [tpaBalance, setTPABalance] = useState<number>(0);
+  const [cashInHandBalance, setCashInHandBalance] = useState<number>(0);
   const [lockedDays, setLockedDays] = useState<string[]>([]);
   const [systemDate, setSystemDateState] = useState<Date>(() => {
     const now = new Date(); now.setHours(0, 0, 0, 0); return now;
@@ -270,8 +276,19 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     unsubs.push(onSnapshot(collection(db, COL.cards), snap => {
       const data = snap.docs.map(d => d.data() as Card);
-      if (data.length > 0) setCards(data);
-      else {
+      if (data.length > 0) {
+        setCards(data);
+        // PROD-3: criar cartão Em Mão se não existir
+        if (!data.find(c => c.id === 'cash_in_hand')) {
+          const cashCard = INITIAL_CARDS.find(c => c.id === 'cash_in_hand')!;
+          setDoc(doc(db, COL.cards, 'cash_in_hand'), cashCard);
+        }
+        // Renomear Conta Corrente → Conta Bancária se necessário
+        const mainCard = data.find(c => c.id === 'main');
+        if (mainCard && mainCard.name === 'Conta Corrente') {
+          setDoc(doc(db, COL.cards, 'main'), { ...mainCard, name: 'Conta Bancária' });
+        }
+      } else {
         INITIAL_CARDS.forEach(c => setDoc(doc(db, COL.cards, c.id), c));
         setCards(INITIAL_CARDS);
       }
@@ -297,8 +314,10 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
         setSavingsBalance(d.savingsBalance ?? 0);
         setCashBalance(d.cashBalance ?? 0);
         setTPABalance(d.tpaBalance ?? 0);
+        setCashInHandBalance(d.cashInHandBalance ?? 0);
         setCards(prev => prev.map(c => {
           if (c.id === 'main') return { ...c, balance: d.currentBalance ?? c.balance };
+          if (c.id === 'cash_in_hand') return { ...c, balance: d.cashInHandBalance ?? c.balance };
           if (c.id === 'savings') return { ...c, balance: d.savingsBalance ?? c.balance };
           return c;
         }));
@@ -320,14 +339,15 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     return () => { window.removeEventListener('online', goOnline); window.removeEventListener('offline', goOffline); };
   }, []);
 
-  const saveBalances = useCallback(async (cb?: number, sb?: number, cash?: number, tpa?: number) => {
+  const saveBalances = useCallback(async (cb?: number, sb?: number, cash?: number, tpa?: number, cih?: number) => {
     await setDoc(doc(db, 'appdata', 'balances'), {
       currentBalance: cb ?? currentBalance,
       savingsBalance: sb ?? savingsBalance,
       cashBalance: cash ?? cashBalance,
       tpaBalance: tpa ?? tpaBalance,
+      cashInHandBalance: cih ?? cashInHandBalance,
     });
-  }, [currentBalance, savingsBalance, cashBalance, tpaBalance]);
+  }, [currentBalance, savingsBalance, cashBalance, tpaBalance, cashInHandBalance]);
 
   const syncData = useCallback(async () => {
     console.log('Firestore em tempo real — sem necessidade de sincronização manual.');
@@ -352,7 +372,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   const addAuditLog = useCallback((log: any) => {
     addLog({
-      action: log.action || 'AÇÃO_DESCONHECIDA',
+      action: log.action || 'ACÇÃO_DESCONHECIDA',
       module: log.module || 'SISTEMA',
       entityId: log.entityId || null,
       description: log.details || log.description || 'Sem descrição',
@@ -368,7 +388,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   }, [lockedDays]);
 
   const validateAction = useCallback((type: string, payload: any) => {
-    if (isDayLocked(getSystemDate())) throw new Error('Operação Negada: O dia atual está bloqueado.');
+    if (isDayLocked(getSystemDate())) throw new Error('Operação Negada: O dia actual está bloqueado.');
     if (type === 'SALE' || type === 'SALES_REPORT' || type === 'UPDATE_STOCK') {
       const items = payload.items || (payload.productId ? [{ productId: payload.productId, qty: payload.qty }] : []);
       for (const item of items) {
@@ -383,7 +403,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
         }
       }
     }
-    // #2 FIX: removida validação que bloqueava preço = 0
     if (payload.price !== undefined && payload.price < 0) throw new Error('Preço inválido: O valor não pode ser negativo.');
     return true;
   }, [products, isDayLocked, getSystemDate]);
@@ -428,7 +447,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   const processTransaction = useCallback((
     type: 'deposit' | 'withdraw',
-    account: 'main' | 'savings' | 'cash' | 'tpa' | string,
+    account: 'main' | 'savings' | 'cash' | 'tpa' | 'cash_in_hand' | string,
     amount: number, description: string, category?: string,
     referenceId?: string, referenceType?: Transaction['referenceType'],
     performedBy?: string, date?: string
@@ -436,7 +455,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     try {
       const existingTrans = referenceId ? transactions.filter(t => t.referenceId === referenceId && t.referenceType === referenceType) : [];
 
-      let newCB = currentBalance, newSB = savingsBalance, newCash = cashBalance, newTPA = tpaBalance;
+      let newCB = currentBalance, newSB = savingsBalance, newCash = cashBalance, newTPA = tpaBalance, newCashInHand = cashInHandBalance;
       let accountName = '';
 
       if (existingTrans.length > 0) {
@@ -444,41 +463,45 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
           const amt = t.amount; const isEntry = t.type === 'entrada';
           if (t.accountName === 'Caixa (Dinheiro)') newCash += isEntry ? -amt : amt;
           else if (t.accountName === 'TPA') newTPA += isEntry ? -amt : amt;
-          else if (t.accountName === 'Conta Corrente') newCB += isEntry ? -amt : amt;
+          else if (t.accountName === 'Conta Bancária' || t.accountName === 'Conta Corrente') newCB += isEntry ? -amt : amt;
           else if (t.accountName === 'Marguel Reserve' || t.accountName === 'Conta Poupança') newSB += isEntry ? -amt : amt;
+          else if (t.accountName === 'Em Mão') newCashInHand += isEntry ? -amt : amt;
         });
       }
 
       let targetAccount = account;
       if (category === 'Transferência' || category === 'TRANSFER') targetAccount = 'tpa';
 
-      if (targetAccount === 'main') { newCB += type === 'deposit' ? amount : -amount; accountName = 'Conta Corrente'; }
+      if (targetAccount === 'main') { newCB += type === 'deposit' ? amount : -amount; accountName = 'Conta Bancária'; }
       else if (targetAccount === 'savings') { newSB += type === 'deposit' ? amount : -amount; accountName = 'Marguel Reserve'; }
       else if (targetAccount === 'cash') { newCash += type === 'deposit' ? amount : -amount; accountName = 'Caixa (Dinheiro)'; }
       else if (targetAccount === 'tpa') { newTPA += type === 'deposit' ? amount : -amount; accountName = 'TPA'; }
+      else if (targetAccount === 'cash_in_hand') { newCashInHand += type === 'deposit' ? amount : -amount; accountName = 'Em Mão'; }
       else {
         const card = cards.find(c => c.id === targetAccount);
         if (card) {
           accountName = card.name;
           if (card.id === 'main') newCB += type === 'deposit' ? amount : -amount;
           else if (card.id === 'savings') newSB += type === 'deposit' ? amount : -amount;
+          else if (card.id === 'cash_in_hand') newCashInHand += type === 'deposit' ? amount : -amount;
         }
       }
 
-      setCurrentBalance(newCB); setSavingsBalance(newSB); setCashBalance(newCash); setTPABalance(newTPA);
-      setDoc(doc(db, 'appdata', 'balances'), { currentBalance: newCB, savingsBalance: newSB, cashBalance: newCash, tpaBalance: newTPA });
+      setCurrentBalance(newCB); setSavingsBalance(newSB); setCashBalance(newCash); setTPABalance(newTPA); setCashInHandBalance(newCashInHand);
+      setDoc(doc(db, 'appdata', 'balances'), { currentBalance: newCB, savingsBalance: newSB, cashBalance: newCash, tpaBalance: newTPA, cashInHandBalance: newCashInHand });
       setCards(prev => prev.map(c => {
         if (c.id === 'main') return { ...c, balance: newCB };
         if (c.id === 'savings') return { ...c, balance: newSB };
+        if (c.id === 'cash_in_hand') return { ...c, balance: newCashInHand };
         return c;
       }));
       setDoc(doc(db, COL.cards, 'main'), { ...cards.find(c => c.id === 'main'), balance: newCB });
       setDoc(doc(db, COL.cards, 'savings'), { ...cards.find(c => c.id === 'savings'), balance: newSB });
+      setDoc(doc(db, COL.cards, 'cash_in_hand'), { ...cards.find(c => c.id === 'cash_in_hand'), balance: newCashInHand });
 
       const targetDate = date || formatDateISO(getSystemDate());
       const transId = existingTrans.length > 0 ? existingTrans[0].id : generateUUID();
 
-      // #1 FIX: todos os campos opcionais passam null em vez de undefined
       const newTrans: Transaction = {
         id: transId,
         type: type === 'deposit' ? 'entrada' : 'saida',
@@ -491,8 +514,8 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
         performedBy: performedBy ?? null,
         accountName: accountName || 'Conta Desconhecida',
         status: 'ATIVO',
-operationalDay: targetDate,
-timestamp: Date.now()
+        operationalDay: targetDate,
+        timestamp: Date.now()
       };
       setDoc(doc(db, COL.transactions, transId), newTrans);
 
@@ -500,9 +523,9 @@ timestamp: Date.now()
         addAuditLog({ action: 'TRANSACAO_MANUAL', module: 'FINANCEIRO', entityId: transId, description: `${type === 'deposit' ? 'Depósito' : 'Levantamento'} de ${amount.toLocaleString('pt-AO')} Kz em ${accountName}. ${description}`, performedBy: performedBy || user?.name || 'Sistema' });
       }
     } catch (error) {
-      console.error('Erro ao processar transação:', error);
+      console.error('Erro ao processar transacção:', error);
     }
-  }, [transactions, cards, user, currentBalance, savingsBalance, cashBalance, tpaBalance, getSystemDate, addAuditLog]);
+  }, [transactions, cards, user, currentBalance, savingsBalance, cashBalance, tpaBalance, cashInHandBalance, getSystemDate, addAuditLog]);
 
   const adjustFinancialsForReport = useCallback((oldReport: SalesReport, newReport: SalesReport) => {
     const reportDateStr = (newReport.dateISO || newReport.date || '').split('T')[0];
@@ -523,22 +546,32 @@ timestamp: Date.now()
     let newCB = currentBalance;
     let newCashBal = cashBalance;
     let newTPABal = tpaBalance;
+    let newCashInHandBal = cashInHandBalance;
     existingTrans.forEach(t => {
       const isEntry = t.type === 'entrada';
-      if (t.accountName === 'Conta Corrente') newCB += isEntry ? -t.amount : t.amount;
+      if (t.accountName === 'Conta Bancária' || t.accountName === 'Conta Corrente') newCB += isEntry ? -t.amount : t.amount;
       if (t.accountName === 'Caixa (Dinheiro)') newCashBal += isEntry ? -t.amount : t.amount;
       else if (t.accountName === 'TPA') newTPABal += isEntry ? -t.amount : t.amount;
+      else if (t.accountName === 'Em Mão') newCashInHandBal += isEntry ? -t.amount : t.amount;
     });
 
-    newCB = newCB + totalLifted;
+    // PROD-3: TPA+Transfer → Conta Bancária, Cash → Em Mão
+    newCB = newCB + newTpa;
     newCashBal = newCashBal + newCash;
     newTPABal = newTPABal + newTpa;
+    newCashInHandBal = newCashInHandBal + newCash;
     setCurrentBalance(newCB);
     setCashBalance(newCashBal);
     setTPABalance(newTPABal);
-    setCards(prev => prev.map(c => c.id === 'main' ? { ...c, balance: newCB } : c));
-    setDoc(doc(db, 'appdata', 'balances'), { currentBalance: newCB, savingsBalance, cashBalance: newCashBal, tpaBalance: newTPABal });
+    setCashInHandBalance(newCashInHandBal);
+    setCards(prev => prev.map(c => {
+      if (c.id === 'main') return { ...c, balance: newCB };
+      if (c.id === 'cash_in_hand') return { ...c, balance: newCashInHandBal };
+      return c;
+    }));
+    setDoc(doc(db, 'appdata', 'balances'), { currentBalance: newCB, savingsBalance, cashBalance: newCashBal, tpaBalance: newTPABal, cashInHandBalance: newCashInHandBal });
     setDoc(doc(db, COL.cards, 'main'), { ...cards.find(c => c.id === 'main'), balance: newCB });
+    setDoc(doc(db, COL.cards, 'cash_in_hand'), { ...cards.find(c => c.id === 'cash_in_hand'), balance: newCashInHandBal });
 
     if (totalLifted > 0) {
       setDoc(doc(db, COL.transactions, `${newReport.id}_closure`), {
@@ -546,13 +579,83 @@ timestamp: Date.now()
         date: `${reportDateStr}, ${timeStr}`,
         description: `Fecho Editado (${reportDateStr}) — Cash: ${newCash.toLocaleString('pt-AO')} Kz | TPA: ${newTpa.toLocaleString('pt-AO')} Kz`,
         referenceId: newReport.id, referenceType: 'day_closure', performedBy: user?.name || 'Sistema',
-        accountName: 'Conta Corrente', status: 'ATIVO', operationalDay: reportDateStr, timestamp: Date.now()
+        accountName: 'Conta Bancária', status: 'ATIVO', operationalDay: reportDateStr, timestamp: Date.now()
       });
     }
-  }, [user, transactions, currentBalance, savingsBalance, cashBalance, tpaBalance, cards, getSystemDate]);
+  }, [user, transactions, currentBalance, savingsBalance, cashBalance, tpaBalance, cashInHandBalance, cards, getSystemDate]);
+
+  // PROD-3: transferência entre cartões — 1 registo com referência cruzada
+  const transferBetweenCards = useCallback((fromId: string, toId: string, amount: number, note: string, performedBy: string) => {
+    if (amount <= 0) return;
+    const fromCard = cards.find(c => c.id === fromId);
+    const toCard = cards.find(c => c.id === toId);
+    if (!fromCard || !toCard) return;
+
+    const transId = generateUUID();
+    const targetDate = formatDateISO(getSystemDate());
+    const timeStr = getSystemDate().toLocaleTimeString('pt-AO', { hour: '2-digit', minute: '2-digit' });
+    const description = `Transferência ${fromCard.name} → ${toCard.name} — ${amount.toLocaleString('pt-AO')} Kz`;
+
+    const newFromBalance = fromCard.balance - amount;
+    const newToBalance = toCard.balance + amount;
+    setDoc(doc(db, COL.cards, fromId), { ...fromCard, balance: newFromBalance });
+    setDoc(doc(db, COL.cards, toId), { ...toCard, balance: newToBalance });
+
+    setCards(prev => prev.map(c => {
+      if (c.id === fromId) return { ...c, balance: newFromBalance };
+      if (c.id === toId) return { ...c, balance: newToBalance };
+      return c;
+    }));
+
+    const balanceUpdate: any = {
+      currentBalance, savingsBalance, cashBalance, tpaBalance, cashInHandBalance
+    };
+    if (fromId === 'main') balanceUpdate.currentBalance = newFromBalance;
+    if (fromId === 'cash_in_hand') balanceUpdate.cashInHandBalance = newFromBalance;
+    if (fromId === 'savings') balanceUpdate.savingsBalance = newFromBalance;
+    if (toId === 'main') balanceUpdate.currentBalance = newToBalance;
+    if (toId === 'cash_in_hand') balanceUpdate.cashInHandBalance = newToBalance;
+    if (toId === 'savings') balanceUpdate.savingsBalance = newToBalance;
+    setDoc(doc(db, 'appdata', 'balances'), balanceUpdate);
+
+    if (fromId === 'main') setCurrentBalance(newFromBalance);
+    if (fromId === 'cash_in_hand') setCashInHandBalance(newFromBalance);
+    if (fromId === 'savings') setSavingsBalance(newFromBalance);
+    if (toId === 'main') setCurrentBalance(newToBalance);
+    if (toId === 'cash_in_hand') setCashInHandBalance(newToBalance);
+    if (toId === 'savings') setSavingsBalance(newToBalance);
+
+    const trans: Transaction = {
+      id: transId,
+      type: 'saida',
+      category: 'Transferência',
+      amount,
+      date: `${targetDate}, ${timeStr}`,
+      description,
+      referenceId: transId,
+      referenceType: 'withdrawal',
+      performedBy,
+      accountName: fromCard.name,
+      status: 'ATIVO',
+      operationalDay: targetDate,
+      timestamp: Date.now(),
+      isTransfer: true,
+      transferCounterpartId: toId,
+    };
+    setDoc(doc(db, COL.transactions, transId), trans);
+
+    addAuditLog({
+      action: 'TRANSFERENCIA_CARTOES',
+      module: 'FINANCEIRO',
+      entityId: transId,
+      description: `${description}. Por: ${performedBy}`,
+      performedBy,
+    });
+  }, [cards, getSystemDate, currentBalance, savingsBalance, cashBalance, tpaBalance, cashInHandBalance, addAuditLog]);
 
   const addNotification = useCallback((notif: any) => {
     const newNotif = { ...notif, id: generateUUID(), timestamp: Date.now(), read: false };
+    // PROD-7: setDoc primeiro — onSnapshot actualiza estado automaticamente
     setDoc(doc(db, COL.notifications, newNotif.id), newNotif);
   }, []);
 
@@ -562,17 +665,17 @@ timestamp: Date.now()
   }, [notifications]);
 
   const resolveNotification = useCallback((id: string, resolvedBy: string, note?: string) => {
-  const notif = notifications.find(n => n.id === id);
-  if (!notif) return;
-  setDoc(doc(db, COL.notifications, id), {
-    ...notif,
-    resolved: true,
-    resolvedBy,
-    resolvedAt: Date.now(),
-    resolvedNote: note ?? null,
-  });
-}, [notifications]);
-  
+    const notif = notifications.find(n => n.id === id);
+    if (!notif) return;
+    setDoc(doc(db, COL.notifications, id), {
+      ...notif,
+      resolved: true,
+      resolvedBy,
+      resolvedAt: Date.now(),
+      resolvedNote: note ?? null,
+    });
+  }, [notifications]);
+
   const clearNotifications = useCallback(() => {
     notifications.forEach(n => deleteDoc(doc(db, COL.notifications, n.id)));
   }, [notifications]);
@@ -631,7 +734,7 @@ timestamp: Date.now()
     if (!checkPermission('expenses_execute')) return;
     const expense = expenses.find(e => e.id === id);
     if (!expense || expense.status === 'REVERSED' || expense.isReverted) return;
-    // PROD-6: despesas informativas (almoço) não criam estorno financeiro
+    // PROD-6: despesas informativas não criam estorno financeiro
     if (expense.isInformativeOnly) {
       deleteDoc(doc(db, COL.expenses, id));
       addAuditLog({ action: 'REMOVER_DESPESA_INFORMATIVA', module: 'FINANCEIRO', entityId: id, description: `Despesa informativa "${expense.title}" removida por ${deletedBy}. Sem impacto financeiro.`, performedBy: deletedBy });
@@ -643,7 +746,7 @@ timestamp: Date.now()
     if (expense.amount > 0) processTransaction('deposit', 'main', expense.amount, `Estorno: ${expense.title}`, 'Estorno', expense.id, 'reversal', deletedBy);
     addAuditLog({ action: 'ESTORNO_DESPESA', module: 'FINANCEIRO', entityId: id, description: `Estorno de ${expense.title} por ${deletedBy}`, performedBy: deletedBy });
   }, [checkPermission, expenses, getSystemDate, processTransaction, addAuditLog]);
-  
+
   const updateExpense = useCallback((updated: Expense) => {
     setDoc(doc(db, COL.expenses, updated.id), updated);
     addAuditLog({ action: 'EDITAR_DESPESA', module: 'FINANCEIRO', entityId: updated.id, description: `Despesa editada: ${updated.title}`, performedBy: user?.name || 'Sistema' });
@@ -685,7 +788,6 @@ timestamp: Date.now()
   const addProduct = useCallback((product: Omit<Product, 'id'>) => {
     try {
       if (!checkPermission('inventory_product_create')) return;
-      // #2 FIX: não valida preço em criação de produto (permitir preço 0)
       validateAction('ADD_PRODUCT', {});
       const newProduct = { ...product, id: generateUUID() };
       setDoc(doc(db, COL.products, newProduct.id), newProduct);
@@ -700,28 +802,20 @@ timestamp: Date.now()
   const updateProduct = useCallback((id: string, updates: Partial<Product>) => {
     try {
       if (!checkPermission('inventory_product_edit')) return;
-      // #2 FIX: não valida preço em edição de produto (permitir preço 0)
       validateAction('UPDATE_PRODUCT', {});
       const product = products.find(p => p.id === id);
       if (!product) return;
 
-      // #7 FIX: gravar histórico de preços quando sellPrice ou buyPrice muda
       if (
         (updates.sellPrice !== undefined && updates.sellPrice !== product.sellPrice) ||
         (updates.buyPrice !== undefined && updates.buyPrice !== product.buyPrice)
       ) {
         const priceLog: PriceHistoryLog = {
-          id: generateUUID(),
-          productId: id,
-          productName: product.name,
-          oldSellPrice: product.sellPrice,
-          newSellPrice: updates.sellPrice ?? product.sellPrice,
-          oldBuyPrice: product.buyPrice,
-          newBuyPrice: updates.buyPrice ?? product.buyPrice,
-          changedBy: user?.name || 'Sistema',
-          timestamp: Date.now(),
-          date: formatDateISO(getSystemDate()),
-          reason: 'Actualização manual de preço',
+          id: generateUUID(), productId: id, productName: product.name,
+          oldSellPrice: product.sellPrice, newSellPrice: updates.sellPrice ?? product.sellPrice,
+          oldBuyPrice: product.buyPrice, newBuyPrice: updates.buyPrice ?? product.buyPrice,
+          changedBy: user?.name || 'Sistema', timestamp: Date.now(),
+          date: formatDateISO(getSystemDate()), reason: 'Actualização manual de preço',
         };
         setDoc(doc(db, COL.priceHistory, priceLog.id), priceLog);
       }
@@ -734,7 +828,7 @@ timestamp: Date.now()
       } else {
         setDoc(doc(db, COL.products, id), { ...product, ...updates });
       }
-      addAuditLog({ action: 'EDITAR_PRODUTO', module: 'INVENTARIO', entityId: id, description: `Produto ${product.name} atualizado.`, performedBy: user?.name || 'Sistema' });
+      addAuditLog({ action: 'EDITAR_PRODUTO', module: 'INVENTARIO', entityId: id, description: `Produto ${product.name} actualizado.`, performedBy: user?.name || 'Sistema' });
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Erro desconhecido';
       addLog({ action: 'ERROR' as any, module: 'INVENTARIO', description: `ERRO: ${msg}`, entityId: id }, user);
@@ -823,7 +917,7 @@ timestamp: Date.now()
     const newCash = origin === 'Cash' ? cashBalance - amount : cashBalance;
     const newTPA = origin === 'TPA' ? tpaBalance - amount : tpaBalance;
     setCashBalance(newCash); setTPABalance(newTPA);
-    setDoc(doc(db, 'appdata', 'balances'), { currentBalance, savingsBalance, cashBalance: newCash, tpaBalance: newTPA });
+    setDoc(doc(db, 'appdata', 'balances'), { currentBalance, savingsBalance, cashBalance: newCash, tpaBalance: newTPA, cashInHandBalance });
     const transId = generateUUID();
     const targetDate = date || formatDateISO(getSystemDate());
     const newTrans: Transaction = {
@@ -840,7 +934,7 @@ timestamp: Date.now()
     };
     setDoc(doc(db, COL.transactions, transId), newTrans);
     addAuditLog({ action: 'DEBITO_CASH_TPA', module: 'FINANCEIRO', entityId: transId, description: `Débito ${origin}: ${amount.toLocaleString('pt-AO')} Kz. ${note}`, performedBy: performedBy || user?.name || 'Sistema' });
-  }, [validateAction, getSystemDate, cashBalance, tpaBalance, currentBalance, savingsBalance, addAuditLog, user]);
+  }, [validateAction, getSystemDate, cashBalance, tpaBalance, currentBalance, savingsBalance, cashInHandBalance, addAuditLog, user]);
 
   const registrarDespesaGlobal = useCallback((data: { tipo: string; origem: string; descricao: string; nota: string; valor: number; usuario: string; data_operacional: string; referenceId?: string; }) => {
     try {
@@ -974,22 +1068,33 @@ timestamp: Date.now()
       let newCB = currentBalance;
       let newCashBal = cashBalance;
       let newTPABal = tpaBalance;
+      let newCashInHandBal = cashInHandBalance;
       existingClosureTrans.forEach(t => {
         const isEntry = t.type === 'entrada';
-        if (t.accountName === 'Conta Corrente') newCB += isEntry ? -t.amount : t.amount;
+        if (t.accountName === 'Conta Bancária' || t.accountName === 'Conta Corrente') newCB += isEntry ? -t.amount : t.amount;
         if (t.accountName === 'Caixa (Dinheiro)') newCashBal += isEntry ? -t.amount : t.amount;
         else if (t.accountName === 'TPA') newTPABal += isEntry ? -t.amount : t.amount;
+        else if (t.accountName === 'Em Mão') newCashInHandBal += isEntry ? -t.amount : t.amount;
       });
 
-      newCB = newCB + totalLifted;
+      // PROD-3: Cash → Em Mão, TPA+Transfer → Conta Bancária
+      newCB = newCB + (tpaFinal + transferFinal);
       newCashBal = newCashBal + cash;
       newTPABal = newTPABal + (tpaFinal + transferFinal);
+      newCashInHandBal = newCashInHandBal + cash;
+
       setCurrentBalance(newCB);
       setCashBalance(newCashBal);
       setTPABalance(newTPABal);
-      setCards(prev => prev.map(c => c.id === 'main' ? { ...c, balance: newCB } : c));
-      setDoc(doc(db, 'appdata', 'balances'), { currentBalance: newCB, savingsBalance, cashBalance: newCashBal, tpaBalance: newTPABal });
+      setCashInHandBalance(newCashInHandBal);
+      setCards(prev => prev.map(c => {
+        if (c.id === 'main') return { ...c, balance: newCB };
+        if (c.id === 'cash_in_hand') return { ...c, balance: newCashInHandBal };
+        return c;
+      }));
+      setDoc(doc(db, 'appdata', 'balances'), { currentBalance: newCB, savingsBalance, cashBalance: newCashBal, tpaBalance: newTPABal, cashInHandBalance: newCashInHandBal });
       setDoc(doc(db, COL.cards, 'main'), { ...cards.find(c => c.id === 'main'), balance: newCB });
+      setDoc(doc(db, COL.cards, 'cash_in_hand'), { ...cards.find(c => c.id === 'cash_in_hand'), balance: newCashInHandBal });
 
       if (totalLifted > 0) {
         setDoc(doc(db, COL.transactions, `${reportId}_closure`), {
@@ -997,7 +1102,7 @@ timestamp: Date.now()
           date: `${targetDate}, ${timeStr}`,
           description: `Fecho (${targetDate}) — Cash: ${cash.toLocaleString('pt-AO')} Kz | TPA: ${(tpaFinal + transferFinal).toLocaleString('pt-AO')} Kz`,
           referenceId: reportId, referenceType: 'day_closure', performedBy: confirmedBy,
-          accountName: 'Conta Corrente', status: 'ATIVO', operationalDay: targetDate, timestamp: Date.now()
+          accountName: 'Conta Bancária', status: 'ATIVO', operationalDay: targetDate, timestamp: Date.now()
         });
       }
     }
@@ -1006,7 +1111,7 @@ timestamp: Date.now()
     if (lunchVal > 0 && !report.lunchProcessed) registrarAlmocoBlindado({ ...finalReport, lunchExpense: lunchVal } as SalesReport);
     setDoc(doc(db, COL.salesReports, reportId), finalReport);
     addAuditLog({ action: isUnilateral ? 'CONFIRMAÇÃO_UNILATERAL_FECHO' : 'VALIDAÇÃO_FINAL_FECHO', module: 'VENDAS', entityId: reportId, description: `Fecho confirmado para ${reportDateStr}.`, performedBy: confirmedBy });
-  }, [checkPermission, salesReports, products, getSystemDate, cashBalance, tpaBalance, currentBalance, savingsBalance, transactions, cards, handleStockMovement, registrarAlmocoBlindado, addAuditLog]);
+  }, [checkPermission, salesReports, products, getSystemDate, cashBalance, tpaBalance, currentBalance, savingsBalance, cashInHandBalance, transactions, cards, handleStockMovement, registrarAlmocoBlindado, addAuditLog]);
 
   const addEquipment = useCallback((equipment: Omit<Equipment, 'id' | 'prevQty'>) => {
     try {
@@ -1024,13 +1129,9 @@ timestamp: Date.now()
       if (equip) {
         setDoc(doc(db, COL.equipments, id), { ...equip, ...updates });
         const historyLog = {
-          id: generateUUID(),
-          timestamp: Date.now(),
-          date: formatDateISO(new Date()),
-          performedBy: user?.name || 'Sistema',
-          totalItems: updates.qty ?? equip.qty,
-          discrepancies: [],
-          status: 'OK' as const,
+          id: generateUUID(), timestamp: Date.now(), date: formatDateISO(new Date()),
+          performedBy: user?.name || 'Sistema', totalItems: updates.qty ?? equip.qty,
+          discrepancies: [], status: 'OK' as const,
           justification: `Edição manual: ${equip.name} — Qtd: ${equip.qty} → ${updates.qty ?? equip.qty}`
         };
         setDoc(doc(db, COL.inventoryHistory, historyLog.id), historyLog);
@@ -1046,11 +1147,8 @@ timestamp: Date.now()
       if (equip) {
         setDoc(doc(db, COL.equipments, id), { ...equip, prevQty: equip.qty, qty: newQty });
         const historyLog = {
-          id: generateUUID(),
-          timestamp: Date.now(),
-          date: formatDateISO(new Date()),
-          performedBy: user?.name || 'Sistema',
-          totalItems: newQty,
+          id: generateUUID(), timestamp: Date.now(), date: formatDateISO(new Date()),
+          performedBy: user?.name || 'Sistema', totalItems: newQty,
           discrepancies: equip.qty !== newQty ? [{ name: equip.name, diff: newQty - equip.qty }] : [],
           status: (equip.qty !== newQty ? 'DIVERGENTE' : 'OK') as const,
           justification: `Contagem: ${equip.name} — ${equip.qty} → ${newQty}`
@@ -1080,14 +1178,16 @@ timestamp: Date.now()
   const updateCard = useCallback((id: string, updates: Partial<Card>) => {
     const card = cards.find(c => c.id === id);
     if (card) setDoc(doc(db, COL.cards, id), { ...card, ...updates });
-    if (id === 'main' && updates.balance !== undefined) { setCurrentBalance(updates.balance); setDoc(doc(db, 'appdata', 'balances'), { currentBalance: updates.balance, savingsBalance, cashBalance, tpaBalance }); }
-    if (id === 'savings' && updates.balance !== undefined) { setSavingsBalance(updates.balance); setDoc(doc(db, 'appdata', 'balances'), { currentBalance, savingsBalance: updates.balance, cashBalance, tpaBalance }); }
+    if (id === 'main' && updates.balance !== undefined) { setCurrentBalance(updates.balance); setDoc(doc(db, 'appdata', 'balances'), { currentBalance: updates.balance, savingsBalance, cashBalance, tpaBalance, cashInHandBalance }); }
+    if (id === 'savings' && updates.balance !== undefined) { setSavingsBalance(updates.balance); setDoc(doc(db, 'appdata', 'balances'), { currentBalance, savingsBalance: updates.balance, cashBalance, tpaBalance, cashInHandBalance }); }
+    if (id === 'cash_in_hand' && updates.balance !== undefined) { setCashInHandBalance(updates.balance); setDoc(doc(db, 'appdata', 'balances'), { currentBalance, savingsBalance, cashBalance, tpaBalance, cashInHandBalance: updates.balance }); }
     addAuditLog({ action: 'EDITAR_CARTAO', module: 'FINANCEIRO', entityId: id, description: `Cartão actualizado: ${id}`, performedBy: user?.name || 'Sistema' });
-  }, [cards, currentBalance, savingsBalance, cashBalance, tpaBalance, addAuditLog, user]);
+  }, [cards, currentBalance, savingsBalance, cashBalance, tpaBalance, cashInHandBalance, addAuditLog, user]);
 
   const deleteCard = useCallback((id: string) => {
     if (!checkPermission('finance_card_delete')) return;
-    if (id === 'main' || id === 'savings') return;
+    // PROD-3: proteger cartões do sistema
+    if (id === 'main' || id === 'savings' || id === 'cash_in_hand') return;
     const card = cards.find(c => c.id === id);
     deleteDoc(doc(db, COL.cards, id));
     addAuditLog({ action: 'REMOVER_CARTAO', module: 'FINANCEIRO', entityId: id, description: `Cartão removido: ${card?.name || id}`, performedBy: user?.name || 'Sistema' });
@@ -1096,7 +1196,7 @@ timestamp: Date.now()
   const resetTestData = useCallback(() => {
     if (!checkPermission('admin_global_admin')) return;
     INITIAL_PRODUCTS.forEach(p => setDoc(doc(db, COL.products, p.id), p));
-    setDoc(doc(db, 'appdata', 'balances'), { currentBalance: 0, savingsBalance: 0, cashBalance: 0, tpaBalance: 0 });
+    setDoc(doc(db, 'appdata', 'balances'), { currentBalance: 0, savingsBalance: 0, cashBalance: 0, tpaBalance: 0, cashInHandBalance: 0 });
     setDoc(doc(db, 'appdata', 'locked_days'), { days: [] });
     INITIAL_CARDS.forEach(c => setDoc(doc(db, COL.cards, c.id), { ...c, balance: 0 }));
     addAuditLog({ action: 'RESET_SISTEMA', module: 'SISTEMA', entityId: 'ALL', description: 'Sistema resetado.', performedBy: user?.name || 'Admin' });
@@ -1107,7 +1207,10 @@ timestamp: Date.now()
   }, []);
 
   const value = useMemo(() => ({
-    products: products.filter(p => !p.isArchived).sort((a, b) => a.name.localeCompare(b.name, 'pt')), categories, purchases, currentBalance, savingsBalance, cashBalance, tpaBalance, cards, transactions, salesReports,
+    products: products.filter(p => !p.isArchived).sort((a, b) => a.name.localeCompare(b.name, 'pt')),
+    categories, purchases, currentBalance, savingsBalance, cashBalance, tpaBalance,
+    cashInHandBalance, totalBalance: currentBalance + cashInHandBalance,
+    cards, transactions, salesReports,
     expenses, expenseCategories, inventoryHistory, priceHistory, lockedDays, systemDate,
     getSystemDate, setSystemDate, unlockDay, lockDay, isDayLocked, checkDayLock,
     addExpense, deleteExpense, updateExpense,
@@ -1121,9 +1224,10 @@ timestamp: Date.now()
     addCard, updateCard, deleteCard, resetTestData, runSystemDiagnostic,
     isSyncing, hasPendingChanges, syncData, handleStockMovement,
     ignoreLockedDayWithoutClosure,
-   notifications, addNotification, markNotificationRead, clearNotifications, resolveNotification,
+    notifications, addNotification, markNotificationRead, clearNotifications, resolveNotification, transferBetweenCards,
   }), [
-    products, categories, purchases, currentBalance, savingsBalance, cashBalance, tpaBalance, cards, transactions, salesReports,
+    products, categories, purchases, currentBalance, savingsBalance, cashBalance, tpaBalance,
+    cashInHandBalance, cards, transactions, salesReports,
     expenses, expenseCategories, inventoryHistory, priceHistory, lockedDays, systemDate,
     getSystemDate, unlockDay, lockDay, isDayLocked, checkDayLock,
     addExpense, deleteExpense, updateExpense,
@@ -1137,7 +1241,7 @@ timestamp: Date.now()
     addCard, updateCard, deleteCard, resetTestData, runSystemDiagnostic,
     isSyncing, hasPendingChanges, syncData, handleStockMovement,
     ignoreLockedDayWithoutClosure,
-    notifications, addNotification, markNotificationRead, clearNotifications, resolveNotification,
+    notifications, addNotification, markNotificationRead, clearNotifications, resolveNotification, transferBetweenCards,
   ]);
 
   return (
