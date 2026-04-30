@@ -432,11 +432,37 @@ const Sales: React.FC = () => {
     const snapshotKey = `mg_initial_stock_v2_${reportDate}`;
     const savedSnapshot = localStorage.getItem(snapshotKey);
 
+   const prevDate = new Date(reportDate + 'T12:00:00');
+    prevDate.setDate(prevDate.getDate() - 1);
+    const prevDateStr = formatDateISO(prevDate);
+    const prevReport = salesReports.find(r => {
+      const rDate = r.dateISO ? r.dateISO.split('T')[0] : r.date;
+      return rDate === prevDateStr;
+    });
+    const prevSnapshot: Record<string, string> = {};
+    if (prevReport?.itemsSnapshot?.length) {
+      (prevReport.itemsSnapshot as any[]).forEach((item: any) => {
+        prevSnapshot[item.id] = item.end.toString();
+      });
+    }
+    const hasPrevSnapshot = Object.keys(prevSnapshot).length > 0;
+
     if (isToday) {
       const dynamicInitial: Record<string, string> = {};
-      products.forEach(p => { const buy = purchasedStock[p.id] || 0; dynamicInitial[p.id] = Math.max(0, p.stock - buy).toString(); });
+      if (hasPrevSnapshot) {
+        products.forEach(p => {
+          const buy = purchasedStock[p.id] || 0;
+          const prevEnd = parseInt(prevSnapshot[p.id] ?? p.stock.toString());
+          dynamicInitial[p.id] = Math.max(0, prevEnd + buy).toString();
+        });
+      } else {
+        products.forEach(p => { const buy = purchasedStock[p.id] || 0; dynamicInitial[p.id] = Math.max(0, p.stock - buy).toString(); });
+      }
       setInitialStock(dynamicInitial);
       localStorage.setItem(snapshotKey, JSON.stringify(dynamicInitial));
+    } else if (hasPrevSnapshot && !savedSnapshot) {
+      setInitialStock(prevSnapshot);
+      localStorage.setItem(snapshotKey, JSON.stringify(prevSnapshot));
     } else if (savedSnapshot) {
       setInitialStock(JSON.parse(savedSnapshot));
     } else if (dateChanged) {
