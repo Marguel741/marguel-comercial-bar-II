@@ -1078,10 +1078,11 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       });
 
       // PROD-3: Cash → Em Mão, TPA+Transfer → Conta Bancária
+      // Cash físico vai para Em Mão. TPA+Transfer vai para Conta Bancária.
+      // cashBalance é um contador auxiliar — não afecta os cartões directamente
       newCB = newCB + (tpaFinal + transferFinal);
-      newCashBal = newCashBal + cash;
-      newTPABal = newTPABal + (tpaFinal + transferFinal);
       newCashInHandBal = newCashInHandBal + cash;
+      // NÃO somar ao newCashBal para evitar duplicação na Conta Bancária
 
       setCurrentBalance(newCB);
       setCashBalance(newCashBal);
