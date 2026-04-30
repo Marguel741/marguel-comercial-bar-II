@@ -225,6 +225,7 @@ export interface Card {
   color: string;
   type: 'Corrente' | 'Poupança' | 'Outro';
   validity: string;
+  isReadOnly?: boolean;
 }
 
 export interface StockOperationLog {
@@ -283,7 +284,10 @@ export interface Transaction {
   performedBy?: string;
   accountName?: string;
   status?: 'ATIVO' | 'CANCELADO' | 'AJUSTADO';
+  timestamp?: number;
   operationalDay?: string;
+  isTransfer?: boolean;
+  transferCounterpartId?: string;
 }
 
 export enum ClosureStatus {
