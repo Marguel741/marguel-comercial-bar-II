@@ -466,11 +466,12 @@ const Sales: React.FC = () => {
         localStorage.setItem(snapshotKey, JSON.stringify(prevSnapshot));
       } else if (savedSnapshot) {
         setInitialStock(JSON.parse(savedSnapshot));
-    } else if (dateChanged) {
-      const newSnapshot: Record<string, string> = {};
-      products.forEach(p => { newSnapshot[p.id] = p.stock.toString(); });
-      setInitialStock(newSnapshot);
-      localStorage.setItem(snapshotKey, JSON.stringify(newSnapshot));
+      } else if (dateChanged) {
+        const newSnapshot: Record<string, string> = {};
+        products.forEach(p => { newSnapshot[p.id] = p.stock.toString(); });
+        setInitialStock(newSnapshot);
+        localStorage.setItem(snapshotKey, JSON.stringify(newSnapshot));
+      }
     }
   }, [reportDate, salesReports, products, todayISO, purchasedStock]);
 
