@@ -315,8 +315,8 @@ const ConfirmEditModal: React.FC<ConfirmEditModalProps> = ({ show, onClose, repo
             className={`w-full py-5 font-black rounded-2xl shadow-xl transition-all uppercase tracking-widest ${canConfirm ? 'bg-[#003366] text-white hover:opacity-90 active:scale-95' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>
             Confirmar Fecho Definitivo
           </button>
-          <button onClick={onClose} className="w-full py-4 bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 font-black rounded-2xl hover:bg-slate-200 transition-all uppercase text-sm">
-            Voltar e Rever
+          <button onClick={() => { onClose(); setForceEditMode(true); }} className="w-full py-4 bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 font-black rounded-2xl hover:bg-slate-200 transition-all uppercase text-sm">
+            Voltar e Corrigir
           </button>
         </div>
       </div>
@@ -475,8 +475,7 @@ const Sales: React.FC = () => {
     });
   }, [contextSalesReports, reportDate]);
 
-  const isReadOnly = isLocked || hasConfirmedClosureAfter ||
-    (!forceEditMode && (existingReport?.status !== undefined && existingReport.status !== ClosureStatus.ABERTO));
+  const isReadOnly = isLocked
 
   const showToast = (message: string) => {
     setToast({ show: true, message });
@@ -703,8 +702,7 @@ const Sales: React.FC = () => {
   );
 
   // PROD-5: vista de relatório (fecho existente ou histórico)
-  if ((viewHistoryReport || (existingReport && (existingReport.status === ClosureStatus.FECHO_CONFIRMADO || existingReport.status === ClosureStatus.BLOQUEADO || isPartialClosure))) && !forceEditMode) {
-    const rawReport = viewHistoryReport || existingReport!;
+ if (viewHistoryReport && !forceEditMode) {
     const reportData = getReportData(rawReport);
     const isConfirmed = reportData.status === ClosureStatus.FECHO_CONFIRMADO || reportData.status === ClosureStatus.BLOQUEADO;
     const lastActor = reportData.editedBy || reportData.closedBy || reportData.initiatedBy || 'Desconhecido';
@@ -741,9 +739,9 @@ const Sales: React.FC = () => {
             <button onClick={() => navigateDay('prev')} className="p-2 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl hover:bg-slate-200 transition-all" title="Dia anterior">
               <ChevronLeft size={20} />
             </button>
-            <div className="px-3 py-1.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl flex items-center gap-2">
-              <Eye size={14} className="text-amber-600 dark:text-amber-400" />
-              <span className="text-xs font-black text-amber-700 dark:text-amber-400 uppercase">Modo Leitura</span>
+            <div className="px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-xl flex items-center gap-2">
+              <Eye size={14} className="text-blue-600 dark:text-blue-400" />
+              <span className="text-xs font-black text-blue-700 dark:text-blue-400 uppercase">Visualização Histórica</span>
             </div>
             <button onClick={() => navigateDay('next')} disabled={reportDate >= todayISO} className="p-2 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl hover:bg-slate-200 transition-all disabled:opacity-40 disabled:cursor-not-allowed" title="Dia seguinte">
               <ChevronRight size={20} />
@@ -965,10 +963,10 @@ const Sales: React.FC = () => {
 
   return (
     <div ref={pageTopRef} className="p-4 md:p-8 space-y-8 animate-fade-in pb-32 relative min-h-screen">
-      {forceEditMode && (
+      {existingReport && (
         <div className="max-w-5xl mx-auto mb-4">
-          <button onClick={() => { setForceEditMode(false); triggerHaptic('selection'); }} className="text-slate-500 dark:text-slate-400 font-bold hover:text-[#003366] dark:hover:text-blue-400 flex items-center gap-2">
-            ← Voltar para o Resumo
+          <button onClick={() => { setForceEditMode(false); setViewHistoryReport(null); triggerHaptic('selection'); }} className="text-slate-500 dark:text-slate-400 font-bold hover:text-[#003366] dark:hover:text-blue-400 flex items-center gap-2">
+            ← Voltar ao Resumo
           </button>
         </div>
       )}
