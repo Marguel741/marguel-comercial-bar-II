@@ -680,11 +680,6 @@ const Sales: React.FC = () => {
     if (!isFinancialsConfirmed) return 'Confirmar Valores';
     return 'Fechar o Dia';
   };
-    if (isLocked) return 'Dia Encerrado';
-    if (calculatedData.hasStockError) return 'Erro de Stock';
-    if (!isFinancialsConfirmed) return 'Confirmar Valores';
-    return 'Fechar o Dia';
-  };
 
   const getReportData = (report: any) => {
     if (!report) return { totals: { expected: 0, lifted: 0, discrepancy: 0, soldStock: 0 }, financials: { cash: 0, transfer: 0, ticket: 0, lunch: 0, justification: '' }, itemsSnapshot: [], status: ClosureStatus.FECHO_PARCIAL_FUNCIONARIO, displayDate: '', weekday: '', generatedAt: '' };
