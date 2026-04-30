@@ -674,9 +674,12 @@ const Sales: React.FC = () => {
     return 'bg-[#003366] text-white hover:opacity-90 shadow-blue-200';
   };
 
-  const getCloseButtonText = () => {
-    if (isNotToday) return 'Visualização';
-    if (hasConfirmedClosureAfter) return 'Dia Bloqueado (Fecho Posterior)';
+ const getCloseButtonText = () => {
+    if (isLocked) return 'Dia Encerrado';
+    if (calculatedData.hasStockError) return 'Erro de Stock';
+    if (!isFinancialsConfirmed) return 'Confirmar Valores';
+    return 'Fechar o Dia';
+  };
     if (isLocked) return 'Dia Encerrado';
     if (calculatedData.hasStockError) return 'Erro de Stock';
     if (!isFinancialsConfirmed) return 'Confirmar Valores';
@@ -703,7 +706,7 @@ const Sales: React.FC = () => {
 
   // PROD-5: vista de relatório (fecho existente ou histórico)
  if (viewHistoryReport && !forceEditMode) {
-    const reportData = getReportData(rawReport);
+    const reportData = getReportData(viewHistoryReport);
     const isConfirmed = reportData.status === ClosureStatus.FECHO_CONFIRMADO || reportData.status === ClosureStatus.BLOQUEADO;
     const lastActor = reportData.editedBy || reportData.closedBy || reportData.initiatedBy || 'Desconhecido';
     const hasClosurePermission = hasPermission(user, 'sales_closure');
