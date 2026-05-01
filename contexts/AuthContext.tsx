@@ -65,7 +65,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           try {
             const parsed = JSON.parse(raw);
             const found = users.find(u => u.id === parsed.id);
-            if (found && !found.isBanned) {
+           if (found && !found.isBanned && found.isApproved) {
               setUser(found);
             } else {
               localStorage.removeItem('mg_user');
@@ -289,9 +289,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       status: 'Ativo',
     };
     await saveUser(newUser);
-    localStorage.setItem('mg_user', JSON.stringify(newUser));
-    setUser(newUser);
-    return { success: true, message: 'Conta criada. Aguarda aprovação do Administrador.' };
+   return { success: true, message: 'Conta criada. Aguarda aprovação do Administrador.' };
   }, [allUsers]);
 
   const logout = useCallback(() => {
