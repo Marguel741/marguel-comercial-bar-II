@@ -342,15 +342,18 @@ const Sales: React.FC = () => {
   const pageTopRef = useRef<HTMLDivElement>(null);
   const dateInputRef = useRef<HTMLInputElement>(null);
   const todayISO = getSystemDate().toISOString().split('T')[0];
-  const [reportDate, setReportDate] = useState(todayISO);
+  const yesterdayISO = (() => {
+    const d = new Date(getSystemDate());
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().split('T')[0];
+  })();
+  const [reportDate, setReportDate] = useState(yesterdayISO);
   const [isSummaryFullscreen, setIsSummaryFullscreen] = useState(false);
 
   const existingReport = salesReports.find(r => {
     const reportDateISO = (r as any).dateISO ? (r as any).dateISO.split('T')[0] : r.date;
     return reportDateISO === reportDate;
   });
-
-  useEffect(() => { setReportDate(todayISO); }, []);
 
  useEffect(() => {
     if (reportDate > todayISO) setReportDate(todayISO);
@@ -446,32 +449,37 @@ const Sales: React.FC = () => {
       });
     }
     const hasPrevSnapshot = Object.keys(prevSnapshot).length > 0;
-
-    if (isToday) {
-      const dynamicInitial: Record<string, string> = {};
-      if (hasPrevSnapshot) {
-        products.forEach(p => {
-          const buy = purchasedStock[p.id] || 0;
-          const prevEnd = parseInt(prevSnapshot[p.id] ?? p.stock.toString());
-          dynamicInitial[p.id] = Math.max(0, prevEnd + buy).toString();
-        });
-      } else {
-        products.forEach(p => { const buy = purchasedStock[p.id] || 0; dynamicInitial[p.id] = Math.max(0, p.stock - buy).toString(); });
+    // Invalidar localStorage se temos prevSnapshot mais fiável
+    if (hasPrevSnapshot && savedSnapshot) {
+      const saved = JSON.parse(savedSnapshot);
+      const firstKey = Object.keys(prevSnapshot)[0];
+      if (firstKey && saved[firstKey] !== prevSnapshot[firstKey]) {
+        localStorage.removeItem(snapshotKey);
       }
+    }
+    const freshSavedSnapshot = localStorage.getItem(snapshotKey);
+
+    // Lógica unificada: usa sempre prevSnapshot quando disponível
+    if (hasPrevSnapshot) {
+      const dynamicInitial: Record<string, string> = {};
+      products.forEach(p => {
+        const buy = purchasedStock[p.id] || 0;
+        const prevEnd = parseInt(prevSnapshot[p.id] ?? '0');
+        dynamicInitial[p.id] = Math.max(0, prevEnd + buy).toString();
+      });
       setInitialStock(dynamicInitial);
       localStorage.setItem(snapshotKey, JSON.stringify(dynamicInitial));
-   } else if (!isToday) {
-      if (hasPrevSnapshot) {
-        setInitialStock(prevSnapshot);
-        localStorage.setItem(snapshotKey, JSON.stringify(prevSnapshot));
-      } else if (savedSnapshot) {
-        setInitialStock(JSON.parse(savedSnapshot));
-      } else if (dateChanged) {
-        const newSnapshot: Record<string, string> = {};
-        products.forEach(p => { newSnapshot[p.id] = p.stock.toString(); });
-        setInitialStock(newSnapshot);
-        localStorage.setItem(snapshotKey, JSON.stringify(newSnapshot));
-      }
+    } else if (freshSavedSnapshot) {
+      setInitialStock(JSON.parse(freshSavedSnapshot));
+    } else {
+      // Fallback final: stock actual menos compras do dia
+      const fallback: Record<string, string> = {};
+      products.forEach(p => {
+        const buy = purchasedStock[p.id] || 0;
+        fallback[p.id] = Math.max(0, p.stock - buy).toString();
+      });
+      setInitialStock(fallback);
+      localStorage.setItem(snapshotKey, JSON.stringify(fallback));
     }
   }, [reportDate, salesReports, products, todayISO, purchasedStock]);
 
@@ -515,6 +523,7 @@ const Sales: React.FC = () => {
   const canViewMargins = hasPermission(user, 'sales_view_margins');
   const isLocked = isDayLocked(reportDate);
   const isNotToday = reportDate !== todayISO;
+  const isYesterday = reportDate === yesterdayISO;
 
   const hasConfirmedClosureAfter = useMemo(() => {
     return contextSalesReports.some(r => {
@@ -720,16 +729,18 @@ const Sales: React.FC = () => {
   const getCloseButtonColor = () => {
     if (calculatedData.hasStockError) return 'bg-red-500 text-white';
     if (!isFinancialsConfirmed) return 'bg-slate-200 text-slate-600 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-300';
+    if (isYesterday) return 'bg-[#003366] text-white hover:opacity-90 shadow-blue-200';
     if (isNotToday) return 'bg-amber-500 text-white hover:opacity-90 shadow-amber-200';
-    return 'bg-[#003366] text-white hover:opacity-90 shadow-blue-200';
+    return 'bg-emerald-600 text-white hover:opacity-90 shadow-emerald-200';
   };
 
  const getCloseButtonText = () => {
     if (isLocked) return 'Dia Encerrado';
     if (calculatedData.hasStockError) return 'Erro de Stock';
     if (!isFinancialsConfirmed) return 'Confirmar Valores';
+    if (isYesterday) return 'Fechar o Dia de Ontem';
     if (isNotToday) return 'Fechar Dia Anterior';
-    return 'Fechar o Dia';
+    return 'Fechar o Dia de Hoje';
   };
 
   const getReportData = (report: any) => {
@@ -1154,7 +1165,7 @@ const Sales: React.FC = () => {
             <Calendar size={18} className="text-[#003366] dark:text-blue-400" />
             <span className="text-[#003366] dark:text-blue-400 font-bold">{formatDisplayDate(formatDateISO(new Date(reportDate + 'T12:00:00')))}</span>
             <div className="ml-2 px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-[10px] font-black uppercase tracking-tighter rounded border border-blue-200 dark:border-blue-800">
-              {isNotToday ? 'Visualização Histórica' : 'Data Operacional'}
+              {isYesterday ? 'Data Operacional (Ontem)' : isNotToday ? 'Visualização Histórica' : 'Hoje'}
             </div>
           </div>
         </div>
