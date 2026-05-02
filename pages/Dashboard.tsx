@@ -228,34 +228,43 @@ const Dashboard: React.FC = () => {
     }
 
     // Financial Alerts
-    const recentDiscrepancy = getConfirmedSalesReports().find(r => (r.discrepancy || r.totals?.discrepancy || 0) !== 0);
-    if (recentDiscrepancy) {
-      const discrepancyVal = recentDiscrepancy.discrepancy || recentDiscrepancy.totals?.discrepancy || 0;
-      list.push({
-        id: `disc-${recentDiscrepancy.id}`,
-        type: 'CRITICO',
-        title: 'Divergência Financeira',
-        message: `Divergência de ${(discrepancyVal || 0).toLocaleString('pt-AO')} Kz em ${recentDiscrepancy.date || recentDiscrepancy.displayDate}`,
-        icon: TrendingDown,
-        color: 'red',
-        isSystem: true,
-      });
-    }
+    const recentDiscrepancy = getConfirmedSalesReports()
+    .filter(r => (r.discrepancy || r.totals?.discrepancy || 0) !== 0)
+    .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))[0];
+  if (recentDiscrepancy) {
+    const discrepancyVal = recentDiscrepancy.discrepancy || recentDiscrepancy.totals?.discrepancy || 0;
+    const discDate = recentDiscrepancy.dateISO?.split('T')[0] || recentDiscrepancy.date || recentDiscrepancy.displayDate || '';
+    list.push({
+      id: `disc-${recentDiscrepancy.id}`,
+      type: 'CRITICO',
+      title: 'Divergência Financeira',
+      message: `Divergência de ${(discrepancyVal || 0).toLocaleString('pt-AO')} Kz em ${discDate}`,
+      icon: TrendingDown,
+      color: 'red',
+      isSystem: true,
+    });
+  }
 
     // Closing Alert
     const todayStr = formatDateISO(systemDate);
-    const hasReportToday = getConfirmedSalesReports().some(r => (r.date || r.displayDate) === todayStr);
-    if (!hasReportToday) {
-      list.push({
-        id: 'no-close',
-        type: 'CRITICO',
-        title: 'Fecho Pendente',
-        message: 'Fecho de caixa ainda não realizado hoje.',
-        icon: Clock,
-        color: 'red',
-        isSystem: true,
-      });
-    }
+  const yesterdayDate = new Date(systemDate);
+  yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+  const yesterdayStr = formatDateISO(yesterdayDate);
+  const hasReportYesterday = getConfirmedSalesReports().some(r => {
+    const rDate = (r as any).dateISO ? (r as any).dateISO.split('T')[0] : r.date;
+    return rDate === yesterdayStr;
+  });
+  if (!hasReportYesterday) {
+    list.push({
+      id: 'no-close-yesterday',
+      type: 'CRITICO',
+      title: 'Fecho Pendente',
+      message: `Fecho de ontem (${yesterdayStr}) ainda não confirmado.`,
+      icon: Clock,
+      color: 'red',
+      isSystem: true,
+    });
+  }
 
     // Alertas custom do Firestore — apenas não resolvidos
     const firestoreAlerts = notifications
