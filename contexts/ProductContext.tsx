@@ -146,7 +146,7 @@ interface ProductContextType {
   addCategory: (category: string) => void;
   editCategory: (oldName: string, newName: string) => Promise<void>;
   removeCategory: (category: string) => void;
-  addPurchase: (items: Record<string, number>, source: 'Prices' | 'Inventory' | 'Sales', completedBy: string, attachments?: string[], supplier?: string) => void;
+  addPurchase: (items: Record<string, number>, source: 'Prices' | 'Inventory' | 'Sales', completedBy: string, attachments?: string[], supplier?: string, purchaseDate?: string) => void;
   getPurchasesByDate: (dateStr: string) => Record<string, number>;
   getTodayPurchases: () => Record<string, number>;
   processTransaction: (type: 'deposit' | 'withdraw', account: 'main' | 'savings' | string, amount: number, description: string, category?: string, referenceId?: string, referenceType?: Transaction['referenceType'], performedBy?: string) => void;
@@ -876,7 +876,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     addAuditLog({ action: 'REMOVER_CATEGORIA', module: 'INVENTARIO', description: `Categoria ${category} removida.`, performedBy: user?.name || 'Sistema' });
   }, [checkPermission, addAuditLog, user]);
 
-  const addPurchase = useCallback((items: Record<string, number>, source: 'Prices' | 'Inventory' | 'Sales', completedBy: string, attachments?: string[], supplier?: string) => {
+  const addPurchase = useCallback((items: Record<string, number>, source: 'Prices' | 'Inventory' | 'Sales', completedBy: string, attachments?: string[], supplier?: string, purchaseDate?: string) => {
     try {
       if (!checkPermission('purchases_execute')) return;
       validateAction('PURCHASE', { date: systemDate });
@@ -892,9 +892,10 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
           if (p) handleStockMovement(productId, qtyPacks * (p.packSize || 1), 'PURCHASE', completedBy, 'Compra de Stock', purchaseId);
         }
       });
-      const newRecord: PurchaseRecord = { id: purchaseId, name: source === 'Inventory' ? 'Ajuste de Stock (Inventário)' : source === 'Sales' ? 'Compra Rápida (Vendas)' : 'Compra Efectuada', date: getSystemDateStr(), items, total: totalValue, completedBy, supplier, timestamp: getSystemDate().getTime(), source, attachments, synced: true };
+      const targetDateStr = purchaseDate || getSystemDateStr();
+      const newRecord: PurchaseRecord = { id: purchaseId, name: source === 'Inventory' ? 'Ajuste de Stock (Inventário)' : source === 'Sales' ? 'Compra Rápida (Vendas)' : 'Compra Efectuada', date: targetDateStr, items, total: totalValue, completedBy, supplier, timestamp: getSystemDate().getTime(), source, attachments, synced: true };
       setDoc(doc(db, COL.purchases, purchaseId), newRecord);
-      if (totalValue > 0) processTransaction('withdraw', 'main', totalValue, 'Compra de estoque', 'Compra de Estoque', purchaseId, 'purchase', completedBy);
+      if (totalValue > 0) processTransaction('withdraw', 'main', totalValue, `Compra de estoque (${targetDateStr})`, 'Compra de Estoque', purchaseId, 'purchase', completedBy, targetDateStr);
       addAuditLog({ action: 'CRIAR_COMPRA', module: 'COMPRAS', entityId: purchaseId, description: `Compra: ${totalValue.toLocaleString('pt-AO')} Kz. Origem: ${source}`, performedBy: completedBy });
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Erro desconhecido';
