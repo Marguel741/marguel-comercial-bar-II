@@ -102,6 +102,7 @@ const Prices: React.FC = () => {
   const [purchaseCart, setPurchaseCart] = useState<Record<string, number>>({});
   const [purchaseAttachments, setPurchaseAttachments] = useState<string[]>([]);
   const [purchaseSupplier, setPurchaseSupplier] = useState('');
+  const [purchaseDate, setPurchaseDate] = useState('');
   const [isProcessingPurchase, setIsProcessingPurchase] = useState(false);
   const [reportProposal, setReportProposal] = useState<SavedProposal | PurchaseRecord | null>(null);
   const [viewImageIndex, setViewImageIndex] = useState<number | null>(null);
@@ -374,11 +375,13 @@ const Prices: React.FC = () => {
         'Prices',
         user?.name || 'Desconhecido',
         purchaseAttachments,
-        purchaseSupplier || 'Sem Fornecedor'
+        purchaseSupplier || 'Sem Fornecedor',
+        purchaseDate || undefined
       );
       setPurchaseCart({});
       setPurchaseAttachments([]);
       setPurchaseSupplier('');
+      setPurchaseDate('');
       setPurchaseStep('history');
       showToast("Compra efectuada! Stock e Relatórios Actualizados.");
     } catch (error) {
@@ -1297,11 +1300,24 @@ const Prices: React.FC = () => {
                   <div className="space-y-6">
                     <div className="bg-white dark:bg-slate-800 rounded-[32px] p-6 shadow-xl border border-slate-100 dark:border-slate-700">
                       <h3 className="text-sm font-black text-slate-800 dark:text-white mb-4 flex items-center gap-2 uppercase tracking-wider">
-                        <Truck size={16} /> Fornecedor / Ref.
-                      </h3>
-                      <input type="text" value={purchaseSupplier} onChange={(e) => setPurchaseSupplier(e.target.value)}
-                        placeholder="Ex: Refriango, Coca-Cola..."
-                        className="w-full p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border-none soft-ui-inset text-sm font-medium dark:text-white" />
+                      <Truck size={16} /> Fornecedor / Ref.
+                    </h3>
+                    <input type="text" value={purchaseSupplier} onChange={(e) => setPurchaseSupplier(e.target.value)}
+                      placeholder="Ex: Refriango, Coca-Cola..."
+                      className="w-full p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border-none soft-ui-inset text-sm font-medium dark:text-white mb-4" />
+                    <div>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1">
+                        <Calendar size={12} /> Data da Compra (deixar vazio = hoje)
+                      </p>
+                      <input type="date" value={purchaseDate} max={formatDateISO(getSystemDate())}
+                        onChange={(e) => setPurchaseDate(e.target.value)}
+                        className="w-full p-3 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-[#0054A6]" />
+                      {purchaseDate && purchaseDate !== formatDateISO(getSystemDate()) && (
+                        <p className="text-[10px] text-amber-600 font-bold mt-1 flex items-center gap-1">
+                          ⚠️ Compra será registada em {purchaseDate}
+                        </p>
+                      )}
+                    </div>
                     </div>
                     <div className="bg-white dark:bg-slate-800 rounded-[32px] p-6 shadow-xl border border-slate-100 dark:border-slate-700">
                       <h3 className="text-sm font-black text-slate-800 dark:text-white mb-4 flex items-center gap-2 uppercase tracking-wider">
