@@ -252,11 +252,12 @@ const ConfirmEditModal: React.FC<ConfirmEditModalProps> = ({ show, onClose, repo
   if (!show || !reportData?.id) return null;
 
   const lastActor = reportData?.editedBy || reportData?.closedBy || 'Desconhecido';
-  const isSameUser = user?.name && user.name === lastActor;
+  // SL-4: no primeiro fecho editedBy é null — não bloquear por "mesmo utilizador"
+  const isFirstClosure = !reportData?.editedBy;
+  const isSameUser = !isFirstClosure && !!(user?.name && user.name === lastActor);
   const isAdminOrOwner = user?.role === UserRole.PROPRIETARIO || user?.role === UserRole.ADMIN_GERAL;
   const hasClosurePermission = hasPermission(user, 'sales_closure');
   const canConfirm = hasClosurePermission && (!isSameUser || isAdminOrOwner);
-  const isUnilateralAllowed = isAdminOrOwner;
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[300] flex items-center justify-center p-4 animate-fade-in">
@@ -355,24 +356,25 @@ const Sales: React.FC = () => {
     return reportDateISO === reportDate;
   });
 
- useEffect(() => {
+ // SL-1: não incluir salesReports nas deps — causa loop infinito com onSnapshot
+  // usar contextSalesReports directamente (referência estável do contexto)
+  useEffect(() => {
     if (reportDate > todayISO) setReportDate(todayISO);
     const year = reportDate.split('-')[0];
     if (year && parseInt(year) < 2025) setReportDate('2025-01-01');
     setHasManuallyOpened(false);
     setForceEditMode(false);
 
-    // Ao navegar para outro dia, abrir resumo automaticamente se existir fecho
-    const report = salesReports.find(r => {
-      const rDate = r.dateISO ? r.dateISO.split('T')[0] : r.date;
+    const report = contextSalesReports.find(r => {
+      const rDate = (r as any).dateISO ? (r as any).dateISO.split('T')[0] : r.date;
       return rDate === reportDate;
     });
     if (report) {
-      setViewHistoryReport(report);
+      setViewHistoryReport(report as unknown as DailyReport);
     } else {
       setViewHistoryReport(null);
     }
-  }, [reportDate, todayISO, salesReports]);
+  }, [reportDate, todayISO]); // SL-1: salesReports removido das deps
   
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') setIsSummaryFullscreen(false); };
@@ -435,16 +437,23 @@ const Sales: React.FC = () => {
     const snapshotKey = `mg_initial_stock_v2_${reportDate}`;
     const savedSnapshot = localStorage.getItem(snapshotKey);
 
-   const prevDate = new Date(reportDate + 'T12:00:00');
-    prevDate.setDate(prevDate.getDate() - 1);
-    const prevDateStr = formatDateISO(prevDate);
-    const prevReport = salesReports.find(r => {
-      const rDate = r.dateISO ? r.dateISO.split('T')[0] : r.date;
-      return rDate === prevDateStr;
-    });
+    // SL-5: procurar o último fecho CONFIRMADO antes de reportDate, não apenas o dia anterior
+    // Resolve o problema de zeros em dias históricos quando há dias sem fecho intermédio
+    const lastConfirmedBeforeDate = contextSalesReports
+      .filter(r => {
+        const rDate = ((r as any).dateISO ? (r as any).dateISO.split('T')[0] : r.date) || '';
+        const hasSnapshot = !!(r as any).itemsSnapshot?.length;
+        return rDate < reportDate && hasSnapshot;
+      })
+      .sort((a, b) => {
+        const aDate = ((a as any).dateISO ? (a as any).dateISO.split('T')[0] : a.date) || '';
+        const bDate = ((b as any).dateISO ? (b as any).dateISO.split('T')[0] : b.date) || '';
+        return bDate.localeCompare(aDate);
+      })[0];
+
     const prevSnapshot: Record<string, string> = {};
-    if (prevReport?.itemsSnapshot?.length) {
-      (prevReport.itemsSnapshot as any[]).forEach((item: any) => {
+    if (lastConfirmedBeforeDate?.itemsSnapshot?.length) {
+      ((lastConfirmedBeforeDate as any).itemsSnapshot as any[]).forEach((item: any) => {
         prevSnapshot[item.id] = item.end.toString();
       });
     }
@@ -507,14 +516,14 @@ const Sales: React.FC = () => {
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
   const [breakdowns, setBreakdowns] = useState<Record<string, { packs: number, singles: number, waste: number }>>({});
 
-  // Manter viewHistoryReport sincronizado com Firestore após confirmações
+  // SL-2: usar contextSalesReports e incluir viewHistoryReport.id nas deps
   useEffect(() => {
     if (!viewHistoryReport) return;
-    const updated = salesReports.find(r => r.id === viewHistoryReport.id);
-    if (updated && updated.status !== viewHistoryReport.status) {
+    const updated = contextSalesReports.find(r => r.id === viewHistoryReport.id);
+    if (updated && (updated as unknown as DailyReport).status !== viewHistoryReport.status) {
       setViewHistoryReport(updated as unknown as DailyReport);
     }
-  }, [salesReports]);
+  }, [contextSalesReports, viewHistoryReport?.id]);
 
   const isAdminOrOwner = user?.role === UserRole.PROPRIETARIO || user?.role === UserRole.ADMIN_GERAL;
   const canEditInitialStock = hasPermission(user, 'sales_edit') && (!isDayLocked(reportDate) || isAdminOrOwner);
@@ -710,13 +719,18 @@ const Sales: React.FC = () => {
       const reportExists = salesReports.some(r => r.id === reportData.id);
       if (reportExists) updateSalesReport(reportData.id, reportData);
       else addSalesReport(reportData);
-      setSyncState(prev => ({ ...prev, status: 'success' }));
+     setSyncState(prev => ({ ...prev, status: 'success' }));
       triggerHaptic('success');
-      showToast('Fecho realizado como parcial. Aguarda confirmação de outro responsável.');
+      showToast('Fecho realizado. Aguarda confirmação de outro responsável.');
+      // SL-3: abrir ConfirmEditModal para segundo passo de confirmação
       setTimeout(() => {
         setSyncState({ status: 'idle', currentStep: -1, completedSteps: [] });
-        setForceEditMode(false); setViewHistoryReport(null);
-        setEditConfirmationData(null); setShowConfirmEditModal(false);
+        setForceEditMode(false);
+        // Actualizar viewHistoryReport com o relatório recém-guardado
+        const savedReport = contextSalesReports.find(r => r.id === reportData.id) || reportData;
+        setViewHistoryReport(savedReport as unknown as DailyReport);
+        setEditConfirmationData(reportData);
+        setShowConfirmEditModal(true);
         pageTopRef.current?.scrollIntoView({ behavior: 'smooth' });
       }, 1500);
     } catch (error: any) {
@@ -1154,8 +1168,9 @@ const Sales: React.FC = () => {
               </button>
 
               {isNotToday && (
+                // SL-6: botão em linha própria em mobile para garantir visibilidade
                 <button onClick={() => setReportDate(todayISO)}
-                  className="px-3 py-1.5 bg-emerald-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-emerald-600 transition-all shadow-md">
+                  className="px-3 py-1.5 bg-emerald-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-emerald-600 transition-all shadow-md w-full md:w-auto justify-center mt-1 md:mt-0">
                   <RefreshCw size={14} /> Voltar ao Hoje
                 </button>
               )}
@@ -1200,7 +1215,7 @@ const Sales: React.FC = () => {
                 <React.Fragment key={item.id}>
                   <tr className={`hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors ${!item.isBalanced ? 'bg-red-50 dark:bg-red-900/20' : ''}`}>
                     <td className="p-3 md:p-4 font-bold text-slate-700 dark:text-slate-300">
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         {item.name}
                         {item.isPromo && item.soldQty > 0 && (
                           <button onClick={() => openMixMatchModal(item)} className={`p-1 rounded-full transition-all ${breakdowns[item.id] ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-400'}`}>
