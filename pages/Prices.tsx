@@ -278,47 +278,7 @@ const Prices: React.FC = () => {
       // PX-1: NÃO limpar editingPrices em caso de falha — dados ficam visíveis para retry
     }
   };
-
-    // FIN-1: validar parseFloat antes de incluir nos updates
-    // FIN-2: historyEntry removido — ProductContext.updateProduct já grava o histórico
-    const parsedBuy = updates.buy !== undefined ? parseFloat(updates.buy.replace(',', '.')) : undefined;
-    const parsedSell = updates.sell !== undefined ? parseFloat(updates.sell.replace(',', '.')) : undefined;
-    const parsedPromoQty = updates.promoQty !== undefined ? parseFloat(updates.promoQty.replace(',', '.')) : undefined;
-    const parsedPromoPrice = updates.promoPrice !== undefined ? parseFloat(updates.promoPrice.replace(',', '.')) : undefined;
-
-    if (parsedBuy !== undefined && isNaN(parsedBuy)) { showToast('Preço de compra inválido.'); return; }
-    if (parsedSell !== undefined && isNaN(parsedSell)) { showToast('Preço de venda inválido.'); return; }
-    if (parsedPromoQty !== undefined && isNaN(parsedPromoQty)) { showToast('Quantidade promocional inválida.'); return; }
-    if (parsedPromoPrice !== undefined && isNaN(parsedPromoPrice)) { showToast('Preço promocional inválido.'); return; }
-
-    const finalUpdates: Partial<Product> = {
-      buyPrice: parsedBuy,
-      sellPrice: parsedSell,
-      promoQty: parsedPromoQty,
-      promoPrice: parsedPromoPrice,
-      isPromoActive: updates.isPromoActive,
-      hasMixMatch: updates.isPromoActive !== undefined ? updates.isPromoActive : currentProduct.hasMixMatch,
-      mixMatchQty: parsedPromoQty !== undefined ? parsedPromoQty : currentProduct.mixMatchQty,
-      mixMatchPrice: parsedPromoPrice !== undefined ? parsedPromoPrice : currentProduct.mixMatchPrice,
-      isMixMatchActive: updates.isPromoActive !== undefined ? updates.isPromoActive : currentProduct.isMixMatchActive,
-      isMixMatch: updates.isPromoActive !== undefined ? updates.isPromoActive : currentProduct.isMixMatch,
-      ...(updates.isPromoActive === false ? { promoQty: 0, promoPrice: 0 } : {}),
-      discountAmount: parsedPromoPrice 
-        ? (currentProduct.sellPrice * (currentProduct.promoQty || 1) - parsedPromoPrice) 
-        : 0
-    };
-
-    Object.keys(finalUpdates).forEach(key => (finalUpdates as any)[key] === undefined && delete (finalUpdates as any)[key]);
-
-    updateProduct(productId, finalUpdates);
-    showToast(`Preços de ${productName} actualizados!`);
-    setEditingPrices(prev => {
-      const newState = { ...prev };
-      delete newState[productId];
-      return newState;
-    });
-  };
-
+  
   const updateSimulationCart = useCallback((productId: string, delta: number) => {
     triggerHaptic('impact');
     setIsCurrentSimulationSaved(false);
