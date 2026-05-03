@@ -219,11 +219,65 @@ const Prices: React.FC = () => {
     }));
   };
 
-  const handleSave = (productId: string, productName: string) => {
+  const handleSave = async (productId: string, productName: string) => {
     if (!canManagePrices) return;
     const updates = editingPrices[productId];
     const currentProduct = products.find(p => p.id === productId);
     if (!updates || !currentProduct) return;
+
+    const parsedBuy = updates.buy !== undefined ? parseFloat(updates.buy.replace(',', '.')) : undefined;
+    const parsedSell = updates.sell !== undefined ? parseFloat(updates.sell.replace(',', '.')) : undefined;
+    const parsedPromoQty = updates.promoQty !== undefined ? parseFloat(updates.promoQty.replace(',', '.')) : undefined;
+    const parsedPromoPrice = updates.promoPrice !== undefined ? parseFloat(updates.promoPrice.replace(',', '.')) : undefined;
+
+    if (parsedBuy !== undefined && isNaN(parsedBuy)) { showToast('Preço de compra inválido.'); return; }
+    if (parsedSell !== undefined && isNaN(parsedSell)) { showToast('Preço de venda inválido.'); return; }
+    if (parsedPromoQty !== undefined && isNaN(parsedPromoQty)) { showToast('Quantidade promocional inválida.'); return; }
+    if (parsedPromoPrice !== undefined && isNaN(parsedPromoPrice)) { showToast('Preço promocional inválido.'); return; }
+
+    const finalUpdates: Partial<Product> = {
+      buyPrice: parsedBuy,
+      sellPrice: parsedSell,
+      promoQty: parsedPromoQty,
+      promoPrice: parsedPromoPrice,
+      isPromoActive: updates.isPromoActive,
+      hasMixMatch: updates.isPromoActive !== undefined ? updates.isPromoActive : currentProduct.hasMixMatch,
+      mixMatchQty: parsedPromoQty !== undefined ? parsedPromoQty : currentProduct.mixMatchQty,
+      mixMatchPrice: parsedPromoPrice !== undefined ? parsedPromoPrice : currentProduct.mixMatchPrice,
+      isMixMatchActive: updates.isPromoActive !== undefined ? updates.isPromoActive : currentProduct.isMixMatchActive,
+      isMixMatch: updates.isPromoActive !== undefined ? updates.isPromoActive : currentProduct.isMixMatch,
+      ...(updates.isPromoActive === false ? { promoQty: 0, promoPrice: 0 } : {}),
+      discountAmount: parsedPromoPrice
+        ? (currentProduct.sellPrice * (currentProduct.promoQty || 1) - parsedPromoPrice)
+        : 0
+    };
+
+    // PX-1: remover undefined E NaN antes de enviar
+    Object.keys(finalUpdates).forEach(key => {
+      const val = (finalUpdates as any)[key];
+      if (val === undefined || (typeof val === 'number' && isNaN(val))) {
+        delete (finalUpdates as any)[key];
+      }
+    });
+
+    // PX-1: mostrar indicador de a guardar
+    showToast(`A guardar preços de ${productName}...`);
+
+    try {
+      await updateProduct(productId, finalUpdates);
+      showToast(`✅ Preços de ${productName} guardados no servidor!`);
+      // PX-1: só limpar editingPrices após confirmação de escrita
+      setEditingPrices(prev => {
+        const newState = { ...prev };
+        delete newState[productId];
+        return newState;
+      });
+    } catch (err) {
+      console.error('Erro ao guardar preço:', err);
+      showToast(`❌ Erro ao guardar. Verifique a ligação e tente novamente.`);
+      // PX-1: NÃO limpar editingPrices em caso de falha — dados ficam visíveis para retry
+    }
+  };
 
     // FIN-1: validar parseFloat antes de incluir nos updates
     // FIN-2: historyEntry removido — ProductContext.updateProduct já grava o histórico
@@ -563,12 +617,16 @@ const Prices: React.FC = () => {
             />
           </div>
           <div className="flex flex-col gap-2">
-            <div className="flex gap-2 overflow-x-auto custom-scrollbar pb-1 md:pb-0">
+            // PX-3: flex-shrink-0 em cada botão impede encolhimento e força scroll horizontal
+            <div
+              className="flex gap-2 overflow-x-auto pb-2"
+              style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+            >
               {filterCategories.map(cat => (
                 <button 
                   key={cat} 
                   onClick={() => { triggerHaptic('selection'); setSelectedCategory(cat); setSelectedSubcategory(null); }} 
-                  className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                  className={`flex-shrink-0 px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
                     selectedCategory === cat 
                       ? 'bg-[#003366] text-white shadow-lg shadow-blue-200' 
                       : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-100 dark:border-slate-700'
@@ -732,18 +790,25 @@ const Prices: React.FC = () => {
                             </td>
                             <td className="p-6 align-middle">
                               <div className="flex justify-center gap-3">
-                                <button 
-                                  onClick={() => handleSave(p.id, p.name)} 
-                                  disabled={!hasChanged || !canManagePrices || isLocked} 
-                                  className={`p-3 rounded-xl transition-all active:scale-95 ${
-                                    hasChanged && canManagePrices && !isLocked
-                                      ? 'bg-[#003366] text-white shadow-lg hover:bg-[#004488]' 
-                                      : 'bg-slate-100 dark:bg-slate-700 text-slate-300 dark:text-slate-500 cursor-not-allowed'
-                                  }`}
-                                  title={canManagePrices ? "Guardar Alterações" : "Sem permissão para alterar"}
-                                >
-                                  {canManagePrices ? <Save size={20} /> : <Lock size={20} />}
-                                </button>
+                                <div className="flex flex-col items-center gap-1">
+                              {hasChanged && canManagePrices && !isLocked && (
+                                <span className="text-[9px] font-black text-amber-500 uppercase tracking-wide animate-pulse">
+                                  Não guardado
+                                </span>
+                              )}
+                              <button 
+                                onClick={() => handleSave(p.id, p.name)} 
+                                disabled={!hasChanged || !canManagePrices || isLocked} 
+                                className={`p-3 rounded-xl transition-all active:scale-95 ${
+                                  hasChanged && canManagePrices && !isLocked
+                                    ? 'bg-[#003366] text-white shadow-lg hover:bg-[#004488] ring-2 ring-amber-400 ring-offset-1' 
+                                    : 'bg-slate-100 dark:bg-slate-700 text-slate-300 dark:text-slate-500 cursor-not-allowed'
+                                }`}
+                                title={canManagePrices ? "Guardar Alterações" : "Sem permissão para alterar"}
+                              >
+                                {canManagePrices ? <Save size={20} /> : <Lock size={20} />}
+                              </button>
+                            </div>
                                 <button 
                                   onClick={() => { triggerHaptic('selection'); setViewHistoryId(p.id); }} 
                                   className="p-3 bg-slate-100 dark:bg-slate-700 text-slate-400 rounded-xl hover:text-[#003366] dark:hover:text-blue-400 hover:bg-slate-200 dark:hover:bg-slate-600 transition-all active:scale-95"
