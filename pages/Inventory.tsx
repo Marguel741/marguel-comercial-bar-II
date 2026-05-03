@@ -35,7 +35,9 @@ const Inventory: React.FC = () => {
     getSystemDate,
     handleStockMovement,
     stockOperationHistory,
-    addNotification
+    addNotification,
+    salesReports,
+    getPurchasesByDate,
   } = useProducts();
   const { user } = useAuth();
   const { sidebarMode, triggerHaptic } = useLayout();
@@ -132,6 +134,45 @@ const Inventory: React.FC = () => {
   const [deleteCategoryConfirmation, setDeleteCategoryConfirmation] = useState<{ isOpen: boolean, categoryName: string | null }>({ isOpen: false, categoryName: null });
   const [editCategoryModal, setEditCategoryModal] = useState<{ isOpen: boolean, oldName: string, newName: string }>({ isOpen: false, oldName: '', newName: '' });
 
+  // INV-1: stock efectivo = último fecho confirmado + compras posteriores
+const effectiveStock = useMemo(() => {
+  const todayStr = formatDateISO(systemDate);
+  
+  // Último fecho confirmado com itemsSnapshot
+  const lastConfirmed = [...salesReports]
+    .filter(r => r.status === 'FECHO_CONFIRMADO' && r.itemsSnapshot?.length)
+    .sort((a, b) => {
+      const aD = (a.dateISO || a.date || '').split('T')[0];
+      const bD = (b.dateISO || b.date || '').split('T')[0];
+      return bD.localeCompare(aD);
+    })[0];
+
+  if (!lastConfirmed) return {}; // sem fecho — usar p.stock
+
+  const lastClosureDate = (lastConfirmed.dateISO || lastConfirmed.date || '').split('T')[0];
+
+  // Stock final do último fecho
+  const baseStock: Record<string, number> = {};
+  (lastConfirmed.itemsSnapshot as any[]).forEach((item: any) => {
+    baseStock[item.id] = item.end ?? 0;
+  });
+
+  // Somar compras entre o dia do fecho e hoje (inclusive)
+  products.forEach(p => {
+    if (baseStock[p.id] === undefined) baseStock[p.id] = p.stock;
+    // compras após o fecho
+    const d = new Date(lastClosureDate + 'T12:00:00');
+    d.setDate(d.getDate() + 1);
+    while (formatDateISO(d) <= todayStr) {
+      const dayPurchases = getPurchasesByDate(formatDateISO(d));
+      baseStock[p.id] = (baseStock[p.id] || 0) + (dayPurchases[p.id] || 0);
+      d.setDate(d.getDate() + 1);
+    }
+  });
+
+  return baseStock;
+}, [salesReports, products, systemDate, getPurchasesByDate]);
+  
   const filterCategories = useMemo(() => {
     return ['Todos', ...categories];
   }, [categories]);
@@ -153,7 +194,8 @@ const Inventory: React.FC = () => {
 
   const allGeneratedAlerts = useMemo(() => {
     return products.map(item => {
-      const status = getStockStatus(item.stock, item.minStock);
+       const stock = effectiveStock[item.id] ?? item.stock;
+      const status = getStockStatus(stock, item.minStock);
       if (status.type === 'OK') return null;
       
       const daysLow = 0; // No mock random days
@@ -163,7 +205,7 @@ const Inventory: React.FC = () => {
       return {
         id: item.id,
         product: item.name,
-        qty: item.stock,
+        qty: effectiveStock[item.id] ?? item.stock,
         minStock: item.minStock,
         status: status,
         daysInAlert: daysLow,
@@ -840,7 +882,8 @@ const Inventory: React.FC = () => {
 
                  <div className="space-y-4">
                     {filteredProducts.map((item) => {
-                      const status = getStockStatus(item.stock, item.minStock);
+                      const stock = effectiveStock[item.id] ?? item.stock;
+                      const status = getStockStatus(stock, item.minStock);
                       return (
                         <SoftCard key={item.id} className="flex items-center justify-between border-l-4 border-transparent hover:border-[#003366] dark:hover:border-blue-400">
                           <div className="flex items-center gap-4">
@@ -852,8 +895,8 @@ const Inventory: React.FC = () => {
                           </div>
                           <div className="flex items-center gap-6">
                             <div className="text-right">
-                              <p className={`text-2xl font-black ${status.type === 'OK' ? 'text-[#003366] dark:text-white' : (status.type === 'CRITICAL' ? 'text-red-500 dark:text-red-400' : 'text-amber-500 dark:text-amber-400')}`}>
-                                {item.stock}
+                             <p className={`text-2xl font-black ${status.type === 'OK' ? 'text-[#003366] dark:text-white' : (status.type === 'CRITICAL' ? 'text-red-500 dark:text-red-400' : 'text-amber-500 dark:text-amber-400')}`}>
+                                {effectiveStock[item.id] ?? item.stock}
                               </p>
                               <p className="text-xs text-slate-400 font-bold">unidades</p>
                             </div>
