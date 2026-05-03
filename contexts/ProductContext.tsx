@@ -422,9 +422,17 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       let existingLogId: string | null = null;
       if (referenceId) {
         const existingLog = stockOperationHistory.find(l => l.referenceId === referenceId && l.productId === productId);
-        if (existingLog) { qtyBefore = qtyBefore - existingLog.qtyAdded; existingLogId = existingLog.id; }
+        if (existingLog) {
+          // PC-5: verificar se já foi aplicado — se qtyAdded já está reflectido no stock actual,
+          // deduzir evita double-count. Se não está (estado stale), não deduzir.
+          const stockAfterLog = existingLog.qtyAfter;
+          const currentMatchesLog = Math.abs(product.stock - stockAfterLog) < 2; // tolerância de 1
+          if (currentMatchesLog) {
+            qtyBefore = qtyBefore - existingLog.qtyAdded;
+          }
+          existingLogId = existingLog.id;
+        }
       }
-
       let qtyAdded = type === 'SALE' ? -quantity : type === 'PURCHASE' ? quantity : quantity;
       const qtyAfter = Math.max(0, qtyBefore + qtyAdded);
       const isManual = type === 'ADJUSTMENT' || type === 'MANUAL_ADJUSTMENT' || (!referenceId && (type === 'SALE' || type === 'PURCHASE'));
@@ -803,34 +811,44 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   }, [checkPermission, validateAction, addAuditLog, addLog, user]);
 
-  const updateProduct = useCallback((id: string, updates: Partial<Product>) => {
+  const updateProduct = useCallback(async (id: string, updates: Partial<Product>): Promise<void> => {
     try {
       if (!checkPermission('inventory_product_edit')) return;
       validateAction('UPDATE_PRODUCT', {});
       const product = products.find(p => p.id === id);
       if (!product) return;
 
+      // PC-1: sanitizar NaN antes de escrever no Firestore
+      const sanitized: Partial<Product> = {};
+      for (const [k, v] of Object.entries(updates)) {
+        if (v === undefined) continue;
+        if (typeof v === 'number' && isNaN(v)) continue; // bloquear NaN
+        (sanitized as any)[k] = v;
+      }
+
       if (
-        (updates.sellPrice !== undefined && updates.sellPrice !== product.sellPrice) ||
-        (updates.buyPrice !== undefined && updates.buyPrice !== product.buyPrice)
+        (sanitized.sellPrice !== undefined && sanitized.sellPrice !== product.sellPrice) ||
+        (sanitized.buyPrice !== undefined && sanitized.buyPrice !== product.buyPrice)
       ) {
         const priceLog: PriceHistoryLog = {
           id: generateUUID(), productId: id, productName: product.name,
-          oldSellPrice: product.sellPrice, newSellPrice: updates.sellPrice ?? product.sellPrice,
-          oldBuyPrice: product.buyPrice, newBuyPrice: updates.buyPrice ?? product.buyPrice,
+          oldSellPrice: product.sellPrice, newSellPrice: sanitized.sellPrice ?? product.sellPrice,
+          oldBuyPrice: product.buyPrice, newBuyPrice: sanitized.buyPrice ?? product.buyPrice,
           changedBy: user?.name || 'Sistema', timestamp: Date.now(),
           date: formatDateISO(getSystemDate()), reason: 'Actualização manual de preço',
         };
-        setDoc(doc(db, COL.priceHistory, priceLog.id), priceLog);
+        await setDoc(doc(db, COL.priceHistory, priceLog.id), priceLog);
       }
 
-      if (updates.stock !== undefined && updates.stock !== product.stock) {
-        const diff = updates.stock - product.stock;
+      if (sanitized.stock !== undefined && sanitized.stock !== product.stock) {
+        const diff = sanitized.stock - product.stock;
         handleStockMovement(id, diff, 'MANUAL_ADJUSTMENT', user?.name || 'Sistema', 'Ajuste via Edição de Produto');
-        const { stock, ...otherUpdates } = updates;
-        if (Object.keys(otherUpdates).length > 0) setDoc(doc(db, COL.products, id), { ...product, ...otherUpdates });
+        const { stock, ...otherUpdates } = sanitized;
+        if (Object.keys(otherUpdates).length > 0) {
+          await setDoc(doc(db, COL.products, id), { ...product, ...otherUpdates });
+        }
       } else {
-        setDoc(doc(db, COL.products, id), { ...product, ...updates });
+        await setDoc(doc(db, COL.products, id), { ...product, ...sanitized });
       }
       addAuditLog({ action: 'EDITAR_PRODUTO', module: 'INVENTARIO', entityId: id, description: `Produto ${product.name} actualizado.`, performedBy: user?.name || 'Sistema' });
     } catch (error) {
@@ -1040,16 +1058,32 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     const liveReport = salesReports.find(r => r.id === reportId);
     const isForceReprocess = reportData && reportData.processedFinancials === false;
     if (!isForceReprocess && liveReport?.status === ClosureStatus.FECHO_CONFIRMADO && liveReport?.processedFinancials) { console.warn(`[confirmSalesReport] Bloqueado: já confirmado.`); return; }
-    const wasAlreadyProcessed = !reportData && (report.processedFinancials === true);
-    const wasStockUpdated = !reportData && (report.stockUpdated === true);
+   const wasAlreadyProcessed = report.processedFinancials === true && !isForceReprocess;
+    const wasStockUpdated = report.stockUpdated === true && !isForceReprocess;
     const reportDateStr = report.dateISO || report.date;
-    const finalReport: SalesReport = { ...report, status: ClosureStatus.FECHO_CONFIRMADO, confirmedBy, confirmationTimestamp: getSystemDate().getTime(), unilateralAdminConfirmation: isUnilateral, processedFinancials: true, stockUpdated: true, lunchProcessed: true, isFinalClosure: true };
+    const priceSnapshotAtClosure: Record<string, { sellPrice: number; buyPrice: number }> = {};
+    products.forEach(p => {
+      priceSnapshotAtClosure[p.id] = { sellPrice: p.sellPrice, buyPrice: p.buyPrice };
+    });
+    const finalReport: SalesReport = {
+      ...report,
+      status: ClosureStatus.FECHO_CONFIRMADO,
+      confirmedBy,
+      confirmationTimestamp: getSystemDate().getTime(),
+      unilateralAdminConfirmation: isUnilateral,
+      processedFinancials: true,
+      stockUpdated: true,
+      lunchProcessed: true,
+      isFinalClosure: true,
+      priceSnapshotAtClosure, // snapshot de preços para auditoria
+    };
 
     if (!wasStockUpdated && !report.stockUpdated) {
       (report.itemsSnapshot || report.itemsSummary || []).forEach((item: any) => {
         const p = products.find(prod => (item.productId && item.productId === prod.id) || item.id === prod.id || item.name === prod.name);
         const qty = item.soldQty ?? item.qty ?? 0;
-        if (p && qty > 0) handleStockMovement(p.id, qty, 'SALE', confirmedBy, `Fecho Confirmado: ${reportDateStr}`, `confirm_${reportId}_${p.id}`);
+        const stockRefId = `confirm_${reportId}_${p.id}_${finalReport.confirmationTimestamp}`;
+        if (p && qty > 0) handleStockMovement(p.id, qty, 'SALE', confirmedBy, `Fecho Confirmado: ${reportDateStr}`, stockRefId);
       });
     }
 
