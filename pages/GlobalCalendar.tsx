@@ -49,12 +49,12 @@ const GlobalCalendar: React.FC = () => {
   const [printDate, setPrintDate] = useState(formatDateISO(systemDate));
 
   useEffect(() => {
+    
     addAuditLog({
       action: 'ACESSO_PAGINA',
-      entity: 'Page',
+      module: 'CALENDÁRIO',
       entityId: 'GlobalCalendar',
-      details: `Utilizador ${user?.name} acedeu ao Calendário Marguel.`,
-      performedBy: user?.name || 'Sistema'
+      description: `Utilizador ${user?.name} acedeu ao Calendário Marguel.`,
     });
   }, [user, addAuditLog]);
 
@@ -737,8 +737,8 @@ const GlobalCalendar: React.FC = () => {
                               </div>
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                  {[
-                                     { label: 'Dinheiro (Cash)', value: dayData.report.cash, color: 'text-green-600', bg: 'bg-green-50' },
-                                     { label: 'Multicaixa (TPA)', value: (dayData.report.tpa || 0) + (dayData.report.transfer || 0), color: 'text-blue-600', bg: 'bg-blue-50' }
+                                     { label: 'Dinheiro (Cash)', value: dayData.report.cash ?? (dayData.report as any).financials?.cash ?? 0, color: 'text-green-600', bg: 'bg-green-50' },
+                                     { label: 'Multicaixa (TPA)', value: ((dayData.report.tpa || 0) + (dayData.report.transfer || 0)) || (((dayData.report as any).financials?.ticket ?? 0) + ((dayData.report as any).financials?.transfer ?? 0)), color: 'text-blue-600', bg: 'bg-blue-50' }
                                  ].map(m => (
                                     <div key={m.label} className={`${m.bg} dark:bg-opacity-10 p-5 rounded-3xl border border-white/50 shadow-sm`}>
                                         <p className="text-[10px] font-black uppercase opacity-60 mb-1">{m.label}</p>
