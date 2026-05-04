@@ -241,6 +241,7 @@ interface ConfirmEditModalProps {
   onClose: () => void;
   reportData: any;
   user: any;
+  isAdminOrOwner: boolean;
   salesReports: DailyReport[];
   confirmSalesReport: (id: string, by: string, unilateral: boolean, data: any) => void;
   showToast: (msg: string) => void;
@@ -248,9 +249,10 @@ interface ConfirmEditModalProps {
   setForceEditMode: (v: boolean) => void;
 }
 
-const ConfirmEditModal: React.FC<ConfirmEditModalProps> = ({ show, onClose, reportData, user, salesReports, confirmSalesReport, showToast, triggerHaptic, setForceEditMode }) => {
+const ConfirmEditModal: React.FC<ConfirmEditModalProps> = ({ show, onClose, reportData, user, isAdminOrOwner, salesReports, confirmSalesReport, showToast, triggerHaptic, setForceEditMode }) => {
   if (!show || !reportData?.id) return null;
 
+  const isUnilateralAllowed = isAdminOrOwner;
   const lastActor = reportData?.editedBy || reportData?.closedBy || 'Desconhecido';
   // SL-4: no primeiro fecho editedBy é null — não bloquear por "mesmo utilizador"
   const isFirstClosure = !reportData?.editedBy;
@@ -472,9 +474,8 @@ const Sales: React.FC = () => {
     if (hasPrevSnapshot) {
       const dynamicInitial: Record<string, string> = {};
       products.forEach(p => {
-        const buy = purchasedStock[p.id] || 0;
         const prevEnd = parseInt(prevSnapshot[p.id] ?? '0');
-        dynamicInitial[p.id] = Math.max(0, prevEnd + buy).toString();
+        dynamicInitial[p.id] = Math.max(0, prevEnd).toString();
       });
       setInitialStock(dynamicInitial);
       localStorage.setItem(snapshotKey, JSON.stringify(dynamicInitial));
@@ -1469,6 +1470,7 @@ const Sales: React.FC = () => {
         onClose={() => setShowConfirmEditModal(false)}
         reportData={editConfirmationData}
         user={user}
+        isAdminOrOwner={isAdminOrOwner}
         salesReports={salesReports}
         confirmSalesReport={confirmSalesReport}
         showToast={showToast}
