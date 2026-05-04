@@ -803,7 +803,7 @@ const Dashboard: React.FC = () => {
                       <p className="text-xs opacity-80">{alert.message}</p>
                     </div>
                     <div className="flex items-center gap-1">
-                      {alert.isCustom && isAdmin && (
+                      {(alert.isCustom || (alert.id?.startsWith('disc-') && isAdmin)) && isAdmin && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
