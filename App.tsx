@@ -7,7 +7,6 @@ import { hasPermission } from './src/utils/permissions';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { AuditProvider } from './contexts/AuditContext';
 import { ProductProvider } from './contexts/ProductContext';
-import { FinanceProvider } from './contexts/FinanceContext';
 import { LayoutProvider } from './contexts/LayoutContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { SettingsProvider } from './contexts/SettingsContext';
@@ -213,7 +212,6 @@ const AppContent: React.FC = () => {
   return (
     <SettingsProvider>
       <ProductProvider>
-        <FinanceProvider>
           <LayoutProvider>
             <Router>
               <div className="flex h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-300 overflow-hidden">
@@ -242,7 +240,6 @@ const AppContent: React.FC = () => {
               </div>
             </Router>
           </LayoutProvider>
-        </FinanceProvider>
       </ProductProvider>
     </SettingsProvider>
   );
