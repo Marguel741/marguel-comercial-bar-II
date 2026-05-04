@@ -6,7 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useAudit } from '../contexts/AuditContext';
 import { useLayout } from '../contexts/LayoutContext';
 import { DEFAULT_PERMISSIONS } from '../src/utils/permissions';
-import { saveUsers, onUsersSnapshot } from '../src/services/userStore';
+import { saveUser, onUsersSnapshot } from '../src/services/userStore';
 import { dispatchCustomEvent } from '../src/utils';
 
 const UserManagement: React.FC = () => {
@@ -62,9 +62,9 @@ const UserManagement: React.FC = () => {
   const handleApprove = (id: string) => {
     triggerHaptic('success');
     const targetUser = users.find(u => u.id === id);
-    const updated = users.map(u => u.id === id ? { ...u, isApproved: true } : u);
-    setUsers(updated);
-    saveUsers(updated);
+    const updatedUser = { ...users.find(u => u.id === id)!, isApproved: true };
+    setUsers(prev => prev.map(u => u.id === id ? updatedUser : u));
+    saveUser(updatedUser);
     addLog({
       action: 'APROVAR_UTILIZADOR',
       module: 'UTILIZADORES',
@@ -83,10 +83,10 @@ const UserManagement: React.FC = () => {
       return;
     }
     const targetUser = users.find(u => u.id === id);
-    const updated = users.map(u => u.id === id ? { ...u, isBanned: !u.isBanned } : u);
-    setUsers(updated);
-    saveUsers(updated);
-    const isBanned = updated.find(u => u.id === id)?.isBanned;
+    const updatedUser = { ...targetUser, isBanned: !targetUser.isBanned };
+    setUsers(prev => prev.map(u => u.id === id ? updatedUser : u));
+    saveUser(updatedUser);
+    const isBanned = updatedUser.isBanned;
     triggerHaptic(isBanned ? 'warning' : 'success');
     addLog({
       action: isBanned ? 'BANIR_UTILIZADOR' : 'DESBANIR_UTILIZADOR',
@@ -109,9 +109,10 @@ const UserManagement: React.FC = () => {
       return;
     }
     triggerHaptic('warning');
-    const updated = users.filter(u => u.id !== id);
-    setUsers(updated);
-    saveUsers(updated);
+    setUsers(prev => prev.filter(u => u.id !== id));
+    // Nota: deleteDoc tratado pelo onUsersSnapshot — sem saveUser aqui
+    // Para apagar do Firestore, importar deleteDoc e chamar directamente:
+    saveUser({ ...targetUser, isArchived: true } as any);
     addLog({
       action: 'ELIMINAR_UTILIZADOR', module: 'UTILIZADORES',
       description: `Utilizador ${targetUser.name} eliminado por ${currentUser?.name}`,
@@ -125,9 +126,9 @@ const UserManagement: React.FC = () => {
     triggerHaptic('success');
     const targetUser = users.find(u => u.id === id);
     // FIN-3: Mantém permissões personalizadas — só actualiza o role
-    const updated = users.map(u => u.id === id ? { ...u, role: newRole } : u);
-    setUsers(updated);
-    saveUsers(updated);
+    const updatedUser = { ...users.find(u => u.id === id)!, role: newRole };
+    setUsers(prev => prev.map(u => u.id === id ? updatedUser : u));
+    saveUser(updatedUser);
     addLog({
       action: 'ALTERAR_CARGO',
       module: 'UTILIZADORES',
@@ -163,13 +164,9 @@ const UserManagement: React.FC = () => {
     if (!editingProfile) return;
     triggerHaptic('success');
     
-    const updated = users.map(u => u.id === editingProfile.id ? { 
-      ...u, 
-      ...profileForm 
-    } : u);
-    
-    setUsers(updated);
-    saveUsers(updated);
+    const updatedUser = { ...editingProfile, ...profileForm };
+    setUsers(prev => prev.map(u => u.id === editingProfile.id ? updatedUser : u));
+    saveUser(updatedUser);
     dispatchCustomEvent('mg_users_updated');
     
     addLog({
@@ -214,9 +211,9 @@ const UserManagement: React.FC = () => {
     if (!editingUser || !tempPermissions) return;
     triggerHaptic('success');
     
-    const updated = users.map(u => u.id === editingUser.id ? { ...u, permissions: tempPermissions } : u);
-    setUsers(updated);
-    saveUsers(updated);
+    const updatedUser = { ...editingUser, permissions: tempPermissions };
+    setUsers(prev => prev.map(u => u.id === editingUser.id ? updatedUser : u));
+    saveUser(updatedUser);
     dispatchCustomEvent('mg_users_updated');
     
     addLog({
