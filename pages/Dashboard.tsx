@@ -14,7 +14,7 @@ import Footer from '../components/Footer';
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-  const { salesReports, systemDate, products, expenses, getConfirmedSalesReports, notifications, addNotification, resolveNotification } = useProducts();
+  const { salesReports, systemDate, products, expenses, getConfirmedSalesReports, notifications, addNotification, resolveNotification, getPurchasesByDate } = useProducts();
   const { theme, setTheme } = useTheme();
   const { toggleSidebar } = useLayout();
 
@@ -41,6 +41,34 @@ const Dashboard: React.FC = () => {
   const [newAlertMsg, setNewAlertMsg] = useState('');
   const [newAlertType, setNewAlertType] = useState<'CRITICO' | 'SUAVE' | 'INFO' | 'SUCCESS'>('INFO');
   const [expandedNotificationIds, setExpandedNotificationIds] = useState<string[]>([]);
+
+  const effectiveStock = useMemo(() => {
+    const todayStr = formatDateISO(systemDate);
+    const lastConfirmed = [...salesReports]
+      .filter(r => r.status === 'FECHO_CONFIRMADO' && (r as any).itemsSnapshot?.length)
+      .sort((a, b) => {
+        const aD = ((a as any).dateISO || a.date || '').split('T')[0];
+        const bD = ((b as any).dateISO || b.date || '').split('T')[0];
+        return bD.localeCompare(aD);
+      })[0];
+    if (!lastConfirmed) return {} as Record<string, number>;
+    const lastClosureDate = ((lastConfirmed as any).dateISO || lastConfirmed.date || '').split('T')[0];
+    const baseStock: Record<string, number> = {};
+    ((lastConfirmed as any).itemsSnapshot as any[]).forEach((item: any) => {
+      baseStock[item.id] = item.end ?? 0;
+    });
+    products.forEach(p => {
+      if (baseStock[p.id] === undefined) baseStock[p.id] = p.stock;
+      const d = new Date(lastClosureDate + 'T12:00:00');
+      d.setDate(d.getDate() + 1);
+      while (formatDateISO(d) <= todayStr) {
+        const dayPurchases = getPurchasesByDate(formatDateISO(d));
+        baseStock[p.id] = (baseStock[p.id] || 0) + (dayPurchases[p.id] || 0);
+        d.setDate(d.getDate() + 1);
+      }
+    });
+    return baseStock;
+  }, [salesReports, products, systemDate, getPurchasesByDate]);
 
   const isAdmin = user?.role === UserRole.ADMIN_GERAL || user?.role === UserRole.PROPRIETARIO;
 
@@ -198,8 +226,11 @@ const Dashboard: React.FC = () => {
     const list: any[] = [];
 
     // Stock Alerts
-    const criticalStock = products.filter(p => p.stock <= 0);
-    const lowStock = products.filter(p => p.stock > 0 && p.stock <= p.minStock);
+    const criticalStock = products.filter(p => (effectiveStock[p.id] ?? p.stock) <= 0);
+    const lowStock = products.filter(p => {
+      const stock = effectiveStock[p.id] ?? p.stock;
+      return stock > 0 && stock <= p.minStock;
+    });
 
     if (criticalStock.length > 0) {
       list.push({
@@ -207,7 +238,7 @@ const Dashboard: React.FC = () => {
         type: 'CRITICO',
         title: 'Stock Crítico / Esgotado',
         message: `${criticalStock.length} produtos sem stock.`,
-        details: criticalStock.map(p => `${p.name} (0)`),
+        details: criticalStock.map(p => `${p.name} (${effectiveStock[p.id] ?? p.stock})`),
         icon: Package,
         color: 'red',
         isSystem: true,
@@ -220,7 +251,7 @@ const Dashboard: React.FC = () => {
         type: 'SUAVE',
         title: 'Stock Baixo',
         message: `${lowStock.length} produtos quase acabando.`,
-        details: lowStock.map(p => `${p.name} (${p.stock})`),
+        details: lowStock.map(p => `${p.name} (${effectiveStock[p.id] ?? p.stock})`),
         icon: Package,
         color: 'amber',
         isSystem: true,
@@ -288,7 +319,7 @@ const Dashboard: React.FC = () => {
     });
 
     return uniqueList;
-  }, [products, getConfirmedSalesReports, systemDate, notifications]);
+  }, [products, effectiveStock, getConfirmedSalesReports, systemDate, notifications]);
 
   // Track alerts notificados nesta sessão
   const notifiedAlertsRef = React.useRef<Set<string>>(new Set());
