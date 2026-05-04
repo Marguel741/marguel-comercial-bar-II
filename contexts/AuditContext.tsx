@@ -29,6 +29,10 @@ const AUDIT_CONFIG_DOC = doc(db, 'appdata', 'audit_config');
 
 const CRITICAL_ACTIONS = [
   'LOGIN', 'LOGOUT', 'SWITCH_USER',
+  'SYSTEM_SETTING_CHANGED', 'AUTO_LOCK',
+  'RECOVERY_CODE_GENERATED', 'PIN_RESET_VIA_CODE',
+  'ACESSO_PAGINA',
+  'DELETE_LOG', 'UPDATE_LOG',
   'SALE', 'SALE_CANCELLED', 'SALES_REPORT',
   'STOCK_ADJUSTMENT', 'PURCHASE', 'INVENTORY_ADJUST', 'UPDATE_STOCK',
   'LOCK_DAY', 'UNLOCK_DAY', 'AJUSTE_FINANCEIRO_FECHO',
@@ -127,7 +131,7 @@ export const AuditProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const now = new Date();
     const deletionLog: AuditLog = {
       id: generateUUID(),
-      action: 'DELETE_LOG' as any,
+      action: 'DELETE_LOG',
       module: 'AUDITORIA',
       entityId: id,
       description: `Log removido por ${user?.name}. Ação original: ${logToDelete.action}`,
