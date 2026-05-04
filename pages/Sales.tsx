@@ -254,10 +254,8 @@ const ConfirmEditModal: React.FC<ConfirmEditModalProps> = ({ show, onClose, repo
 
   const isUnilateralAllowed = isAdminOrOwner;
   const lastActor = reportData?.editedBy || reportData?.closedBy || 'Desconhecido';
-  // SL-4: no primeiro fecho editedBy é null — não bloquear por "mesmo utilizador"
   const isFirstClosure = !reportData?.editedBy;
   const isSameUser = !isFirstClosure && !!(user?.name && user.name === lastActor);
-  const isAdminOrOwner = user?.role === UserRole.PROPRIETARIO || user?.role === UserRole.ADMIN_GERAL;
   const hasClosurePermission = hasPermission(user, 'sales_closure');
   const canConfirm = hasClosurePermission && (!isSameUser || isAdminOrOwner);
 
