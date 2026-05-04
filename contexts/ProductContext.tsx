@@ -339,16 +339,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     return () => { window.removeEventListener('online', goOnline); window.removeEventListener('offline', goOffline); };
   }, []);
 
-  const saveBalances = useCallback(async (cb?: number, sb?: number, cash?: number, tpa?: number, cih?: number) => {
-    await setDoc(doc(db, 'appdata', 'balances'), {
-      currentBalance: cb ?? currentBalance,
-      savingsBalance: sb ?? savingsBalance,
-      cashBalance: cash ?? cashBalance,
-      tpaBalance: tpa ?? tpaBalance,
-      cashInHandBalance: cih ?? cashInHandBalance,
-    });
-  }, [currentBalance, savingsBalance, cashBalance, tpaBalance, cashInHandBalance]);
-
   const syncData = useCallback(async () => {
     console.log('Firestore em tempo real — sem necessidade de sincronização manual.');
   }, []);
@@ -482,7 +472,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       }
 
       let targetAccount = account;
-      if (category === 'Transferência' || category === 'TRANSFER') targetAccount = 'tpa';
 
       if (targetAccount === 'main') { newCB += type === 'deposit' ? amount : -amount; accountName = 'Conta Bancária'; }
       else if (targetAccount === 'savings') { newSB += type === 'deposit' ? amount : -amount; accountName = 'Marguel Reserve'; }
@@ -1004,7 +993,11 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       if (!checkPermission('sales_execute')) return;
       validateAction('SALES_REPORT', { date: report.date, items: report.itemsSummary });
       const finalReport = { ...report, id: report.id || generateUUID(), synced: true, stockUpdated: false };
-      const existingReport = salesReports.find(r => r.date === report.date);
+      const existingReport = salesReports.find(r => {
+        const rDate = ((r as any).dateISO ? (r as any).dateISO.split('T')[0] : r.date) || '';
+        const repDate = ((report as any).dateISO ? (report as any).dateISO.split('T')[0] : report.date) || '';
+        return rDate && repDate && rDate === repDate;
+      });
       if (existingReport) {
         if (existingReport.status === ClosureStatus.BLOQUEADO || existingReport.status === ClosureStatus.DIA_BLOQUEADO) return;
         if (existingReport.status === ClosureStatus.FECHO_CONFIRMADO && existingReport.processedFinancials) {
