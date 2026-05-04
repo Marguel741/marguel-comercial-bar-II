@@ -167,16 +167,6 @@ export interface PurchaseRecord {
   synced?: boolean;
 }
 
-export interface Sale {
-  id: string;
-  date: string;
-  products: { productId: string; quantity: number; price: number }[];
-  total: number;
-  paymentMethod: 'CASH' | 'TPA' | 'TRANSFER';
-  registeredBy: string;
-  observations?: string;
-}
-
 export interface ExpenseCategory {
   id: string;
   name: string;
@@ -256,20 +246,6 @@ export interface InventoryLog {
   discrepancies: { name: string, diff: number }[];
   status: 'OK' | 'DIVERGENTE';
   justification?: string;
-}
-
-export type MessageType = 'text' | 'image' | 'audio' | 'video' | 'file';
-
-export interface ChatMessage {
-  id: string;
-  senderId: string;
-  receiverId: string;
-  content: string;
-  type: MessageType;
-  timestamp: Date;
-  status: 'sent' | 'delivered' | 'read';
-  fileName?: string;
-  duration?: string;
 }
 
 export interface Transaction {
@@ -408,6 +384,6 @@ export interface AuditLog {
   date: string; // YYYY-MM-DD
   time: string; // HH:MM:SS
   ipAddress?: string;
-  source: "local" | "backend";
+  source: "local" | "backend" | "firestore";
   synced: boolean;
 }
