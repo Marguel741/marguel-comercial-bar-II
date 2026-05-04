@@ -36,7 +36,6 @@ const Settings: React.FC = () => {
     biometricEnabled, setBiometricEnabled,
     uiEffectsEnabled, setUiEffectsEnabled,
     diagnosticReportingMode, setDiagnosticReportingMode,
-    usageAnalyticsEnabled, setUsageAnalyticsEnabled,
     lastSyncDate, isOnline
   } = useSettings();
 
@@ -128,6 +127,7 @@ const Settings: React.FC = () => {
       })) as PublicKeyCredential | null;
 
       if (!credential) { alert('❌ Biometria cancelada. Tenta novamente.'); return; }
+      if (!user) { alert('❌ Sessão expirada. Entra novamente.'); return; }
       const rawId = Array.from(new Uint8Array(credential.rawId));
       if (rawId.length === 0) { alert('❌ Chave biométrica inválida. Tenta novamente.'); return; }
 
