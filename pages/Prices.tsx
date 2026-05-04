@@ -576,8 +576,7 @@ const Prices: React.FC = () => {
               className="w-full pl-10 pr-4 py-3 rounded-2xl bg-white dark:bg-slate-800 soft-ui-inset border-none text-sm font-medium focus:ring-2 focus:ring-[#003366] transition-all dark:text-white" 
             />
           </div>
-          <div className="flex flex-col gap-2">
-            // PX-3: flex-shrink-0 em cada botão impede encolhimento e força scroll horizontal
+          <div className="flex flex-col gap-2 min-w-0">
             <div
               className="flex gap-2 overflow-x-auto pb-2"
               style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
