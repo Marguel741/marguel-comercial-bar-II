@@ -1161,7 +1161,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     const lunchVal = (finalReport as any).lunchExpense ?? (finalReport as any).financials?.lunch ?? 0;
     if (lunchVal > 0 && !report.lunchProcessed) registrarAlmocoBlindado({ ...finalReport, lunchExpense: lunchVal } as SalesReport);
     setDoc(doc(db, COL.salesReports, reportId), finalReport);
-    addAuditLog({ action: isUnilateral ? 'CONFIRMAÇÃO_UNILATERAL_FECHO' : 'VALIDAÇÃO_FINAL_FECHO', module: 'VENDAS', entityId: reportId, description: `Fecho confirmado para ${reportDateStr}.`, performedBy: confirmedBy });
+    addAuditLog({ action: isUnilateral ? 'CONFIRMAÇÃO_UNILATERAL_FECHO' : 'CONFIRMAÇÃO_FINAL_FECHO', module: 'VENDAS', entityId: reportId, description: `Fecho confirmado para ${reportDateStr}.`, performedBy: confirmedBy });
   }, [checkPermission, salesReports, products, getSystemDate, cashBalance, tpaBalance, currentBalance, savingsBalance, cashInHandBalance, transactions, cards, handleStockMovement, registrarAlmocoBlindado, addAuditLog]);
 
   const addEquipment = useCallback((equipment: Omit<Equipment, 'id' | 'prevQty'>) => {
