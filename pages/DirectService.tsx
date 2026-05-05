@@ -244,7 +244,7 @@ const DirectService: React.FC = () => {
 
   const handleCheckout = async () => {
     if (Object.keys(cart).length === 0) { setNetworkToast({ show: true, message: 'O carrinho está vazio.', type: 'warning' }); setTimeout(() => setNetworkToast(prev => ({ ...prev, show: false })), 3000); return; }
-    if (isLocked) { triggerHaptic('error'); alert('Operação Negada: O dia actual está bloqueado.'); return; }
+    if (isLocked) { triggerHaptic('error'); setNetworkToast({ show: true, message: 'Operação Negada: O dia actual está bloqueado.', type: 'warning' }); setTimeout(() => setNetworkToast(prev => ({ ...prev, show: false })), 3000); return; }
     try {
       triggerHaptic('success');
       const now = getSystemDate();
@@ -323,8 +323,8 @@ const DirectService: React.FC = () => {
 
   const handleDeleteSale = (sale: DirectSale) => {
     const isOwnerOfSale = sale.userId === user?.id;
-    if (!isAdminOrOwner && !isOwnerOfSale) { alert("Só pode eliminar as suas próprias vendas."); return; }
-    if (isLocked) { alert("Dia Bloqueado."); return; }
+    if (!isAdminOrOwner && !isOwnerOfSale) { setNetworkToast({ show: true, message: 'Só pode eliminar as suas próprias vendas.', type: 'warning' }); setTimeout(() => setNetworkToast(prev => ({ ...prev, show: false })), 3000); return; }
+    if (isLocked) { setNetworkToast({ show: true, message: 'Dia Bloqueado.', type: 'warning' }); setTimeout(() => setNetworkToast(prev => ({ ...prev, show: false })), 3000); return; }
     setDeleteConfirmation({ isOpen: true, type: 'single', sale });
   };
 
@@ -347,7 +347,7 @@ const DirectService: React.FC = () => {
       setTimeout(() => setNetworkToast(prev => ({ ...prev, show: false })), 4000);
     } catch (error) {
       console.error("Delete failed", error);
-      alert("Erro ao eliminar venda.");
+      setNetworkToast({ show: true, message: 'Erro ao eliminar venda.', type: 'warning' }); setTimeout(() => setNetworkToast(prev => ({ ...prev, show: false })), 3000);
     } finally {
       setDeleteConfirmation({ isOpen: false, type: 'single' });
     }
@@ -355,9 +355,9 @@ const DirectService: React.FC = () => {
 
   const handleDeleteAllSalesOfDay = () => {
     if (!isAdminOrOwner) return;
-    if (isLocked) { alert("Dia Bloqueado."); return; }
+    if (isLocked) { setNetworkToast({ show: true, message: 'Dia Bloqueado.', type: 'warning' }); setTimeout(() => setNetworkToast(prev => ({ ...prev, show: false })), 3000); return; }
     const todayStr = formatDateISO(systemDate);
-    if (!directSales.some(s => s.date === todayStr)) { alert("Não há vendas para eliminar hoje."); return; }
+    if (!directSales.some(s => s.date === todayStr)) { setNetworkToast({ show: true, message: 'Não há vendas para eliminar hoje.', type: 'warning' }); setTimeout(() => setNetworkToast(prev => ({ ...prev, show: false })), 3000); return; }
     setDeleteConfirmation({ isOpen: true, type: 'mass' });
   };
 
