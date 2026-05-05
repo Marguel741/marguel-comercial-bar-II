@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Save, Calculator, DollarSign, Calendar, TrendingDown, AlertCircle, PlusCircle, Wallet, CreditCard, ArrowRightLeft, CheckCircle, X, Send, MessageSquare, Clock, Plus, Lock, Unlock, BarChart2, ArrowUp, Filter, Eye, ChevronRight, ChevronLeft, RefreshCw, Database, Server, ShieldCheck, Smartphone, ChevronDown, ChevronUp, AlertTriangle, Check, History, Maximize2, Minimize2, Edit3, Printer, Cloud, CloudOff } from 'lucide-react';
+import { Save, Calculator, DollarSign, Calendar, AlertCircle, PlusCircle, Wallet, CreditCard, ArrowRightLeft, CheckCircle, X, MessageSquare, Clock, Lock, BarChart2, ChevronRight, ChevronLeft, RefreshCw, Database, Server, ShieldCheck, Smartphone, ChevronDown, ChevronUp, AlertTriangle, Check, History, Maximize2, Minimize2, Edit3 } from 'lucide-react';
 import SoftCard from '../components/SoftCard';
 import { useProducts } from '../contexts/ProductContext';
 import { 
@@ -641,7 +641,7 @@ const Sales: React.FC = () => {
 
   const handleConfirmFinancials = () => {
     if (isReadOnly) return;
-    if (totalLifted === 0) { triggerHaptic('warning'); alert("⚠️ Atenção!\n\nAinda não inseriu nenhum valor."); return; }
+    if (totalLifted === 0) { triggerHaptic('warning'); showToast("⚠️ Ainda não inseriu nenhum valor."); return; }
     triggerHaptic('success'); setIsFinancialsConfirmed(true); showToast("Valores confirmados.");
   };
 
@@ -666,10 +666,10 @@ const Sales: React.FC = () => {
     if (!canCloseDay) { triggerHaptic('error'); showToast("Sem permissão para realizar fecho."); return; }
     if (!canExecuteSales) { triggerHaptic('error'); showToast("Sem permissão de execução de vendas para realizar fecho."); return; }
     if (isReadOnly) return;
-    if (reportDate > todayISO) { triggerHaptic('error'); alert("❌ DATA INVÁLIDA\n\nNão é permitido fechar dias futuros."); return; }
-    if (calculatedData.hasStockError) { triggerHaptic('error'); alert("⛔ IMPEDIMENTO DE FECHO\n\nExistem produtos com Stock Negativo."); return; }
-    if (!calculatedData.allMixMatchValid) { triggerHaptic('error'); alert("⛔ IMPEDIMENTO DE FECHO\n\nExistem produtos com Mix Match inválido. Ajuste as unidades avulsas."); return; }
-    if (totalLifted === 0 || !isFinancialsConfirmed) { triggerHaptic('warning'); alert("⚠️ Por favor, confirme os valores levantados antes de fechar."); return; }
+    if (reportDate > todayISO) { triggerHaptic('error'); showToast("❌ Não é permitido fechar dias futuros.");
+    if (calculatedData.hasStockError) { triggerHaptic('error'); showToast("⛔ Existem produtos com Stock Negativo."); return; }
+    if (!calculatedData.allMixMatchValid) { triggerHaptic('error'); showToast("⛔ Mix Match inválido. Ajuste as unidades avulsas."); return; }
+    if (totalLifted === 0 || !isFinancialsConfirmed) { triggerHaptic('warning'); showToast("⚠️ Confirme os valores levantados antes de fechar."); return; }
     setFormValues({ cash: Number(financials.cash) || 0, tpa: Number(financials.ticket) || 0, transfer: Number(financials.transfer) || 0, lunch: Number(financials.lunch) || 0, justification: financials.discrepancyJustification || '' });
     triggerHaptic('selection'); setShowCloseModal(true);
   };
@@ -705,7 +705,7 @@ const Sales: React.FC = () => {
     setSyncState(prev => ({ ...prev, completedSteps: [...prev.completedSteps, 'security'], currentStep: 1 }));
     await new Promise(resolve => setTimeout(resolve, 1000));
     setSyncState(prev => ({ ...prev, completedSteps: [...prev.completedSteps, 'database'], currentStep: 2 }));
-    if (reportDate > todayISO) { setSyncState(prev => ({ ...prev, status: 'error' })); triggerHaptic('error'); alert("O servidor rejeitou o fecho: Datas futuras não são permitidas."); return; }
+    if (reportDate > todayISO) { setSyncState(prev => ({ ...prev, status: 'error' })); triggerHaptic('error'); showToast("❌ Datas futuras não são permitidas."); return; }
     await new Promise(resolve => setTimeout(resolve, 1000));
     setSyncState(prev => ({ ...prev, completedSteps: [...prev.completedSteps, 'server'], currentStep: 3 }));
     await new Promise(resolve => setTimeout(resolve, 1000));
@@ -735,7 +735,7 @@ const Sales: React.FC = () => {
     } catch (error: any) {
       console.error('ERRO NO FECHO:', error);
       setSyncState(prev => ({ ...prev, status: 'error' }));
-      triggerHaptic('error'); alert("Não foi possível completar a acção. Verifique os dados.");
+      triggerHaptic('error'); showToast("❌ Não foi possível completar a acção. Verifique os dados.");
     }
   };
 
