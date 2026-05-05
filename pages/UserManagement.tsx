@@ -110,9 +110,7 @@ const UserManagement: React.FC = () => {
     }
     triggerHaptic('warning');
     setUsers(prev => prev.filter(u => u.id !== id));
-    // Nota: deleteDoc tratado pelo onUsersSnapshot — sem saveUser aqui
-    // Para apagar do Firestore, importar deleteDoc e chamar directamente:
-    saveUser({ ...targetUser, isArchived: true } as any);
+    deleteUser(id);
     addLog({
       action: 'ELIMINAR_UTILIZADOR', module: 'UTILIZADORES',
       description: `Utilizador ${targetUser.name} eliminado por ${currentUser?.name}`,
