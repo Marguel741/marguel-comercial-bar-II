@@ -45,6 +45,7 @@ const CartItem = memo(({ id, qty, product, variant = 'default' }: { id: string, 
 const Prices: React.FC = () => {
   const { products, categories, updateProduct, purchases, addPurchase, isDayLocked, systemDate, getSystemDate, priceHistory } = useProducts();
   const { sidebarMode, triggerHaptic } = useLayout(); 
+  const { proposals: firestoreProposals, addProposal, deleteProposal } = useProducts();
   const { user } = useAuth();
   const location = useLocation();
   
@@ -77,14 +78,8 @@ const Prices: React.FC = () => {
   const [simSearchTerm, setSimSearchTerm] = useState('');
   const [simCategory, setSimCategory] = useState('Todos');
   const [simulationCart, setSimulationCart] = useState<Record<string, number>>({});
-  const [savedProposals, setSavedProposals] = useState<SavedProposal[]>(() => {
-    try {
-      const saved = localStorage.getItem('mg_saved_proposals');
-      return saved ? JSON.parse(saved) : [];
-    } catch (e) {
-      return [];
-    }
-  });
+  const savedProposals: SavedProposal[] = firestoreProposals as SavedProposal[];
+  const setSavedProposals = (_: any) => {}; // substituído por addProposal/deleteProposal
   const [proposalNameInput, setProposalNameInput] = useState('');
   const [showSaveProposalDialog, setShowSaveProposalDialog] = useState(false);
   const [isSavingProposal, setIsSavingProposal] = useState(false);
@@ -107,10 +102,6 @@ const Prices: React.FC = () => {
   const [reportProposal, setReportProposal] = useState<SavedProposal | PurchaseRecord | null>(null);
   const [viewImageIndex, setViewImageIndex] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    localStorage.setItem('mg_saved_proposals', JSON.stringify(savedProposals));
-  }, [savedProposals]);
 
   useEffect(() => {
     if (location.state && (location.state as any).openSimulation) {
@@ -477,7 +468,7 @@ const Prices: React.FC = () => {
         snapshotPrices: pricesSnapshot,
         status: 'Proposta'
       };
-      setSavedProposals(prev => [newProposal, ...prev]);
+      addProposal(newProposal);
       setIsCurrentSimulationSaved(true);
       setProposalNameInput('');
       setShowSaveProposalDialog(false);
@@ -497,11 +488,7 @@ const Prices: React.FC = () => {
 
   const handleDeleteProposal = (id: string) => {
     triggerHaptic('warning');
-    setSavedProposals(prev => {
-      const updated = prev.filter(p => p.id !== id);
-      localStorage.setItem('mg_saved_proposals', JSON.stringify(updated));
-      return updated;
-    });
+    deleteProposal(id);
     showToast("Proposta eliminada com sucesso.");
   };
 
