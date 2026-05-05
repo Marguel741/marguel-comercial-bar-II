@@ -1,16 +1,17 @@
-// Marguel SGI - serviço de sincronização
+
 import { DirectSale } from './db';
+import { db } from '../firebase';
+import { doc, setDoc } from 'firebase/firestore';
 
 export let serverTimeOffset = 0;
 
-// const API_URL = 'https://api.example.com/v1/sales/sync'; // Placeholder for real API
-
 export const processSync = async (sales: DirectSale[]): Promise<DirectSale[]> => {
-  // Processar em paralelo para rapidez
   const results = await Promise.all(sales.map(async (sale) => {
     try {
-      // Simulação — em produção seria fetch para API real
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await setDoc(doc(db, 'appdata/direct_sales/records', sale.uuid), {
+        ...sale,
+        syncedAt: Date.now(),
+      });
       return {
         ...sale,
         statusSync: 'synced' as const,
