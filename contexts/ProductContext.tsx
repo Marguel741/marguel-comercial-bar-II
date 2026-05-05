@@ -1093,8 +1093,10 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       (report.itemsSnapshot || report.itemsSummary || []).forEach((item: any) => {
         const p = products.find(prod => (item.productId && item.productId === prod.id) || item.id === prod.id || item.name === prod.name);
         const qty = item.soldQty ?? item.qty ?? 0;
-        const stockRefId = `confirm_${reportId}_${p.id}_${finalReport.confirmationTimestamp}`;
-        if (p && qty > 0) handleStockMovement(p.id, qty, 'SALE', confirmedBy, `Fecho Confirmado: ${reportDateStr}`, stockRefId);
+        if (p && qty > 0) {
+          const stockRefId = `confirm_${reportId}_${p.id}_${finalReport.confirmationTimestamp}`;
+          handleStockMovement(p.id, qty, 'SALE', confirmedBy, `Fecho Confirmado: ${reportDateStr}`, stockRefId);
+        }
       });
     }
 
