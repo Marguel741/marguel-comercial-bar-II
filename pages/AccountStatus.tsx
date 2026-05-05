@@ -12,6 +12,8 @@ import AccessDenied from './AccessDenied';
 const AccountStatus: React.FC = () => {
   const { sidebarMode, triggerHaptic } = useLayout();
   const { user } = useAuth();
+  const [toast, setToast] = React.useState<{show: boolean, message: string}>({ show: false, message: '' });
+  const showToast = (msg: string) => { setToast({ show: true, message: msg }); setTimeout(() => setToast({ show: false, message: '' }), 3000); };
   const { 
     cards, addCard, updateCard, deleteCard,
     transactions, processTransaction,
@@ -81,7 +83,7 @@ const AccountStatus: React.FC = () => {
   const openTransactionModal = (type: 'deposit' | 'withdraw', accountId: string) => {
     if (!hasPermission(user, 'finance_edit')) {
       triggerHaptic('error');
-      alert('Sem permissão para realizar alterações financeiras.');
+      showToast('Sem permissão para realizar alterações financeiras.');
       return;
     }
     setTransType(type);
@@ -101,7 +103,7 @@ const AccountStatus: React.FC = () => {
   const handleTransaction = (e: React.FormEvent) => {
     e.preventDefault();
     if (!amount || !note.trim()) return;
-    if (isLocked) { triggerHaptic('error'); alert('Operação Negada: O dia actual está bloqueado.'); return; }
+    if (isLocked) { triggerHaptic('error'); showToast('Operação Negada: O dia actual está bloqueado.'); return; }
     triggerHaptic('success');
     const val = parseFloat(amount.replace(/\s/g, ''));
     processTransaction(transType, targetAccount, val, note, undefined, undefined, transType === 'deposit' ? 'deposit' : 'withdrawal', user?.name || 'Desconhecido');
@@ -137,7 +139,7 @@ const AccountStatus: React.FC = () => {
   const handleCashTPADebit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!cashTPAAmount || !cashTPANote.trim() || !showCashTPAModal.type) return;
-    if (isLocked) { triggerHaptic('error'); alert('Operação Negada: O dia actual está bloqueado.'); return; }
+    if (isLocked) { triggerHaptic('error'); showToast('Operação Negada: O dia actual está bloqueado.'); return; }
     const val = parseFloat(cashTPAAmount.replace(/\s/g, ''));
     processCashTPADebit(showCashTPAModal.type, val, cashTPANote, undefined, 'withdrawal', user?.name || 'Desconhecido');
     triggerHaptic('success');
@@ -151,7 +153,7 @@ const AccountStatus: React.FC = () => {
   const handleTransfer = (e: React.FormEvent) => {
     e.preventDefault();
     if (!transferAmount || !transferNote.trim()) return;
-    if (isLocked) { triggerHaptic('error'); alert('Operação Negada: O dia actual está bloqueado.'); return; }
+    if (isLocked) { triggerHaptic('error'); showToast('Operação Negada: O dia actual está bloqueado.'); return; }
     const val = parseFloat(transferAmount.replace(/\s/g, ''));
     const toId = transferFromId === 'cash_in_hand' ? 'main' : 'cash_in_hand';
     transferBetweenCards(transferFromId, toId, val, transferNote, user?.name || 'Desconhecido');
@@ -174,7 +176,7 @@ const AccountStatus: React.FC = () => {
     if (!card) return;
     if (card.balance > 0) {
       triggerHaptic('error');
-      alert(`Operação Negada: O cartão "${card.name}" possui saldo de ${(card.balance || 0).toLocaleString('pt-AO')} Kz. É necessário zerar o saldo antes de eliminar.`);
+      showToast(`O cartão "${card.name}" tem saldo. Zere o saldo antes de eliminar.`);
       setShowDeleteConfirm({ isOpen: false, cardId: null });
       return;
     }
@@ -201,6 +203,12 @@ const AccountStatus: React.FC = () => {
   const isSystemCard = (id: string) => ['main', 'savings', 'cash_in_hand', 'total_virtual'].includes(id);
 
   return (
+    <>
+    {toast.show && (
+      <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[200] animate-fade-in pointer-events-none">
+        <div className="bg-[#003366] text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-2 font-bold text-sm">{toast.message}</div>
+      </div>
+    )}
     <div className="p-4 md:p-8 space-y-8 animate-fade-in relative pb-24">
       
       {showSuccessPopup && (
@@ -227,7 +235,7 @@ const AccountStatus: React.FC = () => {
           <button 
             onClick={() => { 
               if (isLocked) { triggerHaptic('error'); return; }
-              if (!hasPermission(user, 'finance_card_create')) { triggerHaptic('error'); alert('Sem permissão para criar cartões.'); return; }
+              if (!hasPermission(user, 'finance_card_create')) { triggerHaptic('error'); showToast('Sem permissão para criar cartões.'); return; }
               triggerHaptic('impact'); 
               setShowCreateCardModal(true); 
             }}
@@ -391,7 +399,7 @@ const AccountStatus: React.FC = () => {
           className={`flex items-center gap-4 transition-all ${isLocked ? 'opacity-50 grayscale cursor-not-allowed' : 'cursor-pointer hover:scale-[1.02]'}`}
           onClick={() => { 
             if (isLocked) { triggerHaptic('error'); return; }
-            if (!hasPermission(user, 'finance_edit')) { triggerHaptic('error'); alert('Sem permissão para realizar alterações financeiras.'); return; }
+            if (!hasPermission(user, 'finance_edit')) { triggerHaptic('error'); showToast('Sem permissão para realizar alterações financeiras.'); return; }
             triggerHaptic('selection'); 
             setShowCashTPAModal({ isOpen: true, type: 'Cash' }); 
           }}
@@ -409,7 +417,7 @@ const AccountStatus: React.FC = () => {
           className={`flex items-center gap-4 transition-all ${isLocked ? 'opacity-50 grayscale cursor-not-allowed' : 'cursor-pointer hover:scale-[1.02]'}`}
           onClick={() => { 
             if (isLocked) { triggerHaptic('error'); return; }
-            if (!hasPermission(user, 'finance_edit')) { triggerHaptic('error'); alert('Sem permissão para realizar alterações financeiras.'); return; }
+            if (!hasPermission(user, 'finance_edit')) { triggerHaptic('error'); showToast('Sem permissão para realizar alterações financeiras.'); return; }
             triggerHaptic('selection'); 
             setShowCashTPAModal({ isOpen: true, type: 'TPA' }); 
           }}
@@ -865,6 +873,7 @@ const AccountStatus: React.FC = () => {
         </div>
       </footer>
     </div>
+  </>
   );
 };
 
