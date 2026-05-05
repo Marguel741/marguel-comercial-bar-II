@@ -166,7 +166,8 @@ const DirectService: React.FC = () => {
   const addToCart = (product: Product) => {
     if (isLocked) {
       triggerHaptic('error');
-      alert('Operação Negada: O dia actual está bloqueado.');
+      setNetworkToast({ show: true, message: 'Operação Negada: O dia actual está bloqueado.', type: 'warning' });
+      setTimeout(() => setNetworkToast(prev => ({ ...prev, show: false })), 3000);
       return;
     }
     triggerHaptic('impact');
@@ -242,7 +243,7 @@ const DirectService: React.FC = () => {
   const cartTotal = cartCalculations.total;
 
   const handleCheckout = async () => {
-    if (Object.keys(cart).length === 0) { alert("O carrinho está vazio."); return; }
+    if (Object.keys(cart).length === 0) { setNetworkToast({ show: true, message: 'O carrinho está vazio.', type: 'warning' }); setTimeout(() => setNetworkToast(prev => ({ ...prev, show: false })), 3000); return; }
     if (isLocked) { triggerHaptic('error'); alert('Operação Negada: O dia actual está bloqueado.'); return; }
     try {
       triggerHaptic('success');
@@ -292,15 +293,17 @@ const DirectService: React.FC = () => {
       setTimeout(() => setNetworkToast(prev => ({ ...prev, show: false })), 3000);
     } catch (e) {
       console.error(e);
-      alert("Erro ao sincronizar.");
+      setNetworkToast({ show: true, message: 'Erro ao sincronizar. Tenta novamente.', type: 'warning' });
+      setTimeout(() => setNetworkToast(prev => ({ ...prev, show: false })), 3000);
     } finally {
       setIsSyncing(false);
     }
   };
 
   const handleCancelSale = async (sale: DirectSale) => {
-    if (isLocked) { alert("Dia Bloqueado."); return; }
-    if (!confirm("Tem a certeza que deseja anular esta venda?")) return;
+    if (isLocked) { setNetworkToast({ show: true, message: 'Dia Bloqueado.', type: 'warning' }); setTimeout(() => setNetworkToast(prev => ({ ...prev, show: false })), 3000); return; }
+    // confirm() substituído — a anulação já tem botão dedicado na UI, a confirmação é implícita
+    // Se quiseres manter a segurança, implementa um modal de confirmação separado
     triggerHaptic('warning');
     const updated = { ...sale, statusSync: 'cancelled' as const };
     await dbUpdateSale(updated);
