@@ -465,7 +465,10 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   ) => {
     try {
       const existingTrans = referenceId ? transactions.filter(t => t.referenceId === referenceId && t.referenceType === referenceType) : [];
-
+      // Apagar TODAS as transacções antigas do Firestore (não só reverter saldo)
+      if (existingTrans.length > 1) {
+        existingTrans.slice(1).forEach(t => deleteDoc(doc(db, COL.transactions, t.id)));
+      }
       let newCB = currentBalance, newSB = savingsBalance, newCash = cashBalance, newTPA = tpaBalance, newCashInHand = cashInHandBalance;
       let accountName = '';
 
