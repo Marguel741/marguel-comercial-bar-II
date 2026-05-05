@@ -144,7 +144,9 @@ const DirectService: React.FC = () => {
     if (pending.length === 0) return;
     const timer = setTimeout(() => syncPendingSales(), 1500);
     return () => clearTimeout(timer);
-  }, [isOnline, directSales.filter(s => s.statusSync === 'pending').length, syncPendingSales]);
+  const pendingCount = useMemo(() => directSales.filter(s => s.statusSync === 'pending').length, [directSales]);
+  // depois usar pendingCount em vez do filter inline
+  }, [isOnline, pendingCount, syncPendingSales]);
 
   // Return condicional APÓS todos os hooks
   if (!hasPermission(user, 'direct_service_view')) {
@@ -285,8 +287,8 @@ const DirectService: React.FC = () => {
   const handleRetrySync = async (sale: DirectSale) => {
     setIsSyncing(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      const updated = { ...sale, statusSync: 'synced' as const, serverTimestamp: Date.now(), syncError: undefined };
+      const results = await processSync([sale]);
+      const updated = results[0];
       await dbUpdateSale(updated);
       setDirectSales(prev => prev.map(s => s.id === sale.id ? updated : s));
       setNetworkToast({ show: true, message: "Sincronizado com sucesso!", type: 'success' });
