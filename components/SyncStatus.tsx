@@ -27,7 +27,7 @@ const SyncStatus: React.FC = () => {
         <WifiOff size={14} />
       )}
       <span className="hidden md:inline">
-        {isSyncing ? 'Sincronizando...' : isOnline ? 'Online (Sincronizar)' : 'Offline'}
+        {isSyncing ? 'A sincronizar...' : isOnline ? 'Online (Sincronizar)' : 'Offline'}
       </span>
     </button>
   );
