@@ -567,7 +567,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     // PROD-3: TPA+Transfer → Conta Bancária, Cash → Em Mão
     newCB = newCB + newTpa;
-    newCashBal = newCashBal + newCash;
+    // NÃO somar ao newCashBal — evita duplicação (igual ao confirmSalesReport)
     newTPABal = newTPABal + newTpa;
     newCashInHandBal = newCashInHandBal + newCash;
     setCurrentBalance(newCB);
