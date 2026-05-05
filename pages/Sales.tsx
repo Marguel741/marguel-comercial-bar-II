@@ -666,7 +666,7 @@ const Sales: React.FC = () => {
     if (!canCloseDay) { triggerHaptic('error'); showToast("Sem permissão para realizar fecho."); return; }
     if (!canExecuteSales) { triggerHaptic('error'); showToast("Sem permissão de execução de vendas para realizar fecho."); return; }
     if (isReadOnly) return;
-    if (reportDate > todayISO) { triggerHaptic('error'); showToast("❌ Não é permitido fechar dias futuros.");
+    if (reportDate > todayISO) { triggerHaptic('error'); showToast("❌ Não é permitido fechar dias futuros."); return; }
     if (calculatedData.hasStockError) { triggerHaptic('error'); showToast("⛔ Existem produtos com Stock Negativo."); return; }
     if (!calculatedData.allMixMatchValid) { triggerHaptic('error'); showToast("⛔ Mix Match inválido. Ajuste as unidades avulsas."); return; }
     if (totalLifted === 0 || !isFinancialsConfirmed) { triggerHaptic('warning'); showToast("⚠️ Confirme os valores levantados antes de fechar."); return; }
