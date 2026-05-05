@@ -86,6 +86,12 @@ export const saveUsers = async (users: User[]): Promise<void> => {
   window.dispatchEvent(new Event('mg_users_updated'));
 };
 
+// Apagar um utilizador do Firestore
+export const deleteUser = async (userId: string): Promise<void> => {
+  await deleteDoc(doc(db, USERS_COLLECTION, userId));
+  window.dispatchEvent(new Event('mg_users_updated'));
+};
+
 // Observar mudanças em tempo real
 export const onUsersSnapshot = (
   callback: (users: User[]) => void
