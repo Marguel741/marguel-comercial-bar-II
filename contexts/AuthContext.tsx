@@ -112,14 +112,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setLoginError(msg); return msg;
     }
 
-    const matches = allUsers.filter(u => u.pin === pin && !u.isBanned && u.isApproved);
-    if (matches.length === 0) { setIsLoading(false); const msg = 'PIN inválido. Tenta novamente.'; setLoginError(msg); return msg; }
-    if (matches.length > 1) { setIsLoading(false); const msg = 'PIN ambíguo: mais de um utilizador partilha este PIN. Usa o login por email.'; setLoginError(msg); return msg; }
-    const found = matches[0];
+    const found = allUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
+    if (!found) { setIsLoading(false); const msg = 'Email não encontrado.'; setLoginError(msg); return msg; }
     if (found.isBanned) { setIsLoading(false); const msg = 'O teu acesso foi revogado. Contacta o administrador.'; setLoginError(msg); return msg; }
     if (!found.isApproved) { setIsLoading(false); const msg = 'A tua conta está aguardando aprovação pelo administrador.'; setLoginError(msg); return msg; }
     if (found.pin !== pass) { setIsLoading(false); const msg = 'Senha incorrecta. Tenta novamente.'; setLoginError(msg); return msg; }
-
     const updated: User = { ...found, lastLogin: makeTimestamp() };
     await saveUser(updated);
     localStorage.setItem('mg_user', JSON.stringify(updated));
@@ -140,10 +137,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setLoginError(msg); return msg;
     }
 
-    const found = allUsers.find(u => u.pin === pin);
-    if (!found) { setIsLoading(false); const msg = 'PIN inválido. Tenta novamente.'; setLoginError(msg); return msg; }
-    if (found.isBanned) { setIsLoading(false); const msg = 'O teu acesso foi revogado. Contacta o administrador.'; setLoginError(msg); return msg; }
-    if (!found.isApproved) { setIsLoading(false); const msg = 'A tua conta está aguardando aprovação pelo administrador.'; setLoginError(msg); return msg; }
+    const pinMatches = allUsers.filter(u => u.pin === pin && !u.isBanned && u.isApproved);
+    if (pinMatches.length === 0) { setIsLoading(false); const msg = 'PIN inválido. Tenta novamente.'; setLoginError(msg); return msg; }
+    if (pinMatches.length > 1) { setIsLoading(false); const msg = 'PIN ambíguo. Usa o login por email.'; setLoginError(msg); return msg; }
+    const found = pinMatches[0];
 
     const updated: User = { ...found, lastLogin: makeTimestamp() };
     await saveUser(updated);
