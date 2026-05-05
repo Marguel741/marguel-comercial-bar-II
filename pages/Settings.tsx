@@ -30,6 +30,11 @@ import Footer from '../components/Footer';
 
 const Settings: React.FC = () => {
   const { user, updateUser } = useAuth();
+  const [toast, setToast] = React.useState<{show: boolean; message: string; type: 'success' | 'error' | 'info'}>({ show: false, message: '', type: 'info' });
+  const showToast = (msg: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setToast({ show: true, message: msg, type });
+    setTimeout(() => setToast(prev => ({ ...prev, show: false })), 4000);
+  };
   const { theme, setTheme } = useTheme();
   const { 
     idleTimeout, setIdleTimeout,
@@ -68,8 +73,8 @@ const Settings: React.FC = () => {
 
   const handleSync = () => {
     syncData()
-      .then(() => alert('Sincronização concluída com sucesso.'))
-      .catch(() => alert('Erro na sincronização. Verifique a ligação à internet.'));
+      .then(() => showToast('Sincronização concluída com sucesso.', 'success'))
+      .catch(() => showToast('Erro na sincronização. Verifique a ligação à internet.', 'error'));
   };
 
   const handleUpdatePin = async () => {
@@ -95,11 +100,11 @@ const Settings: React.FC = () => {
 
   const handleActivateBiometrics = async () => {
     if (!window.PublicKeyCredential || !user) {
-      alert('Biometria não suportada neste dispositivo.');
+      showToast('Biometria não suportada neste dispositivo.', 'error');
       return;
     }
     if (!window.isSecureContext) {
-      alert('A biometria requer HTTPS. Limpa a cache do browser e tenta novamente.');
+      showToast('A biometria requer HTTPS. Limpa a cache do browser e tenta novamente.', 'error');
       return;
     }
     try {
@@ -126,29 +131,29 @@ const Settings: React.FC = () => {
         },
       })) as PublicKeyCredential | null;
 
-      if (!credential) { alert('❌ Biometria cancelada. Tenta novamente.'); return; }
-      if (!user) { alert('❌ Sessão expirada. Entra novamente.'); return; }
+      if (!credential) { showToast('❌ Biometria cancelada. Tenta novamente.', 'error'); return; }
+      if (!user) { showToast('❌ Sessão expirada. Entra novamente.', 'error'); return; }
       const rawId = Array.from(new Uint8Array(credential.rawId));
-      if (rawId.length === 0) { alert('❌ Chave biométrica inválida. Tenta novamente.'); return; }
+      if (rawId.length === 0) { showToast('❌ Chave biométrica inválida. Tenta novamente.', 'error'); return; }
 
       const bioData = { email: user.email, pin: user.pin, userId: user.id, credId: rawId };
       localStorage.setItem('mg_biometric_user', JSON.stringify(bioData));
       setBiometricEnabled(true);
 
       const saved = localStorage.getItem('mg_biometric_user');
-      if (!saved) { alert('❌ Erro ao guardar dados biométricos. Tenta novamente.'); return; }
-      alert('✅ Biometria configurada! Na próxima vez que entrar, usa a impressão digital ou Face ID.');
+      if (!saved) { showToast('❌ Erro ao guardar dados biométricos. Tenta novamente.', 'error'); return; }
+      showToast('✅ Biometria configurada! Na próxima vez que entrar, usa a impressão digital ou Face ID.', 'success');
     } catch (err: any) {
       if (err?.name === 'NotAllowedError') {
-        alert('❌ Operação cancelada.\n\nCertifica-te que:\n• O telemóvel tem bloqueio de ecrã activo\n• Tens impressão digital registada nas definições do Android');
+        showToast('❌ Operação cancelada. Certifica-te que tens bloqueio de ecrã e impressão digital registada.', 'error');
       } else if (err?.name === 'NotSupportedError') {
-        alert('❌ Este dispositivo não suporta Passkeys.');
+        showToast('❌ Este dispositivo não suporta Passkeys.', 'error');
       } else if (err?.name === 'InvalidStateError') {
         localStorage.removeItem('mg_biometric_user');
         setBiometricEnabled(false);
-        alert('⚠️ Chave anterior detectada e removida. Carrega em "Activar" novamente para criar uma nova.');
+        showToast('⚠️ Chave anterior detectada e removida. Carrega em "Activar" novamente.', 'info');
       } else {
-        alert(`❌ Erro: ${err?.message || 'desconhecido'}\n\nCertifica-te que tens bloqueio de ecrã activo no telemóvel.`);
+        showToast(`❌ Erro: ${err?.message || 'desconhecido'}. Certifica-te que tens bloqueio de ecrã activo.`, 'error');
       }
     }
   };
@@ -156,11 +161,18 @@ const Settings: React.FC = () => {
   const handleDeactivateBiometrics = () => {
     localStorage.removeItem('mg_biometric_user');
     setBiometricEnabled(false);
-    alert('Biometria desactivada. Os teus dados biométricos foram removidos deste dispositivo.');
+    showToast('Biometria desactivada. Os teus dados biométricos foram removidos deste dispositivo.', 'info');
   };
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-8 pb-20">
+      {toast.show && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[200] animate-fade-in pointer-events-none">
+          <div className={`px-6 py-3 rounded-full shadow-2xl flex items-center gap-2 font-bold text-sm text-white ${toast.type === 'success' ? 'bg-emerald-600' : toast.type === 'error' ? 'bg-red-600' : 'bg-[#003366]'}`}>
+            {toast.message}
+          </div>
+        </div>
+      )}
       <header className="flex items-center gap-4 mb-8">
         <div className="p-3 bg-[#003366] text-white rounded-2xl shadow-lg">
           <Cpu size={28} />
