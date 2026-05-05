@@ -1277,6 +1277,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     ignoreLockedDayWithoutClosure,
     notifications, addNotification, markNotificationRead, clearNotifications, resolveNotification,
     proposals, addProposal, deleteProposal,
+    transferBetweenCards,
   }), [
     products, categories, purchases, currentBalance, savingsBalance, cashBalance, tpaBalance,
     cashInHandBalance, cards, transactions, salesReports,
@@ -1295,6 +1296,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     ignoreLockedDayWithoutClosure,
     notifications, addNotification, markNotificationRead, clearNotifications, resolveNotification,
     proposals, addProposal, deleteProposal,
+    transferBetweenCards,
   ]);
 
   return (
