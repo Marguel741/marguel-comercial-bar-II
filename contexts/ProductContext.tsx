@@ -22,6 +22,7 @@ const COL = {
   balances:             'appdata/balances',
   lockedDays:           'appdata/locked_days',
   notifications:        'appdata/notifications/records',
+  proposals:            'appdata/proposals/records',
 };
 
 const fsSet = async (path: string, id: string, data: any) => {
@@ -174,6 +175,9 @@ interface ProductContextType {
   runSystemDiagnostic: () => void;
   ignoreLockedDayWithoutClosure: (dateStr: string) => void;
   notifications: any[];
+  proposals: any[];
+  addProposal: (p: any) => void;
+  deleteProposal: (id: string) => void;
   addNotification: (notif: any) => void;
   markNotificationRead: (id: string) => void;
   clearNotifications: () => void;
@@ -209,6 +213,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [cards, setCards] = useState<Card[]>([]);
   const [equipments, setEquipments] = useState<Equipment[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
+  const [proposals, setProposals] = useState<any[]>([]);
   const [currentBalance, setCurrentBalance] = useState<number>(0);
   const [savingsBalance, setSavingsBalance] = useState<number>(0);
   const [cashBalance, setCashBalance] = useState<number>(0);
@@ -303,6 +308,10 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       }
     }));
 
+    
+    unsubs.push(onSnapshot(collection(db, COL.proposals), snap => {
+      setProposals(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    }));
     unsubs.push(onSnapshot(collection(db, COL.notifications), snap => {
       setNotifications(snap.docs.map(d => d.data()).sort((a,b) => b.timestamp - a.timestamp));
     }));
@@ -653,6 +662,15 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       performedBy,
     });
   }, [cards, getSystemDate, currentBalance, savingsBalance, cashBalance, tpaBalance, cashInHandBalance, addAuditLog]);
+
+  const addProposal = useCallback((p: any) => {
+    const doc_id = p.id || generateUUID();
+    setDoc(doc(db, COL.proposals, doc_id), { ...p, id: doc_id });
+  }, []);
+
+  const deleteProposal = useCallback((id: string) => {
+    deleteDoc(doc(db, COL.proposals, id));
+  }, []);
 
   const addNotification = useCallback((notif: any) => {
     const newNotif = { ...notif, id: generateUUID(), timestamp: Date.now(), read: false };
@@ -1257,7 +1275,8 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     addCard, updateCard, deleteCard, resetTestData, runSystemDiagnostic,
     isSyncing, hasPendingChanges, syncData, handleStockMovement,
     ignoreLockedDayWithoutClosure,
-    notifications, addNotification, markNotificationRead, clearNotifications, resolveNotification, transferBetweenCards,
+    notifications, addNotification, markNotificationRead, clearNotifications, resolveNotification,
+    proposals, addProposal, deleteProposal,
   }), [
     products, categories, purchases, currentBalance, savingsBalance, cashBalance, tpaBalance,
     cashInHandBalance, cards, transactions, salesReports,
@@ -1274,7 +1293,8 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     addCard, updateCard, deleteCard, resetTestData, runSystemDiagnostic,
     isSyncing, hasPendingChanges, syncData, handleStockMovement,
     ignoreLockedDayWithoutClosure,
-    notifications, addNotification, markNotificationRead, clearNotifications, resolveNotification, transferBetweenCards,
+    notifications, addNotification, markNotificationRead, clearNotifications, resolveNotification,
+    proposals, addProposal, deleteProposal,
   ]);
 
   return (
