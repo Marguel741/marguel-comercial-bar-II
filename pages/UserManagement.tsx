@@ -6,7 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useAudit } from '../contexts/AuditContext';
 import { useLayout } from '../contexts/LayoutContext';
 import { DEFAULT_PERMISSIONS } from '../src/utils/permissions';
-import { saveUser, onUsersSnapshot } from '../src/services/userStore';
+import { saveUser, deleteUser, onUsersSnapshot } from '../src/services/userStore';
 import { dispatchCustomEvent } from '../src/utils';
 
 const UserManagement: React.FC = () => {
