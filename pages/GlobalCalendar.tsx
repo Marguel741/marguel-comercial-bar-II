@@ -196,7 +196,8 @@ const GlobalCalendar: React.FC = () => {
 
     const win = window.open('', '_blank');
     if (!win) {
-      alert('Activa as popups para este site para gerar o PDF.');
+      // popups bloqueadas — não há toast disponível aqui pois é uma nova janela
+      console.warn('Popups bloqueadas. O utilizador precisa de as activar.');
       return;
     }
     win.document.write(reportHTML);
@@ -519,10 +520,10 @@ const GlobalCalendar: React.FC = () => {
                               if (!selectedDayDetail) return;
                               const locked = isDayLocked(selectedDayDetail);
                               if (locked) {
-                                 if (!canUnlock) { alert("Sem permissão para desbloquear dias."); return; }
+                                 if (!canUnlock) { return; }
                                  unlockDay(selectedDayDetail, "Desbloqueio manual");
                               } else {
-                                 if (!canLock) { alert("Sem permissão para bloquear dias."); return; }
+                                 if (!canLock) { return; }
                                  lockDay(selectedDayDetail, user?.name || "Admin");
                               }
                            }}
