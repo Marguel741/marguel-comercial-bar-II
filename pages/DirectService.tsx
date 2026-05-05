@@ -138,14 +138,12 @@ const DirectService: React.FC = () => {
     }
   }, [directSales, isSyncing]);
 
+  const pendingCount = useMemo(() => directSales.filter(s => s.statusSync === 'pending').length, [directSales]);
+
   useEffect(() => {
-    if (!isOnline) return;
-    const pending = directSales.filter(s => s.statusSync === 'pending');
-    if (pending.length === 0) return;
+    if (!isOnline || pendingCount === 0) return;
     const timer = setTimeout(() => syncPendingSales(), 1500);
     return () => clearTimeout(timer);
-  const pendingCount = useMemo(() => directSales.filter(s => s.statusSync === 'pending').length, [directSales]);
-  // depois usar pendingCount em vez do filter inline
   }, [isOnline, pendingCount, syncPendingSales]);
 
   // Return condicional APÓS todos os hooks
