@@ -159,7 +159,7 @@ export const AuditProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const now = new Date();
     const updateLog: AuditLog = {
       id: generateUUID(),
-      action: 'UPDATE_LOG' as any,
+      action: 'UPDATE_LOG',
       module: 'AUDITORIA',
       entityId: id,
       description: `Log editado por ${user?.name}.`,
