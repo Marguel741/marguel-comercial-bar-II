@@ -194,7 +194,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   const checkPermission = useCallback((permission: keyof UserPermissions) => {
     if (!hasPermission(user, permission)) {
       console.error(`Acesso negado: ${permission}`);
-      alert(`Sem permissão para executar esta acção: ${permission}`);
+      console.warn(`Sem permissão para executar esta acção: ${permission}`);
       return false;
     }
     return true;
@@ -709,7 +709,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   }, [lockedDays, addAuditLog]);
 
   const unlockDay = useCallback((dateStr: string, reason: string) => {
-    if (!hasPermission(user, 'calendar_unlock')) { alert('Sem permissão para desbloquear dias.'); return; }
+    if (!hasPermission(user, 'calendar_unlock')) { console.warn('Sem permissão para desbloquear dias.'); return; }
     const cleanTarget = cleanDate(dateStr);
     const newDays = lockedDays.filter(d => cleanDate(d) !== cleanTarget);
     setLockedDays(newDays);
@@ -721,7 +721,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     if (isDayLocked(date)) {
       const dateStr = typeof date === 'string' ? date : formatDateISO(date);
       addAuditLog({ action: 'TENTATIVA_EDICAO_BLOQUEADA', module: 'SISTEMA', entityId: dateStr, description: `Tentativa de edição em dia bloqueado por ${user?.name || 'Desconhecido'}.`, performedBy: user?.name || 'Sistema' });
-      window.alert('Dia bloqueado. Contacte administrador');
+      console.warn('Dia bloqueado. Contacte administrador');
       throw new Error('Dia bloqueado. Contacte administrador');
     }
   }, [isDayLocked, addAuditLog, user]);
@@ -910,7 +910,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       products.forEach(p => {
         if (items[p.id]) totalValue += p.buyPrice * (p.packSize || 1) * items[p.id];
       });
-      if (user?.permissions?.purchases_limit && totalValue > user.permissions.purchases_limit) { alert(`Limite de compra excedido!`); return; }
+       if (user?.permissions?.purchases_limit && totalValue > user.permissions.purchases_limit) { console.warn(`Limite de compra excedido!`); return; }
       Object.entries(items).forEach(([productId, qtyPacks]) => {
         if (qtyPacks > 0) {
           const p = products.find(prod => prod.id === productId);
@@ -1254,7 +1254,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   }, [checkPermission, addAuditLog, user]);
 
   const runSystemDiagnostic = useCallback(() => {
-    alert('Sistema a operar com Firestore em tempo real.');
+    console.log('Sistema a operar com Firestore em tempo real.');
   }, []);
 
   const value = useMemo(() => ({
