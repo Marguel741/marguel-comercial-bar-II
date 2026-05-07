@@ -40,7 +40,7 @@ const Expenses: React.FC = () => {
 
   // --- Estados ---
   // Formulário
-  const [formData, setFormData] = useState({ title: '', amount: '', category: '', notes: '' });
+  const [formData, setFormData] = useState({ title: '', amount: '', category: '', notes: '', date: formatDateISO(new Date()) });
   
   useEffect(() => {
     if (activeExpenseCategories.length > 0 && !formData.category) {
@@ -117,7 +117,7 @@ const Expenses: React.FC = () => {
       return;
     }
     triggerHaptic('selection');
-    setFormData({ title: '', amount: '', category: activeExpenseCategories[0]?.name || '', notes: '' });
+    setFormData({ title: '', amount: '', category: activeExpenseCategories[0]?.name || '', notes: '', date: formatDateISO(new Date()) });
     setAttachments([]);
     titleInputRef.current?.focus();
     // Scroll to top on mobile
@@ -144,7 +144,7 @@ const Expenses: React.FC = () => {
       title: formData.title,
       amount: amountVal,
       category: formData.category,
-      date: formatDateISO(now),
+      date: formData.date || formatDateISO(now),
       timestamp: now.getTime(),
       user: user?.name?.split(' ')[0] || 'Desconhecido',
       attachments: attachments,
@@ -155,7 +155,7 @@ const Expenses: React.FC = () => {
     showToast('Despesa registrada com sucesso!');
     
     // Reset Form
-    setFormData({ title: '', amount: '', category: activeExpenseCategories[0]?.name || '', notes: '' });
+    setFormData({ title: '', amount: '', category: activeExpenseCategories[0]?.name || '', notes: '', date: formatDateISO(new Date()) });
     setAttachments([]);
   };
 
@@ -330,6 +330,18 @@ const Expenses: React.FC = () => {
               </div>
 
               {/* Novo Campo de Nota */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
+                  <Calendar size={12} /> Data da Despesa
+                </label>
+                <input
+                  type="date"
+                  value={formData.date}
+                  onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                  className="w-full p-4 bg-slate-50 rounded-2xl border-none soft-ui-inset focus:ring-2 focus:ring-[#003366] outline-none transition-all font-bold text-slate-700"
+                />
+              </div>
+
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
                   <StickyNote size={12} /> Nota de Esclarecimento
