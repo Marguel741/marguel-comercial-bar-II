@@ -534,6 +534,15 @@ const Expenses: React.FC = () => {
                   </div>
                   <div className="bg-white/10 rounded-xl p-2">
                     <label className="text-[10px] font-bold text-red-100 uppercase block mb-1">Valor (Kz)</label>
+                    <div className="bg-white/10 rounded-xl p-2">
+                    <label className="text-[10px] font-bold text-red-100 uppercase block mb-1">Data</label>
+                    <input
+                      type="date"
+                      value={editData.date || ''}
+                      onChange={(e) => setEditData({...editData, date: e.target.value})}
+                      className="w-full bg-white text-[#003366] rounded-lg p-2 font-bold outline-none text-sm"
+                    />
+                  </div>
                     <input 
                       type="text" 
                       inputMode="decimal"
