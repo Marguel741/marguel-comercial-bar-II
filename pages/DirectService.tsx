@@ -6,6 +6,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
 import SoftCard from '../components/SoftCard';
 import { dbAddSale, dbGetAllSales, dbUpdateSale, dbDeleteSale, DirectSale } from '../src/services/db';
+import { doc, deleteDoc } from 'firebase/firestore';
+import { db } from '../src/firebase';
 import { processSync, serverTimeOffset } from '../src/services/syncService';
 import { roundKz, formatKz, formatDateISO, formatDisplayDate, generateUUID } from '../src/utils';
 import { hasPermission } from '../src/utils/permissions';
@@ -65,9 +67,9 @@ const DirectService: React.FC = () => {
   useEffect(() => {
     addAuditLog({
       action: 'ACESSO_PAGINA',
-      entity: 'Page',
+      module: 'VENDAS',
       entityId: 'DirectService',
-      details: `Utilizador ${user?.name} acedeu à página de Atendimento Directo.`,
+      description: `Utilizador ${user?.name} acedeu à página de Atendimento Directo.`,
       performedBy: user?.name || 'Sistema'
     });
   }, [user, addAuditLog]);
@@ -334,14 +336,22 @@ const DirectService: React.FC = () => {
       triggerHaptic('warning');
       if (type === 'single' && sale) {
         await dbDeleteSale(sale.id);
+        if (sale.statusSync === 'synced') {
+          try { await deleteDoc(doc(db, 'appdata/direct_sales/records', sale.uuid)); } catch {}
+        }
         setDirectSales(prev => prev.filter(s => s.id !== sale.id));
-        addAuditLog({ action: 'ELIMINACAO_VENDA', entity: 'DirectSale', entityId: sale.id, details: `Venda de ${formatKz(sale.total)} eliminada por ${user?.name}. (Sem alteração de stock)`, performedBy: user?.name || 'Sistema' });
+        addAuditLog({ action: 'ELIMINACAO_VENDA', module: 'VENDAS', entityId: sale.id, description: `Venda de ${formatKz(sale.total)} eliminada por ${user?.name}.`, performedBy: user?.name || 'Sistema' });
       } else if (type === 'mass') {
         const todayStr = formatDateISO(systemDate);
         const salesToDelete = directSales.filter(s => s.date === todayStr);
-        for (const s of salesToDelete) await dbDeleteSale(s.id);
+        for (const s of salesToDelete) {
+          await dbDeleteSale(s.id);
+          if (s.statusSync === 'synced') {
+            try { await deleteDoc(doc(db, 'appdata/direct_sales/records', s.uuid)); } catch {}
+          }
+        }
         setDirectSales(prev => prev.filter(s => s.date !== todayStr));
-        addAuditLog({ action: 'ELIMINACAO_MASSA_VENDAS', entity: 'DirectSale', entityId: todayStr, details: `${salesToDelete.length} vendas do dia ${todayStr} eliminadas por ${user?.name}.`, performedBy: user?.name || 'Sistema' });
+        addAuditLog({ action: 'ELIMINACAO_MASSA_VENDAS', module: 'VENDAS', entityId: todayStr, description: `${salesToDelete.length} vendas do dia ${todayStr} eliminadas por ${user?.name}.`, performedBy: user?.name || 'Sistema' });
       }
       setNetworkToast({ show: true, message: type === 'single' ? "Venda eliminada com sucesso." : "Vendas do dia eliminadas.", type: 'success' });
       setTimeout(() => setNetworkToast(prev => ({ ...prev, show: false })), 4000);
