@@ -178,6 +178,12 @@ const effectiveStock = useMemo(() => {
     return ['Todos', ...categories];
   }, [categories]);
 
+  const getStockStatus = (qty: number, minStock: number) => {
+    if (qty < 2) return { label: 'CRÍTICO', color: 'bg-red-500', textColor: 'text-red-500', type: 'CRITICAL' };
+    if (qty < minStock) return { label: 'ALERTA', color: 'bg-amber-500', textColor: 'text-amber-500', type: 'SOFT' };
+    return { label: 'OK', color: 'bg-green-500', textColor: 'text-green-500', type: 'OK' };
+  };
+
   const filteredProducts = useMemo(() => {
     return products.filter(p => {
       if (p.isArchived) return false;
@@ -193,12 +199,6 @@ const effectiveStock = useMemo(() => {
       return matchesSearch && matchesCategory && matchesStock;
     });
   }, [products, searchTerm, selectedCategory, stockFilter, effectiveStock]);
-
-  const getStockStatus = (qty: number, minStock: number) => {
-    if (qty < 2) return { label: 'CRÍTICO', color: 'bg-red-500', textColor: 'text-red-500', type: 'CRITICAL' };
-    if (qty < minStock) return { label: 'ALERTA', color: 'bg-amber-500', textColor: 'text-amber-500', type: 'SOFT' };
-    return { label: 'OK', color: 'bg-green-500', textColor: 'text-green-500', type: 'OK' };
-  };
 
   const allGeneratedAlerts = useMemo(() => {
     return products.map(item => {
