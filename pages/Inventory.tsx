@@ -70,6 +70,7 @@ const Inventory: React.FC = () => {
   const isLocked = isDayLocked(systemDate);
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [stockFilter, setStockFilter] = useState<'all' | 'critical' | 'low' | 'ok'>('all');
   // Estados para filtros de alertas
   const [alertSearchTerm, setAlertSearchTerm] = useState(''); 
   const [selectedAlertCategory, setSelectedAlertCategory] = useState('Todos');
@@ -182,9 +183,16 @@ const effectiveStock = useMemo(() => {
       if (p.isArchived) return false;
       const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesCategory = selectedCategory === 'Todos' || p.category === selectedCategory;
-      return matchesSearch && matchesCategory;
+      const stock = effectiveStock[p.id] ?? p.stock;
+      const status = getStockStatus(stock, p.minStock);
+      const matchesStock =
+        stockFilter === 'all' ||
+        (stockFilter === 'critical' && status.type === 'CRITICAL') ||
+        (stockFilter === 'low' && status.type === 'SOFT') ||
+        (stockFilter === 'ok' && status.type === 'OK');
+      return matchesSearch && matchesCategory && matchesStock;
     });
-  }, [products, searchTerm, selectedCategory]);
+  }, [products, searchTerm, selectedCategory, stockFilter, effectiveStock]);
 
   const getStockStatus = (qty: number, minStock: number) => {
     if (qty < 2) return { label: 'CRÍTICO', color: 'bg-red-500', textColor: 'text-red-500', type: 'CRITICAL' };
@@ -880,6 +888,27 @@ const effectiveStock = useMemo(() => {
                     </div>
                  </div>
 
+                 <div className="flex gap-2 overflow-x-auto custom-scrollbar pb-1 mb-2">
+                    {[
+                      { key: 'all',      label: 'Todos',     bg: 'bg-[#003366] text-white',     dot: '' },
+                      { key: 'critical', label: 'Críticos',  bg: 'bg-red-500 text-white',       dot: '🔴' },
+                      { key: 'low',      label: 'Baixos',    bg: 'bg-amber-500 text-white',     dot: '🟡' },
+                      { key: 'ok',       label: 'OK',        bg: 'bg-green-500 text-white',     dot: '🟢' },
+                    ].map(f => (
+                      <button
+                        key={f.key}
+                        onClick={() => setStockFilter(f.key as any)}
+                        className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                          stockFilter === f.key
+                            ? `${f.bg} shadow-lg`
+                            : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'
+                        }`}
+                      >
+                        {f.dot && <span>{f.dot}</span>}{f.label}
+                      </button>
+                    ))}
+                 </div>
+                 
                  <div className="space-y-4">
                     {filteredProducts.map((item) => {
                       const stock = effectiveStock[item.id] ?? item.stock;
