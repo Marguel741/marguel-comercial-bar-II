@@ -260,7 +260,7 @@ const effectiveStock = useMemo(() => {
       setNewEquipObs('');
       setShowAddEquipModal(false);
       triggerHaptic('success');
-      showToast('Item registrado no banco local');
+      showToast('Item registado no banco local');
     } catch (error) {
       triggerHaptic('error');
       showToast("Não foi possível completar a ação. Verifique os dados.");
@@ -276,7 +276,7 @@ const effectiveStock = useMemo(() => {
       
       setEditEquipModal({ isOpen: false, data: null });
       triggerHaptic('success');
-      showToast('Equipamento atualizado com sucesso.');
+      showToast('Equipamento actualizado com sucesso.');
     } catch (error) {
       triggerHaptic('error');
       showToast("Não foi possível completar a ação. Verifique os dados.");
@@ -407,7 +407,7 @@ const effectiveStock = useMemo(() => {
       }
 
       triggerHaptic('success');
-      showToast(navigator.onLine ? 'Sincronizado com Sucesso' : 'Salvo localmente (Offline)');
+      showToast(navigator.onLine ? 'Sincronizado com Sucesso' : 'Guardado localmente (Offline)');
 
       // Simulate sending report via Multi-Channel
       setTimeout(() => {
@@ -521,7 +521,7 @@ const effectiveStock = useMemo(() => {
         });
       }
       setProductModal({ isOpen: false, data: null });
-      showToast('Dados do produto atualizados!');
+      showToast('Dados do produto actualizados!');
     } catch (error: any) {
       triggerHaptic('error');
       showToast("Não foi possível completar a ação. Verifique os dados.");
@@ -1259,7 +1259,7 @@ const effectiveStock = useMemo(() => {
                  </div>
                  <div className="flex gap-3 pt-2">
                     <button onClick={() => setEditEquipModal({ isOpen: false, data: null })} className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-300 font-bold rounded-xl">Cancelar</button>
-                    <button onClick={handleUpdateEquipment} className="flex-1 py-3 bg-[#003366] text-white font-bold rounded-xl">Salvar Alterações</button>
+                    <button onClick={handleUpdateEquipment} className="flex-1 py-3 bg-[#003366] text-white font-bold rounded-xl">Guardar Alterações</button>
                  </div>
               </div>
            </div>
@@ -1275,7 +1275,7 @@ const effectiveStock = useMemo(() => {
               </div>
               <h3 className="text-xl font-bold text-[#003366] dark:text-white mb-2">Eliminar Item?</h3>
               <p className="text-slate-500 dark:text-slate-400 text-sm mb-6">
-                Tem certeza que deseja eliminar <span className="font-bold text-red-600">"{deleteEquipConfirmation.equipName}"</span>? Esta ação não pode ser desfeita.
+                Tem a certeza que deseja eliminar <span className="font-bold text-red-600">"{deleteEquipConfirmation.equipName}"</span>? Esta ação não pode ser desfeita.
               </p>
               <div className="flex gap-3">
                  <button 
@@ -1378,7 +1378,7 @@ const effectiveStock = useMemo(() => {
                     disabled={!justificationText.trim()}
                     className="w-full py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-lg shadow-red-200"
                 >
-                    <Send size={18} /> Salvar e Enviar Relatório
+                    <Send size={18} /> Guardar e Enviar Relatório
                 </button>
                 <button 
                     onClick={handleBackToEditCount}
