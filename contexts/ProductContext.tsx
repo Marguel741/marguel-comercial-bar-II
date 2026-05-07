@@ -223,7 +223,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [systemDate, setSystemDateState] = useState<Date>(() => {
     const now = new Date(); now.setHours(0, 0, 0, 0); return now;
   });
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isSyncing] = useState(false);
   const [hasPendingChanges] = useState(false);
 
@@ -338,14 +337,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     }));
 
     return () => unsubs.forEach(u => u());
-  }, []);
-
-  useEffect(() => {
-    const goOnline = () => setIsOnline(true);
-    const goOffline = () => setIsOnline(false);
-    window.addEventListener('online', goOnline);
-    window.addEventListener('offline', goOffline);
-    return () => { window.removeEventListener('online', goOnline); window.removeEventListener('offline', goOffline); };
   }, []);
 
   const syncData = useCallback(async () => {
@@ -463,8 +454,9 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     referenceId?: string, referenceType?: Transaction['referenceType'],
     performedBy?: string, date?: string
   ) => {
+    if (!Number.isFinite(amount) || amount <= 0) return;
     try {
-      const existingTrans = referenceId ? transactions.filter(t => t.referenceId === referenceId && t.referenceType === referenceType) : [];
+      const existingTrans = referenceId ? transactions.filter(t =>
       // Apagar TODAS as transacções antigas do Firestore (não só reverter saldo)
       if (existingTrans.length > 1) {
         existingTrans.slice(1).forEach(t => deleteDoc(doc(db, COL.transactions, t.id)));
@@ -599,7 +591,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   // PROD-3: transferência entre cartões — 1 registo com referência cruzada
   const transferBetweenCards = useCallback((fromId: string, toId: string, amount: number, note: string, performedBy: string) => {
-    if (amount <= 0) return;
+    if (!Number.isFinite(amount) || amount <= 0) return;
     const fromCard = cards.find(c => c.id === fromId);
     const toCard = cards.find(c => c.id === toId);
     if (!fromCard || !toCard) return;
@@ -946,6 +938,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   const getTodayPurchases = useCallback(() => getPurchasesByDate(getSystemDateStr()), [getPurchasesByDate, getSystemDateStr]);
 
   const processCashTPADebit = useCallback((origin: 'Cash' | 'TPA', amount: number, note: string, referenceId?: string, referenceType?: Transaction['referenceType'], performedBy?: string, date?: string) => {
+    if (!Number.isFinite(amount) || amount <= 0) return;
     validateAction('TRANSACTION', { date: date || formatDateISO(getSystemDate()), amount });
     const newCash = origin === 'Cash' ? cashBalance - amount : cashBalance;
     const newTPA = origin === 'TPA' ? tpaBalance - amount : tpaBalance;
