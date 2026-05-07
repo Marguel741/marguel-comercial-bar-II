@@ -60,7 +60,9 @@ export const AuditProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   // Carregar logs do Firestore em tempo real
   useEffect(() => {
-    const unsubLogs = onSnapshot(collection(db, AUDIT_COLLECTION), (snap) => {
+    import { query, orderBy, limit } from 'firebase/firestore';
+const q = query(collection(db, AUDIT_COLLECTION), orderBy('timestamp', 'desc'), limit(200));
+const unsubLogs = onSnapshot(q, (snap) => {
       const data = snap.docs
         .map(d => d.data() as AuditLog)
         .sort((a, b) => b.timestamp - a.timestamp);
