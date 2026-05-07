@@ -14,7 +14,7 @@ import SyncStatus from '../components/SyncStatus';
 import { useAuth } from '../contexts/AuthContext';
 import { PriceHistoryLog, SavedProposal, PurchaseRecord, UserPermissions, UserRole, Product } from '../types';
 import { hasPermission } from '../src/utils/permissions';
-import { formatDisplayDate, formatDateISO, cleanDate, safeFormatCurrency, getFileReader, generateUUID } from '../src/utils';
+import { formatDisplayDate, formatDateISO, generateUUID, cleanDate } from '../src/utils';
 
 const CartItem = memo(({ id, qty, product, variant = 'default' }: { id: string, qty: number, product: any, variant?: 'default' | 'blue' }) => {
   if (!product) return null;
@@ -43,7 +43,7 @@ const CartItem = memo(({ id, qty, product, variant = 'default' }: { id: string, 
 });
 
 const Prices: React.FC = () => {
-  const { products, categories, updateProduct, purchases, addPurchase, isDayLocked, systemDate, getSystemDate, priceHistory } = useProducts();
+  const { products, categories, updateProduct, purchases, addPurchase, isDayLocked, systemDate, getSystemDate, priceHistory, salesReports, getPurchasesByDate } = useProducts();
   const { sidebarMode, triggerHaptic } = useLayout(); 
   const { proposals: firestoreProposals, addProposal, deleteProposal } = useProducts();
   const { user } = useAuth();
@@ -55,12 +55,53 @@ const Prices: React.FC = () => {
   const canViewPurchases = hasPermission(user, 'purchases_view');
   const isLocked = isDayLocked(systemDate) && !isAdminOrOwner;
 
+  // Stock efectivo: último fecho confirmado + compras posteriores
+  const effectiveStock = useMemo(() => {
+    const todayStr = formatDateISO(systemDate);
+    const lastConfirmed = [...salesReports]
+      .filter(r => r.status === 'FECHO_CONFIRMADO' && (r as any).itemsSnapshot?.length)
+      .sort((a, b) => {
+        const aD = ((a as any).dateISO || a.date || '').split('T')[0];
+        const bD = ((b as any).dateISO || b.date || '').split('T')[0];
+        return bD.localeCompare(aD);
+      })[0];
+    const baseStock: Record<string, number> = {};
+    if (lastConfirmed) {
+      ((lastConfirmed as any).itemsSnapshot || []).forEach((it: any) => { baseStock[it.id] = parseInt(String(it.end ?? 0)) || 0; });
+    }
+    const lastDate = lastConfirmed ? (((lastConfirmed as any).dateISO || lastConfirmed.date || '').split('T')[0]) : '';
+    const posteriorPurchases: Record<string, number> = {};
+    purchases.filter(p => cleanDate(p.date) > lastDate && cleanDate(p.date) <= todayStr).forEach(rec => {
+      Object.entries(rec.items || {}).forEach(([id, q]) => {
+        const prod = products.find(pr => pr.id === id);
+        posteriorPurchases[id] = (posteriorPurchases[id] || 0) + Number(q) * (prod?.packSize || 1);
+      });
+    });
+    const result: Record<string, number> = {};
+    products.forEach(p => {
+      if (baseStock[p.id] === undefined) result[p.id] = p.stock;
+      else result[p.id] = baseStock[p.id] + (posteriorPurchases[p.id] || 0);
+    });
+    return result;
+  }, [salesReports, purchases, products, systemDate]);
+
+  // Helper de classe CSS por estado de stock
+  const getStockClasses = (productId: string, minStock: number) => {
+    const stock = effectiveStock[productId] ?? 0;
+    if (stock <= 0) return { card: 'bg-red-50 border-red-300 dark:bg-red-900/20 dark:border-red-700', badge: 'bg-red-500 text-white', label: stock < 0 ? `${stock}` : '0', tip: 'SEM STOCK' };
+    if (stock < 2) return { card: 'bg-red-50 border-red-300 dark:bg-red-900/20 dark:border-red-700', badge: 'bg-red-500 text-white', label: `${stock}`, tip: 'CRÍTICO' };
+    if (stock < minStock) return { card: 'bg-amber-50 border-amber-300 dark:bg-amber-900/20 dark:border-amber-700', badge: 'bg-amber-500 text-white', label: `${stock}`, tip: 'BAIXO' };
+    return { card: 'bg-green-50 border-green-200 dark:bg-green-900/10 dark:border-green-800/50', badge: 'bg-green-500 text-white', label: `${stock}`, tip: 'OK' };
+  };
+
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Todos');
   const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null);
   const [toast, setToast] = useState<{ show: boolean, message: string }>({ show: false, message: '' });
   const [editingPrices, setEditingPrices] = useState<Record<string, { buy?: string, sell?: string, packBuy?: string, promoQty?: string, promoPrice?: string, isPromoActive?: boolean }>>({});
   const [viewHistoryId, setViewHistoryId] = useState<string | null>(null);
+  const [historyFilter, setHistoryFilter] = useState<'30' | '90' | 'month' | 'all'>('30');
+  const [historySortAsc, setHistorySortAsc] = useState(false);
   const [isTableExpanded, setIsTableExpanded] = useState(true);
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
 
@@ -1055,14 +1096,19 @@ const Prices: React.FC = () => {
                     </div>
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                    {filteredSimulationProducts.map(p => {
+                     {filteredSimulationProducts.map(p => {
                       const qty = simulationCart[p.id] || 0;
                       const packSize = p.packSize || 1;
                       const packCost = p.buyPrice * packSize;
+                      const stockUI = getStockClasses(p.id, p.minStock);
+                      const cardBg = qty > 0 ? 'bg-blue-50/50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800' : stockUI.card;
                       return (
-                        <div key={p.id} className={`p-4 rounded-[24px] border transition-all duration-300 flex flex-col justify-between h-full ${qty > 0 ? 'bg-blue-50/50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800' : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700'}`}>
+                        <div key={p.id} className={`relative p-4 rounded-[24px] border transition-all duration-300 flex flex-col justify-between h-full ${cardBg}`}>
+                          <div className={`absolute top-2 right-2 ${stockUI.badge} text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm`} title={stockUI.tip}>
+                            {stockUI.label} un.
+                          </div>
                           <div>
-                            <p className="font-bold text-[#003366] dark:text-white text-sm leading-tight mb-1">{p.name}</p>
+                            <p className="font-bold text-[#003366] dark:text-white text-sm leading-tight mb-1 pr-12">{p.name}</p>
                             <p className="text-[10px] text-slate-400 font-bold uppercase">{p.packType || 'Pack'} de {packSize}un</p>
                           </div>
                           <div className="mt-4">
@@ -1264,10 +1310,15 @@ const Prices: React.FC = () => {
                       const qty = purchaseCart[p.id] || 0;
                       const packSize = p.packSize || 1;
                       const packCost = p.buyPrice * packSize;
+                      const stockUI = getStockClasses(p.id, p.minStock);
+                      const cardBg = qty > 0 ? 'bg-blue-50/50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800' : stockUI.card;
                       return (
-                        <div key={p.id} className={`p-4 rounded-[24px] border transition-all duration-300 flex flex-col justify-between h-full ${qty > 0 ? 'bg-blue-50/50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800' : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700'}`}>
+                        <div key={p.id} className={`relative p-4 rounded-[24px] border transition-all duration-300 flex flex-col justify-between h-full ${cardBg}`}>
+                          <div className={`absolute top-2 right-2 ${stockUI.badge} text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm`} title={stockUI.tip}>
+                            {stockUI.label} un.
+                          </div>
                           <div>
-                            <p className="font-bold text-slate-800 dark:text-white text-sm leading-tight mb-1">{p.name}</p>
+                            <p className="font-bold text-slate-800 dark:text-white text-sm leading-tight mb-1 pr-12">{p.name}</p>
                             <p className="text-[10px] text-slate-400 font-bold uppercase">{p.packType || 'Pack'} de {packSize}un</p>
                           </div>
                           <div className="mt-4">
@@ -1571,31 +1622,105 @@ const Prices: React.FC = () => {
                 <X size={24} />
               </button>
             </div>
-            <div className="p-6 max-h-[60vh] overflow-y-auto custom-scrollbar">
-              {priceHistory.filter(h => h.productId === viewHistoryId).length === 0 ? (
-                <p className="text-center text-slate-400 py-10 italic">Nenhum histórico registado para este produto.</p>
-              ) : (
-                <div className="space-y-4">
-                  {priceHistory
-                    .filter(h => h.productId === viewHistoryId)
-                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                    .map((h, idx) => (
-                      <div key={idx} className="p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 flex justify-between items-center">
-                        <div>
-                          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{formatDisplayDate(h.date)}</p>
-                          <p className="text-sm font-black text-[#003366] dark:text-blue-400">{(h.newSellPrice || 0).toLocaleString()} Kz</p>
+            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex gap-2 overflow-x-auto custom-scrollbar">
+              {[
+                { key: '30', label: 'Últimos 30 dias' },
+                { key: '90', label: 'Últimos 3 meses' },
+                { key: 'month', label: 'Este mês' },
+                { key: 'all', label: 'Tudo' }
+              ].map(f => (
+                <button
+                  key={f.key}
+                  onClick={() => setHistoryFilter(f.key as any)}
+                  className={`px-3 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap transition-all ${
+                    historyFilter === f.key
+                      ? 'bg-[#003366] text-white shadow'
+                      : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+              <button
+                onClick={() => setHistorySortAsc(s => !s)}
+                className="ml-auto px-3 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap bg-slate-100 dark:bg-slate-700 text-slate-500 hover:bg-slate-200"
+                title="Alterar ordem"
+              >
+                {historySortAsc ? '↑ Mais antigos' : '↓ Mais recentes'}
+              </button>
+            </div>
+            <div className="p-6 max-h-[55vh] overflow-y-auto custom-scrollbar">
+              {(() => {
+                const now = Date.now();
+                const cutoff = historyFilter === '30' ? now - 30*86400000
+                  : historyFilter === '90' ? now - 90*86400000
+                  : historyFilter === 'month' ? new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime()
+                  : 0;
+                const filtered = priceHistory
+                  .filter(h => h.productId === viewHistoryId && (cutoff === 0 || h.timestamp >= cutoff))
+                  .sort((a, b) => historySortAsc ? a.timestamp - b.timestamp : b.timestamp - a.timestamp);
+
+                if (filtered.length === 0) {
+                  return <p className="text-center text-slate-400 py-10 italic">Nenhum histórico no período seleccionado.</p>;
+                }
+
+                return (
+                  <div className="space-y-3">
+                    {filtered.map((h, idx) => {
+                      const sellDelta = h.oldSellPrice > 0 ? ((h.newSellPrice / h.oldSellPrice - 1) * 100) : 0;
+                      const buyDelta = h.oldBuyPrice > 0 ? ((h.newBuyPrice / h.oldBuyPrice - 1) * 100) : 0;
+                      const oldMargin = h.oldSellPrice > 0 ? ((h.oldSellPrice - h.oldBuyPrice) / h.oldSellPrice * 100) : 0;
+                      const newMargin = h.newSellPrice > 0 ? ((h.newSellPrice - h.newBuyPrice) / h.newSellPrice * 100) : 0;
+                      const marginDelta = newMargin - oldMargin;
+                      const dt = new Date(h.timestamp);
+                      const dateStr = `${dt.toLocaleDateString('pt-AO')} às ${dt.toLocaleTimeString('pt-AO', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+                      return (
+                        <div key={idx} className="p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 space-y-2">
+                          <div className="flex justify-between items-start pb-2 border-b border-slate-200 dark:border-slate-700">
+                            <div>
+                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">📅 {dateStr}</p>
+                              <p className="text-xs font-bold text-[#003366] dark:text-blue-400 mt-0.5">👤 {h.changedBy || 'Sistema'}</p>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <div className="p-2 bg-white dark:bg-slate-700/30 rounded-lg">
+                              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">💰 Preço de Venda</p>
+                              <p className="text-xs text-slate-600 dark:text-slate-300">
+                                <span className="line-through opacity-50">{(h.oldSellPrice || 0).toLocaleString()} Kz</span>
+                                {' → '}
+                                <span className="font-black text-[#003366] dark:text-blue-400">{(h.newSellPrice || 0).toLocaleString()} Kz</span>
+                              </p>
+                              <span className={`inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${sellDelta > 0 ? 'bg-green-100 text-green-700' : sellDelta < 0 ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'}`}>
+                                {sellDelta > 0 ? '+' : ''}{sellDelta.toFixed(1)}%
+                              </span>
+                            </div>
+                            <div className="p-2 bg-white dark:bg-slate-700/30 rounded-lg">
+                              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">🛒 Preço de Compra</p>
+                              <p className="text-xs text-slate-600 dark:text-slate-300">
+                                <span className="line-through opacity-50">{(h.oldBuyPrice || 0).toLocaleString()} Kz</span>
+                                {' → '}
+                                <span className="font-black text-[#003366] dark:text-blue-400">{(h.newBuyPrice || 0).toLocaleString()} Kz</span>
+                              </p>
+                              <span className={`inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${buyDelta > 0 ? 'bg-red-100 text-red-700' : buyDelta < 0 ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
+                                {buyDelta > 0 ? '+' : ''}{buyDelta.toFixed(1)}%
+                              </span>
+                            </div>
+                          </div>
+                          <div className="p-2 bg-amber-50 dark:bg-amber-900/10 rounded-lg border border-amber-100 dark:border-amber-900/30">
+                            <p className="text-[9px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider mb-1">📊 Margem</p>
+                            <p className="text-xs text-slate-600 dark:text-slate-300">
+                              {oldMargin.toFixed(1)}% → <span className="font-black">{newMargin.toFixed(1)}%</span>
+                              <span className={`ml-2 text-[10px] font-bold ${marginDelta > 0 ? 'text-green-600' : marginDelta < 0 ? 'text-red-600' : 'text-slate-500'}`}>
+                                ({marginDelta > 0 ? '+' : ''}{marginDelta.toFixed(1)} p.p.)
+                              </span>
+                            </p>
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <p className="text-[10px] text-slate-400 font-medium">Anterior: {(h.oldSellPrice || 0).toLocaleString()} Kz</p>
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${h.newSellPrice > h.oldSellPrice ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-                            {h.newSellPrice > h.oldSellPrice ? '+' : ''}{(((h.newSellPrice / h.oldSellPrice) - 1) * 100).toFixed(1)}%
-                          </span>
-                        </div>
-                      </div>
-                    ))
-                  }
-                </div>
-              )}
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>
