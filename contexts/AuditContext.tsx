@@ -1,7 +1,7 @@
 // contexts/AuditContext.tsx — migrado para Firestore
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { db } from '../src/firebase';
-import { collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
+import { collection, doc, setDoc, deleteDoc, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
 import { AuditLog, User } from '../types';
 import { generateUUID } from '../src/utils';
 
@@ -60,9 +60,8 @@ export const AuditProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   // Carregar logs do Firestore em tempo real
   useEffect(() => {
-    import { query, orderBy, limit } from 'firebase/firestore';
-const q = query(collection(db, AUDIT_COLLECTION), orderBy('timestamp', 'desc'), limit(200));
-const unsubLogs = onSnapshot(q, (snap) => {
+    const q = query(collection(db, AUDIT_COLLECTION), orderBy('timestamp', 'desc'), limit(200));
+    const unsubLogs = onSnapshot(q, (snap) => {
       const data = snap.docs
         .map(d => d.data() as AuditLog)
         .sort((a, b) => b.timestamp - a.timestamp);
