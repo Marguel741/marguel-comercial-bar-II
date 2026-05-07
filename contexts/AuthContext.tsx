@@ -298,6 +298,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setUser(null);
     localStorage.removeItem('mg_user');
     localStorage.removeItem('mg_biometric_user');
+    localStorage.setItem('biometric_enabled', 'false');
   }, [user, addLog]);
 
   const updateUser = useCallback(async (updates: Partial<User>): Promise<boolean> => {
