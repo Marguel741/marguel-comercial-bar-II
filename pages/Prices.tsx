@@ -43,9 +43,8 @@ const CartItem = memo(({ id, qty, product, variant = 'default' }: { id: string, 
 });
 
 const Prices: React.FC = () => {
-  const { products, categories, updateProduct, purchases, addPurchase, isDayLocked, systemDate, getSystemDate, priceHistory, salesReports, getPurchasesByDate } = useProducts();
-  const { sidebarMode, triggerHaptic } = useLayout(); 
-  const { proposals: firestoreProposals, addProposal, deleteProposal } = useProducts();
+  const { products, categories, updateProduct, purchases, addPurchase, isDayLocked, systemDate, getSystemDate, priceHistory, salesReports, getPurchasesByDate, proposals: firestoreProposals, addProposal, deleteProposal } = useProducts();
+  const { sidebarMode, triggerHaptic } = useLayout();
   const { user } = useAuth();
   const location = useLocation();
   
