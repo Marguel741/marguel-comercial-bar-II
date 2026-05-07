@@ -500,10 +500,13 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
         if (c.id === 'cash_in_hand') return { ...c, balance: newCashInHand };
         return c;
       }));
-      setDoc(doc(db, COL.cards, 'main'), { ...cards.find(c => c.id === 'main'), balance: newCB });
-      setDoc(doc(db, COL.cards, 'savings'), { ...cards.find(c => c.id === 'savings'), balance: newSB });
-      setDoc(doc(db, COL.cards, 'cash_in_hand'), { ...cards.find(c => c.id === 'cash_in_hand'), balance: newCashInHand });
-
+      const mainCard = cards.find(c => c.id === 'main');
+const savingsCard = cards.find(c => c.id === 'savings');
+const cashCard = cards.find(c => c.id === 'cash_in_hand');
+if (mainCard) setDoc(doc(db, COL.cards, 'main'), { ...mainCard, balance: newCB });
+if (savingsCard) setDoc(doc(db, COL.cards, 'savings'), { ...savingsCard, balance: newSB });
+if (cashCard) setDoc(doc(db, COL.cards, 'cash_in_hand'), { ...cashCard, balance: newCashInHand });
+      
       const targetDate = date || formatDateISO(getSystemDate());
       const transId = existingTrans.length > 0 ? existingTrans[0].id : generateUUID();
 
@@ -575,9 +578,11 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       return c;
     }));
     setDoc(doc(db, 'appdata', 'balances'), { currentBalance: newCB, savingsBalance, cashBalance: newCashBal, tpaBalance: newTPABal, cashInHandBalance: newCashInHandBal });
-    setDoc(doc(db, COL.cards, 'main'), { ...cards.find(c => c.id === 'main'), balance: newCB });
-    setDoc(doc(db, COL.cards, 'cash_in_hand'), { ...cards.find(c => c.id === 'cash_in_hand'), balance: newCashInHandBal });
-
+    const mainCard2 = cards.find(c => c.id === 'main');
+    const cashCard2 = cards.find(c => c.id === 'cash_in_hand');
+    if (mainCard2) setDoc(doc(db, COL.cards, 'main'), { ...mainCard2, balance: newCB });
+    if (cashCard2) setDoc(doc(db, COL.cards, 'cash_in_hand'), { ...cashCard2, balance: newCashInHandBal });
+    
     if (totalLifted > 0) {
       setDoc(doc(db, COL.transactions, `${newReport.id}_closure`), {
         id: `${newReport.id}_closure`, type: 'entrada', category: 'Fecho de Caixa', amount: totalLifted,
@@ -1142,9 +1147,11 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
         return c;
       }));
       setDoc(doc(db, 'appdata', 'balances'), { currentBalance: newCB, savingsBalance, cashBalance: newCashBal, tpaBalance: newTPABal, cashInHandBalance: newCashInHandBal });
-      setDoc(doc(db, COL.cards, 'main'), { ...cards.find(c => c.id === 'main'), balance: newCB });
-      setDoc(doc(db, COL.cards, 'cash_in_hand'), { ...cards.find(c => c.id === 'cash_in_hand'), balance: newCashInHandBal });
-
+      const mainCard3 = cards.find(c => c.id === 'main');
+      const cashCard3 = cards.find(c => c.id === 'cash_in_hand');
+      if (mainCard3) setDoc(doc(db, COL.cards, 'main'), { ...mainCard3, balance: newCB });
+      if (cashCard3) setDoc(doc(db, COL.cards, 'cash_in_hand'), { ...cashCard3, balance: newCashInHandBal });
+      
       if (totalLifted > 0) {
         setDoc(doc(db, COL.transactions, `${reportId}_closure`), {
           id: `${reportId}_closure`, type: 'entrada', category: 'Fecho de Caixa', amount: totalLifted,
