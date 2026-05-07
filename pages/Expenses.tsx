@@ -395,7 +395,7 @@ const Expenses: React.FC = () => {
                 type="submit" 
                 className="w-full pill-button py-4 bg-[#003366] text-white font-bold text-lg mt-4 shadow-xl shadow-blue-200 hover:opacity-90 active:scale-95 transition-all flex items-center justify-center gap-2"
               >
-                <Check size={20} /> Registrar Despesa
+                <Check size={20} /> Registar Despesa
               </button>
             </form>
           </SoftCard>
