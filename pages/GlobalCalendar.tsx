@@ -5,6 +5,8 @@ import {
   Loader2, Wifi, WifiOff, Printer, BarChart2
 } from 'lucide-react';
 import { useProducts } from '../contexts/ProductContext';
+import { buildReportHTML, ReportPeriod } from '../src/utils/reportBuilder';
+import { useAudit } from '../contexts/AuditContext';
 import { useLayout } from '../contexts/LayoutContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
@@ -33,8 +35,10 @@ const GlobalCalendar: React.FC = () => {
     isSyncing,
     hasPendingChanges,
     syncData,
-    lockedDays
+    lockedDays,
+    stockOperationHistory
   } = useProducts();
+  const { logs: auditLogs } = useAudit();
   
   const { triggerHaptic } = useLayout();
   const { user } = useAuth();
@@ -192,7 +196,7 @@ const GlobalCalendar: React.FC = () => {
     }
 
     const filename = `Marguel - Relatorio de Gestao (${periodLabel}) (${periodStr}).pdf`;
-    const reportHTML = buildReportHTML(filename);
+    const reportHTML = buildLocalReportHTML(filename);
 
     const win = window.open('', '_blank');
     if (!win) {
@@ -205,7 +209,7 @@ const GlobalCalendar: React.FC = () => {
     setIsPrintModalOpen(false);
   };
 
-  const buildReportHTML = (pdfFilename: string = 'Marguel-Relatorio.pdf') => {
+  const buildLocalReportHTML = (pdfFilename: string) => {
     const refDate = new Date(printDate + 'T12:00:00');
     let startDate = new Date(refDate);
     let endDate = new Date(refDate);
@@ -233,120 +237,25 @@ const GlobalCalendar: React.FC = () => {
       const d = (r as any).dateISO ? (r as any).dateISO.split('T')[0] : r.date;
       return d >= startStr && d <= endStr;
     });
+    const periodPurchases = purchases.filter(p => { const d = cleanDate(p.date); return d >= startStr && d <= endStr; });
+    const periodExpenses = expenses.filter(e => { const d = cleanDate(e.date); return d >= startStr && d <= endStr; });
 
-    const periodPurchases = purchases.filter(p => {
-      const d = cleanDate(p.date);
-      return d >= startStr && d <= endStr;
-    });
-
-    const periodExpenses = expenses.filter(e => {
-      const d = cleanDate(e.date);
-      return d >= startStr && d <= endStr;
-    });
-
-    const totalSales = periodReports.reduce((acc, r) => acc + (r.totalLifted || (r as any).totals?.lifted || 0), 0);
-    const totalExpected = periodReports.reduce((acc, r) => acc + ((r as any).totals?.expected || (r as any).totals?.soldStock || r.totalExpected || 0), 0);
-    const totalPurchases = periodPurchases.reduce((acc, p) => acc + p.total, 0);
-    const totalExpensesVal = periodExpenses.reduce((acc, e) => acc + e.amount, 0);
-    const totalProfit = periodReports.reduce((acc, r) => acc + ((r as any).profit || (r as any).totals?.profit || 0), 0);
-
-    const productSummary: Record<string, { qty: number, revenue: number }> = {};
-    periodReports.forEach(r => {
-      const items = r.itemsSummary || (r as any).itemsSnapshot || [];
-      items.forEach((item: any) => {
-        if (!productSummary[item.name]) productSummary[item.name] = { qty: 0, revenue: 0 };
-        productSummary[item.name].qty += (item.qty ?? item.soldQty ?? 0);
-        productSummary[item.name].revenue += (item.revenue ?? item.total ?? 0);
-      });
-    });
-
-    const sortedProducts = Object.entries(productSummary)
-      .map(([name, data]) => ({ name, ...data }))
-      .sort((a, b) => b.revenue - a.revenue);
-
-    return `
-      <!DOCTYPE html>
-      <html lang="pt">
-      <head>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Relatorio Marguel - ${printPeriod.toUpperCase()}</title>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-        <style>
-          body { font-family: Arial, sans-serif; color: #1e293b; padding: 40px; line-height: 1.5; margin: 0; }
-          #loading { position: fixed; inset: 0; background: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 9999; font-family: Arial, sans-serif; }
-          #loading p { color: #003366; font-weight: 900; font-size: 16px; margin-top: 16px; letter-spacing: 2px; text-transform: uppercase; }
-          .spinner { width: 48px; height: 48px; border: 5px solid #e2e8f0; border-top-color: #003366; border-radius: 50%; animation: spin 0.8s linear infinite; }
-          @keyframes spin { to { transform: rotate(360deg); } }
-          .header { text-align: center; margin-bottom: 40px; border-bottom: 2px solid #003366; padding-bottom: 20px; }
-          .header h1 { color: #003366; margin: 0; text-transform: uppercase; letter-spacing: 2px; font-size: 20px; }
-          .header p { margin: 5px 0; color: #64748b; font-weight: bold; font-size: 13px; }
-          .summary-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 40px; }
-          .card { padding: 20px; border-radius: 12px; border: 1px solid #e2e8f0; background: #f8fafc; }
-          .card h3 { margin: 0 0 10px 0; font-size: 11px; text-transform: uppercase; color: #64748b; }
-          .card p { margin: 0; font-size: 22px; font-weight: 900; color: #003366; }
-          .card-dark { background: #003366; border-color: #003366; grid-column: span 2; }
-          .card-dark h3 { color: #94a3b8; }
-          .card-dark p { color: #ffffff; font-size: 28px; }
-          .section { margin-bottom: 40px; }
-          .section h2 { font-size: 15px; text-transform: uppercase; border-left: 4px solid #003366; padding-left: 15px; margin-bottom: 20px; color: #003366; }
-          table { width: 100%; border-collapse: collapse; }
-          th { background: #f1f5f9; text-align: left; padding: 10px 12px; font-size: 11px; text-transform: uppercase; color: #64748b; }
-          td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; font-size: 13px; }
-          .text-right { text-align: right; }
-          .footer { text-align: center; margin-top: 60px; font-size: 10px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 20px; }
-        </style>
-      </head>
-      <body>
-      <div id="report-content">
-        <div class="header">
-          <h1>Marguel Sistema De Gestão Interna</h1>
-          <p>Relatório de Gestão - ${printPeriod === 'day' ? 'Diário' : printPeriod === 'week' ? 'Semanal' : printPeriod === 'month' ? 'Mensal' : printPeriod === 'quarter' ? 'Trimestral' : 'Anual'}</p>
-          <p>Período: ${startStr} até ${endStr}</p>
-        </div>
-        <div class="summary-grid">
-          <div class="card"><h3>Total Faturado (Bruto)</h3><p>${formatKz(totalExpected)}</p></div>
-          <div class="card"><h3>Total Levantado (Líquido)</h3><p>${formatKz(totalSales)}</p></div>
-          <div class="card"><h3>Total de Compras</h3><p>${formatKz(totalPurchases)}</p></div>
-          <div class="card"><h3>Total de Despesas</h3><p>${formatKz(totalExpensesVal)}</p></div>
-          <div class="card card-dark"><h3>Lucro Estimado do Período</h3><p>${formatKz(totalProfit)}</p></div>
-        </div>
-        <div class="section">
-          <h2>Resumo de Vendas por Produto</h2>
-          <table>
-            <thead><tr><th>Produto</th><th class="text-right">Quantidade</th><th class="text-right">Total Faturado</th></tr></thead>
-            <tbody>
-              ${sortedProducts.map(p => `<tr><td>${p.name}</td><td class="text-right">${p.qty}</td><td class="text-right">${formatKz(p.revenue)}</td></tr>`).join('')}
-            </tbody>
-          </table>
-        </div>
-        <div class="footer">
-          <p>Gerado em ${new Date().toLocaleString('pt-AO')} por ${user?.name || 'Sistema'}</p>
-          <p>Marguel Sistema de Gestao Interna &copy; 2026</p>
-        </div>
-      </div>
-      <div id="loading"><div class="spinner"></div><p>A gerar PDF...</p></div>
-      <script>
-        window.addEventListener('load', function() {
-          var element = document.getElementById('report-content');
-          var opt = {
-            margin: [10, 10, 10, 10],
-            filename: '${pdfFilename}',
-            image: { type: 'jpeg', quality: 0.98 },
-            html2canvas: { scale: 2, useCORS: true, letterRendering: true },
-            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-          };
-          html2pdf().set(opt).from(element).save().then(function() {
-            document.getElementById('loading').style.display = 'none';
-            window.close();
-          });
-        });
-      </script>
-      </body>
-      </html>
-    `;
+    return buildReportHTML({
+      period: printPeriod as ReportPeriod,
+      startDate, endDate, startStr, endStr,
+      reports: periodReports,
+      purchases: periodPurchases,
+      expenses: periodExpenses,
+      transactions,
+      stockOperations: stockOperationHistory,
+      priceHistory,
+      products,
+      auditLogs: auditLogs || [],
+      lockedDays,
+      generatedBy: user?.name || 'Sistema',
+    }, pdfFilename);
   };
-
+  
   return (
     <div className="p-4 md:p-8 space-y-8 animate-fade-in pb-24 relative">
        
