@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Save, Calculator, DollarSign, Calendar, AlertCircle, PlusCircle, Wallet, CreditCard, ArrowRightLeft, CheckCircle, X, MessageSquare, Clock, Lock, BarChart2, ChevronRight, ChevronLeft, RefreshCw, Database, Server, ShieldCheck, Smartphone, ChevronDown, ChevronUp, AlertTriangle, Check, History, Maximize2, Minimize2, Edit3 } from 'lucide-react';
+import { Save, Calculator, DollarSign, Calendar, AlertCircle, PlusCircle, Wallet, CreditCard, ArrowRightLeft, CheckCircle, X, MessageSquare, Clock, Lock, BarChart2, ChevronRight, ChevronLeft, RefreshCw, Database, Server, ShieldCheck, Smartphone, ChevronDown, ChevronUp, AlertTriangle, Check, History, Maximize2, Minimize2, Edit3, Eye } from 'lucide-react';
 import SoftCard from '../components/SoftCard';
 import { useProducts } from '../contexts/ProductContext';
 import { 
