@@ -406,7 +406,7 @@ const Expenses: React.FC = () => {
             </div>
             <div>
               <h3 className="text-xl font-bold text-slate-800">Acesso Restrito</h3>
-              <p className="text-slate-500 text-sm">Você não tem permissão para registar novas despesas.</p>
+              <p className="text-slate-500 text-sm">Não tem permissão para registar novas despesas.</p>
             </div>
           </SoftCard>
         )}
@@ -1000,7 +1000,7 @@ const Expenses: React.FC = () => {
             </div>
             <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-4">Confirmar Eliminação</h3>
             <p className="text-slate-500 dark:text-slate-400 mb-8 leading-relaxed">
-              Tem certeza que deseja apagar este registo? O valor será devolvido à Conta Corrente.
+              Tem a certeza que deseja apagar este registo? O valor será devolvido à Conta Bancária.
             </p>
             <div className="flex gap-4">
               <button 
