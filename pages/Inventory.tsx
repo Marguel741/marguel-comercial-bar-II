@@ -1109,7 +1109,7 @@ const effectiveStock = useMemo(() => {
               </div>
               <h2 className="text-2xl font-black text-slate-800 dark:text-white mb-2">Eliminar Produto?</h2>
               <p className="text-slate-500 dark:text-slate-300 text-sm mb-6">
-                 Você está prestes a remover <strong className="text-slate-800 dark:text-white">{deleteConfirmation.product.name}</strong> permanentemente do sistema. Esta ação não pode ser desfeita.
+                 Está prestes a remover <strong className="text-slate-800 dark:text-white">{deleteConfirmation.product.name}</strong> permanentemente do sistema. Esta acção não pode ser desfeita.
               </p>
               
               <div className="flex flex-col gap-3">
@@ -1555,7 +1555,7 @@ const effectiveStock = useMemo(() => {
               />
               <div className="flex gap-3">
                  <button onClick={() => setShowDateEditModal(false)} className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-300 font-bold rounded-xl">Cancelar</button>
-                 <button onClick={handleUpdateNextDate} className="flex-1 py-3 bg-[#003366] text-white font-bold rounded-xl">Salvar</button>
+                 <button onClick={handleUpdateNextDate} className="flex-1 py-3 bg-[#003366] text-white font-bold rounded-xl">Guardar</button>
               </div>
            </div>
         </div>
@@ -1687,7 +1687,7 @@ const effectiveStock = useMemo(() => {
                   onClick={handleSaveProduct}
                   className="flex-1 py-3 bg-[#003366] text-white font-bold rounded-xl shadow-lg hover:opacity-95 active:scale-95 transition-all"
                 >
-                  Salvar
+                  Guardar
                 </button>
               </div>
             </div>
