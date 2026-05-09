@@ -214,7 +214,7 @@ const Expenses: React.FC = () => {
     setSelectedExpense(editData); // Atualiza a visualização atual
     setIsEditing(false);
     triggerHaptic('success');
-    showToast('Despesa atualizada com sucesso!');
+    showToast('Despesa actualizada com sucesso!');
   };
 
   // Cálculos para o relatório
@@ -406,7 +406,7 @@ const Expenses: React.FC = () => {
             </div>
             <div>
               <h3 className="text-xl font-bold text-slate-800">Acesso Restrito</h3>
-              <p className="text-slate-500 text-sm">Você não tem permissão para registrar novas despesas.</p>
+              <p className="text-slate-500 text-sm">Você não tem permissão para registar novas despesas.</p>
             </div>
           </SoftCard>
         )}
@@ -660,7 +660,7 @@ const Expenses: React.FC = () => {
                       onClick={handleSaveEdit}
                       className="flex-1 py-4 text-white font-bold bg-green-600 rounded-2xl hover:bg-green-700 transition-colors flex items-center justify-center gap-2 shadow-lg shadow-green-200"
                     >
-                      <Save size={18} /> Salvar Alterações
+                      <Save size={18} /> Guardar Alterações
                     </button>
                   </>
                 ) : (
@@ -751,7 +751,7 @@ const Expenses: React.FC = () => {
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
                 <input 
                   type="text" 
-                  placeholder="Filtrar por nome, categoria ou usuário..." 
+                  placeholder="Filtrar por nome, categoria ou utilizador..." 
                   value={reportSearch}
                   onChange={(e) => setReportSearch(e.target.value)}
                   className="w-full pl-12 pr-4 py-3 bg-slate-50 rounded-xl border-none soft-ui-inset focus:ring-2 focus:ring-[#003366] outline-none"
