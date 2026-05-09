@@ -268,7 +268,7 @@ const effectiveStock = useMemo(() => {
       showToast('Item registado no banco local');
     } catch (error) {
       triggerHaptic('error');
-      showToast("Não foi possível completar a ação. Verifique os dados.");
+      showToast("Não foi possível completar a acção. Verifique os dados.");
     }
   };
 
@@ -284,7 +284,7 @@ const effectiveStock = useMemo(() => {
       showToast('Equipamento actualizado com sucesso.');
     } catch (error) {
       triggerHaptic('error');
-      showToast("Não foi possível completar a ação. Verifique os dados.");
+      showToast("Não foi possível completar a acção. Verifique os dados.");
     }
   };
 
@@ -298,7 +298,7 @@ const effectiveStock = useMemo(() => {
       showToast('Equipamento removido permanentemente.');
     } catch (error) {
       triggerHaptic('error');
-      showToast("Não foi possível completar a ação. Verifique os dados.");
+      showToast("Não foi possível completar a acção. Verifique os dados.");
     }
   };
 
@@ -435,7 +435,7 @@ const effectiveStock = useMemo(() => {
       setDiscrepancies([]);
     } catch (error) {
       triggerHaptic('error');
-      showToast("Não foi possível completar a ação. Verifique os dados.");
+      showToast("Não foi possível completar a acção. Verifique os dados.");
     }
   };
 
@@ -529,7 +529,7 @@ const effectiveStock = useMemo(() => {
       showToast('Dados do produto actualizados!');
     } catch (error: any) {
       triggerHaptic('error');
-      showToast("Não foi possível completar a ação. Verifique os dados.");
+      showToast("Não foi possível completar a acção. Verifique os dados.");
       setProductModal({ isOpen: false, data: null });
     }
   };
@@ -583,7 +583,7 @@ const effectiveStock = useMemo(() => {
           setDeleteConfirmation({ isOpen: false, product: null });
         } catch (error) {
           triggerHaptic('error');
-          showToast("Não foi possível completar a ação. Verifique os dados.");
+          showToast("Não foi possível completar a acção. Verifique os dados.");
         }
     }
   };
@@ -597,7 +597,7 @@ const effectiveStock = useMemo(() => {
         showToast('Categoria adicionada!');
       } catch (error) {
         triggerHaptic('error');
-        showToast("Não foi possível completar a ação. Verifique os dados.");
+        showToast("Não foi possível completar a acção. Verifique os dados.");
       }
     }
   };
@@ -616,7 +616,7 @@ const effectiveStock = useMemo(() => {
         showToast('Categoria removida.');
       } catch (error) {
         triggerHaptic('error');
-        showToast("Não foi possível completar a ação. Verifique os dados.");
+        showToast("Não foi possível completar a acção. Verifique os dados.");
       }
     }
   };
@@ -634,7 +634,7 @@ const effectiveStock = useMemo(() => {
         showToast('Categoria actualizada!');
       } catch (error) {
         triggerHaptic('error');
-        showToast("Não foi possível completar a ação. Verifique os dados.");
+        showToast("Não foi possível completar a acção. Verifique os dados.");
       }
     }
   };
@@ -657,7 +657,7 @@ const effectiveStock = useMemo(() => {
         }, 2000);
       } catch (error) {
         triggerHaptic('error');
-        showToast("Não foi possível completar a ação. Verifique os dados.");
+        showToast("Não foi possível completar a acção. Verifique os dados.");
       }
     }
   };
@@ -1280,7 +1280,7 @@ const effectiveStock = useMemo(() => {
               </div>
               <h3 className="text-xl font-bold text-[#003366] dark:text-white mb-2">Eliminar Item?</h3>
               <p className="text-slate-500 dark:text-slate-400 text-sm mb-6">
-                Tem a certeza que deseja eliminar <span className="font-bold text-red-600">"{deleteEquipConfirmation.equipName}"</span>? Esta ação não pode ser desfeita.
+                Tem a certeza que deseja eliminar <span className="font-bold text-red-600">"{deleteEquipConfirmation.equipName}"</span>? Esta acção não pode ser desfeita.
               </p>
               <div className="flex gap-3">
                  <button 
