@@ -14,7 +14,7 @@ import Footer from '../components/Footer';
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-  const { salesReports, systemDate, products, expenses, getConfirmedSalesReports, notifications, addNotification, resolveNotification, getPurchasesByDate } = useProducts();
+  const { salesReports, systemDate, products, expenses, getConfirmedSalesReports, notifications, addNotification, resolveNotification, purchases } = useProducts();
   const { theme, setTheme } = useTheme();
   const { toggleSidebar } = useLayout();
 
@@ -57,15 +57,22 @@ const Dashboard: React.FC = () => {
     ((lastConfirmed as any).itemsSnapshot as any[]).forEach((item: any) => {
       baseStock[item.id] = item.end ?? 0;
     });
+    // Somar todas as compras após o fecho de uma só vez — sem ciclo por dia
+    purchases
+      .filter(rec => {
+        const d = cleanDate(rec.date);
+        return d > lastClosureDate && d <= todayStr;
+      })
+      .forEach(rec => {
+        Object.entries(rec.items || {}).forEach(([id, qtyPacks]) => {
+          if (baseStock[id] !== undefined) {
+            const prod = products.find(pr => pr.id === id);
+            baseStock[id] = (baseStock[id] || 0) + Number(qtyPacks) * (prod?.packSize || 1);
+          }
+        });
+      });
     products.forEach(p => {
       if (baseStock[p.id] === undefined) baseStock[p.id] = p.stock;
-      const d = new Date(lastClosureDate + 'T12:00:00');
-      d.setDate(d.getDate() + 1);
-      while (formatDateISO(d) <= todayStr) {
-        const dayPurchases = getPurchasesByDate(formatDateISO(d));
-        baseStock[p.id] = (baseStock[p.id] || 0) + (dayPurchases[p.id] || 0);
-        d.setDate(d.getDate() + 1);
-      }
     });
     return baseStock;
   }, [salesReports, products, systemDate, getPurchasesByDate]);
