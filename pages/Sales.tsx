@@ -660,8 +660,8 @@ const Sales: React.FC = () => {
       return rDate === yesterdayStr;
     });
     if (!hasYesterdayReport) {
-      const continuar = window.confirm(`Atenção: o dia de ontem (${yesterdayStr}) não tem fecho registado.\n\nTens a certeza que queres fazer o fecho de hoje?\n\nPodes cancelar e registar o dia de ontem primeiro.`);
-      if (!continuar) return;
+      showToast(`⚠️ O dia de ontem (${yesterdayStr}) não tem fecho. Considera fechar ontem primeiro.`);
+      // Continua — apenas aviso informativo, não bloqueia o fecho de hoje
     }
     if (!canCloseDay) { triggerHaptic('error'); showToast("Sem permissão para realizar fecho."); return; }
     if (!canExecuteSales) { triggerHaptic('error'); showToast("Sem permissão de execução de vendas para realizar fecho."); return; }
