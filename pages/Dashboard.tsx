@@ -7,7 +7,7 @@ import { useProducts } from '../contexts/ProductContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useLayout } from '../contexts/LayoutContext';
 import { UserRole } from '../types';
-import { formatDateISO, formatDisplayDate, generateUUID } from '../src/utils';
+import { formatDateISO, formatDisplayDate, generateUUID, cleanDate } from '../src/utils';
 import SyncStatus from '../components/SyncStatus';
 import Footer from '../components/Footer';
 
@@ -75,7 +75,7 @@ const Dashboard: React.FC = () => {
       if (baseStock[p.id] === undefined) baseStock[p.id] = p.stock;
     });
     return baseStock;
-  }, [salesReports, products, systemDate, getPurchasesByDate]);
+  }, [salesReports, products, purchases, systemDate]);
 
   const isAdmin = user?.role === UserRole.ADMIN_GERAL || user?.role === UserRole.PROPRIETARIO;
 
