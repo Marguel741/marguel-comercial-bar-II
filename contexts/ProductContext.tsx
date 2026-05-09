@@ -323,12 +323,8 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
         setCashBalance(d.cashBalance ?? 0);
         setTPABalance(d.tpaBalance ?? 0);
         setCashInHandBalance(d.cashInHandBalance ?? 0);
-        setCards(prev => prev.map(c => {
-          if (c.id === 'main') return { ...c, balance: d.currentBalance ?? c.balance };
-          if (c.id === 'cash_in_hand') return { ...c, balance: d.cashInHandBalance ?? c.balance };
-          if (c.id === 'savings') return { ...c, balance: d.savingsBalance ?? c.balance };
-          return c;
-        }));
+        // setCards removido — os cartões já são actualizados pelo listener de COL.cards
+        // evita redesenho duplo por cada operação financeira
       }
     }));
 
