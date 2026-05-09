@@ -443,7 +443,7 @@ const effectiveStock = useMemo(() => {
     if (!isAdmin) return;
     triggerHaptic('success');
     setShowDateEditModal(false);
-    showToast('Data da próxima contagem atualizada');
+    showToast('Data da próxima contagem actualizada');
   };
 
   // --- PRODUCT HANDLERS ---
@@ -631,7 +631,7 @@ const effectiveStock = useMemo(() => {
         await editCategory(editCategoryModal.oldName, editCategoryModal.newName);
         setEditCategoryModal({ isOpen: false, oldName: '', newName: '' });
         triggerHaptic('success');
-        showToast('Categoria atualizada!');
+        showToast('Categoria actualizada!');
       } catch (error) {
         triggerHaptic('error');
         showToast("Não foi possível completar a ação. Verifique os dados.");
