@@ -24,7 +24,7 @@ const PendingApproval: React.FC = () => {
         <div className="flex flex-col items-center animate-fade-in">
           <span className="font-sans font-black text-4xl tracking-tighter text-white mb-2"
             style={{ filter: 'drop-shadow(0 0 16px rgba(255,255,255,0.3))' }}>MG</span>
-          <h1 className="text-2xl font-bold text-white">Aguardando Aprovação</h1>
+          <h1 className="text-2xl font-bold text-white">Aguardar Aprovação</h1>
         </div>
       </div>
       <div className="flex-1 flex items-center justify-center px-6 -mt-8">
