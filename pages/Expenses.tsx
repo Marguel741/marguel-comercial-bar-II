@@ -206,7 +206,7 @@ const Expenses: React.FC = () => {
       return;
     }
     
-    // Se o valor mudou, precisamos ajustar a transação? 
+    // Se o valor mudou, é necessário ajustar a transacção.
     // Para simplificar, vamos apenas atualizar os dados da despesa.
     // Em um sistema real, o ajuste de saldo seria mais complexo.
     
