@@ -9,7 +9,7 @@ import { UserRole, InventoryLog, Equipment, UserPermissions } from '../types'; /
 import { useLayout } from '../contexts/LayoutContext';
 import SyncStatus from '../components/SyncStatus';
 import { hasPermission } from '../src/utils/permissions';
-import { formatKz, roundKz, formatDateISO, formatDisplayDate, generateUUID } from '../src/utils';
+import { formatKz, roundKz, formatDateISO, formatDisplayDate, generateUUID, cleanDate } from '../src/utils';
 
 const Inventory: React.FC = () => {
   const { 
@@ -37,7 +37,7 @@ const Inventory: React.FC = () => {
     stockOperationHistory,
     addNotification,
     salesReports,
-    getPurchasesByDate,
+    purchases,
   } = useProducts();
   const { user } = useAuth();
   const { sidebarMode, triggerHaptic } = useLayout();
@@ -158,21 +158,26 @@ const effectiveStock = useMemo(() => {
     baseStock[item.id] = item.end ?? 0;
   });
 
-  // Somar compras entre o dia do fecho e hoje (inclusive)
+  // Somar todas as compras após o fecho de uma só vez — sem ciclo por dia
+  purchases
+    .filter(rec => {
+      const d = cleanDate(rec.date);
+      return d > lastClosureDate && d <= todayStr;
+    })
+    .forEach(rec => {
+      Object.entries(rec.items || {}).forEach(([id, qtyPacks]) => {
+        if (baseStock[id] !== undefined) {
+          const prod = products.find(pr => pr.id === id);
+          baseStock[id] = (baseStock[id] || 0) + Number(qtyPacks) * (prod?.packSize || 1);
+        }
+      });
+    });
   products.forEach(p => {
     if (baseStock[p.id] === undefined) baseStock[p.id] = p.stock;
-    // compras após o fecho
-    const d = new Date(lastClosureDate + 'T12:00:00');
-    d.setDate(d.getDate() + 1);
-    while (formatDateISO(d) <= todayStr) {
-      const dayPurchases = getPurchasesByDate(formatDateISO(d));
-      baseStock[p.id] = (baseStock[p.id] || 0) + (dayPurchases[p.id] || 0);
-      d.setDate(d.getDate() + 1);
-    }
   });
 
   return baseStock;
-}, [salesReports, products, systemDate, getPurchasesByDate]);
+}, [salesReports, products, purchases, systemDate]);
   
   const filterCategories = useMemo(() => {
     return ['Todos', ...categories];
