@@ -421,7 +421,7 @@ const GlobalCalendar: React.FC = () => {
                         </div>
                      </div>
                   </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
+                  <div className="flex items-center gap-3">
                      {canManageLocks && (
                         <button 
                            onClick={(e) => {
@@ -436,15 +436,16 @@ const GlobalCalendar: React.FC = () => {
                                  lockDay(selectedDayDetail, user?.name || "Admin");
                               }
                            }}
-                           className={`h-10 px-4 rounded-2xl font-black text-xs transition-all flex items-center gap-1.5 ${isDayLocked(selectedDayDetail) ? 'bg-amber-500 text-white shadow-lg shadow-amber-900/20' : 'bg-red-600 text-white shadow-lg shadow-red-900/20'}`}
+                           className={`h-12 px-6 rounded-2xl font-black text-sm transition-all flex items-center gap-2 ${isDayLocked(selectedDayDetail) ? 'bg-amber-500 text-white shadow-lg shadow-amber-900/20' : 'bg-red-600 text-white shadow-lg shadow-red-900/20'}`}
                         >
-                           {isDayLocked(selectedDayDetail) ? <><Unlock size={16} /> Desbloquear dia</> : <><Lock size={16} /> Bloquear dia</>}
+                           {isDayLocked(selectedDayDetail) ? <><Unlock size={18} /> Desbloquear dia</> : <><Lock size={18} /> Bloquear dia</>}
                         </button>
                      )}
                      <button onClick={() => setSelectedDayDetail(null)} className="p-3 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors">
                         <X size={24} className="text-slate-400" />
                      </button>
                   </div>
+               </div>
 
                <div className="flex px-8 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700 overflow-x-auto no-scrollbar">
                   {[
