@@ -276,7 +276,7 @@ const Dashboard: React.FC = () => {
       id: `disc-${recentDiscrepancy.id}`,
       type: 'CRITICO',
       title: 'Divergência Financeira',
-      message: `Divergência de ${(discrepancyVal || 0).toLocaleString('pt-AO')} Kz em ${discDate}`,
+      message: `${discrepancyVal < 0 ? '⚠️ Dinheiro em falta' : '✅ Dinheiro a mais'}: ${Math.abs(discrepancyVal).toLocaleString('pt-AO')} Kz em ${discDate}`,
       icon: TrendingDown,
       color: 'red',
       isSystem: true,
