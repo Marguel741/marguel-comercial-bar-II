@@ -603,9 +603,9 @@ const Prices: React.FC = () => {
               className="w-full pl-10 pr-4 py-3 rounded-2xl bg-white dark:bg-slate-800 soft-ui-inset border-none text-sm font-medium focus:ring-2 focus:ring-[#003366] transition-all dark:text-white" 
             />
           </div>
-          <div className="flex flex-col gap-2 min-w-0">
+          <div className="flex flex-col gap-2 min-w-0 overflow-hidden w-full max-w-full">
             <div
-              className="flex gap-2 overflow-x-auto pb-2"
+              className="flex gap-2 overflow-x-auto pb-2 w-full"
               style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
             >
               {filterCategories.map(cat => (
@@ -661,7 +661,7 @@ const Prices: React.FC = () => {
       {isTableExpanded && (
         <div className="grid grid-cols-1 gap-6 animate-fade-in">
           <SoftCard className="p-0 overflow-hidden border border-slate-100 dark:border-slate-700">
-            <div className="overflow-x-auto custom-scrollbar">
+            <div className="overflow-x-auto custom-scrollbar relative">
               <table className="w-full text-left">
                 <thead>
                   <tr className="bg-slate-50 dark:bg-slate-700 border-b border-slate-100 dark:border-slate-600">
