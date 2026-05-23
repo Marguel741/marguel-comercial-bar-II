@@ -1,4 +1,3 @@
-
 import React, { useMemo, useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Package, Thermometer, Edit2, Edit3, Bell, Plus, Search, ChevronUp, ChevronDown, AlertTriangle, Save, X, CheckCircle, Check, Trash2, Settings, ClipboardList, Send, ArrowRight, History, Lock, WifiOff, User as UserIcon, TrendingUp, TrendingDown, Database, Clock, ShieldCheck, ChevronRight, MessageSquare } from 'lucide-react';
@@ -38,7 +37,6 @@ const Inventory: React.FC = () => {
     addNotification,
     salesReports,
     purchases,
-    stockOperationHistory,
   } = useProducts();
   const { user } = useAuth();
   const { sidebarMode, triggerHaptic } = useLayout();
@@ -159,7 +157,7 @@ const effectiveStock = useMemo(() => {
     baseStock[item.id] = item.end ?? 0;
   });
 
-  // Somar compras após o fecho
+  // Somar todas as compras após o fecho de uma só vez — sem ciclo por dia
   purchases
     .filter(rec => {
       const d = cleanDate(rec.date);
@@ -173,23 +171,12 @@ const effectiveStock = useMemo(() => {
         }
       });
     });
-
-  // Aplicar ajustes manuais de stock após o fecho
-  stockOperationHistory
-    .filter(log => log.type === 'MANUAL_ADJUSTMENT' && cleanDate(log.date || '') > lastClosureDate)
-    .sort((a, b) => a.timestamp - b.timestamp)
-    .forEach(log => {
-      if (baseStock[log.productId] !== undefined) {
-        baseStock[log.productId] = log.qtyAfter;
-      }
-    });
-
   products.forEach(p => {
     if (baseStock[p.id] === undefined) baseStock[p.id] = p.stock;
   });
 
   return baseStock;
-}, [salesReports, products, purchases, stockOperationHistory, systemDate]);
+}, [salesReports, products, purchases, systemDate]);
   
   const filterCategories = useMemo(() => {
     return ['Todos', ...categories];
