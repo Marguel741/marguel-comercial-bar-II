@@ -420,6 +420,7 @@ const GlobalCalendar: React.FC = () => {
                             )}
                         </div>
                      </div>
+                  </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                      {canManageLocks && (
                         <button 
