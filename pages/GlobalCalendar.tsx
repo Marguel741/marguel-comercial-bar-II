@@ -415,6 +415,9 @@ const GlobalCalendar: React.FC = () => {
                             {!isDayLocked(selectedDayDetail) && (
                               <div className="flex gap-2">
                                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase bg-green-500 text-white">DIA ABERTO PARA EDIÇÃO</span>
+                                {!isDayLocked(selectedDayDetail) && (
+                              <div className="flex gap-2">
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase bg-green-500 text-white">DIA ABERTO PARA EDIÇÃO</span>
                                 {dayData.report && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase bg-blue-100 text-blue-700">Caixa Fechado</span>}
                               </div>
                             )}
