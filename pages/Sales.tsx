@@ -308,10 +308,12 @@ const ConfirmEditModal: React.FC<ConfirmEditModalProps> = ({ show, onClose, repo
               lunchExpense: reportData.financials?.lunch,
             };
             await confirmSalesReport(finalReport.id, user?.name || 'Sistema', isUnilateralAllowed, finalReport);
-            onClose();
-            setForceEditMode(false);
-            showToast("✅ Fecho confirmado e propagado para todo o sistema!");
-            triggerHaptic('success');
+        setForceEditMode(false);
+        showToast("✅ Fecho confirmado e propagado com sucesso!");
+        triggerHaptic('success');
+        // Mostrar o relatório confirmado imediatamente
+        const confirmedReport = contextSalesReports.find(r => r.id === finalReport.id) || finalReport;
+        setViewHistoryReport(confirmedReport as unknown as DailyReport);
           }}
             className={`w-full py-5 font-black rounded-2xl shadow-xl transition-all uppercase tracking-widest ${canConfirm ? 'bg-[#003366] text-white hover:opacity-90 active:scale-95' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>
             Confirmar Fecho Definitivo
@@ -863,12 +865,22 @@ const Sales: React.FC = () => {
                 <div className="p-6 bg-[#003366] text-white rounded-2xl border border-[#003366] shadow-lg">
                   <p className="text-xs font-bold text-white/70 uppercase">Total Levantado</p>
                   <p className="text-3xl font-black">{(reportData.totals?.lifted || 0).toLocaleString('pt-AO')} Kz</p>
+                  <div className="mt-3 pt-3 border-t border-white/20 flex flex-col gap-1">
+                    <p className="text-[11px] text-white/70 flex justify-between"><span>💵 Cash</span><span className="font-bold">{(reportData.financials?.cash || 0).toLocaleString('pt-AO')} Kz</span></p>
+                    <p className="text-[11px] text-white/70 flex justify-between"><span>💳 TPA</span><span className="font-bold">{(reportData.financials?.ticket || 0).toLocaleString('pt-AO')} Kz</span></p>
+                    <p className="text-[11px] text-white/70 flex justify-between"><span>🔁 Transferência</span><span className="font-bold">{(reportData.financials?.transfer || 0).toLocaleString('pt-AO')} Kz</span></p>
+                  </div>
                 </div>
                 <div className={`p-6 rounded-2xl border ${(reportData.totals?.discrepancy || 0) !== 0 ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-100'}`}>
                   <p className="text-xs font-bold text-slate-400 uppercase">Divergência</p>
                   <p className={`text-2xl font-black ${(reportData.totals?.discrepancy || 0) < 0 ? 'text-red-600' : (reportData.totals?.discrepancy || 0) > 0 ? 'text-green-600' : 'text-slate-600'}`}>
                     {(reportData.totals?.discrepancy || 0).toLocaleString('pt-AO')} Kz
                   </p>
+                  {(reportData.totals?.discrepancy || 0) !== 0 && (
+                    <p className={`text-[11px] font-black uppercase mt-1 ${(reportData.totals?.discrepancy || 0) < 0 ? 'text-red-500' : 'text-green-500'}`}>
+                      {(reportData.totals?.discrepancy || 0) < 0 ? '⚠️ Dinheiro em falta' : '✅ Dinheiro a mais'}
+                    </p>
+                  )}
                 </div>
                 {canViewMargins && (
                   <div className="p-6 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl border border-emerald-100 dark:border-emerald-800">
