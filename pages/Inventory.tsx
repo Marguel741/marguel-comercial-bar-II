@@ -38,6 +38,7 @@ const Inventory: React.FC = () => {
     addNotification,
     salesReports,
     purchases,
+    stockOperationHistory,
   } = useProducts();
   const { user } = useAuth();
   const { sidebarMode, triggerHaptic } = useLayout();
