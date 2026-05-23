@@ -28,7 +28,8 @@ const Expenses: React.FC = () => {
     expenseCategories,
     addExpenseCategory,
     updateExpenseCategory,
-    deleteExpenseCategory
+    deleteExpenseCategory,
+    purchases,
   } = useProducts();
 
   const isLocked = isDayLocked(systemDate);
@@ -226,10 +227,32 @@ const Expenses: React.FC = () => {
         ex.user.toLowerCase().includes(reportSearch.toLowerCase())
       )
     );
-  }, [expenses, reportSearch]);
+}, [expenses, reportSearch]);
+
+  // Compras mostradas no histórico como leitura — débito já foi feito ao registar a compra
+  const purchaseEntries = useMemo(() => {
+    return purchases
+      .filter(p => p.name?.toLowerCase().includes(reportSearch.toLowerCase()) || reportSearch === '')
+      .map(p => ({
+        id: p.id,
+        title: p.name || 'Compra de Stock',
+        amount: p.total || 0,
+        category: 'Compra de Stock',
+        date: p.date,
+        timestamp: p.timestamp,
+        user: p.completedBy || 'Sistema',
+        notes: p.supplier ? `Fornecedor: ${p.supplier}` : '',
+        isReadOnly: true,
+        origin: 'COMPRA',
+      }));
+  }, [purchases, reportSearch]);
+
+  const allHistoryEntries = useMemo(() => {
+    return [...filteredExpenses, ...purchaseEntries]
+      .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+  }, [filteredExpenses, purchaseEntries]);
 
   const totalFiltered = filteredExpenses.reduce((acc, curr) => {
-    if (curr.isInformativeOnly) return acc;
     return acc + curr.amount;
   }, 0);
 
@@ -784,8 +807,8 @@ const Expenses: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-sm">
-                      {filteredExpenses.length > 0 ? (
-                        filteredExpenses.map((ex) => (
+                      {allHistoryEntries.length > 0 ? (
+                          allHistoryEntries.map((ex) => (
                           <tr key={ex.id} className="hover:bg-slate-50 transition-colors">
                             <td className="p-4 text-slate-500 font-medium whitespace-nowrap">{formatDisplayDate(ex.date)}</td>
                             <td className="p-4 font-bold text-[#003366]">
