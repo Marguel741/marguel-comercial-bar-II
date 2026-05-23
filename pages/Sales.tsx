@@ -836,13 +836,12 @@ const Sales: React.FC = () => {
               <RefreshCw size={14} /> Voltar ao Hoje
             </button>
             {!isLocked && (
-              <button onClick={() => { setForceEditMode(true); triggerHaptic('selection'); }} className="px-3 py-1.5 bg-amber-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-amber-600 transition-all shadow-md">
+              <button onClick={() => { setForceEditMode(true); triggerHaptic('selection'); }} className="px-3 py-1.5 bg-amber-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-amber-600 transition-all shadow-md whitespace-nowrap">
                 <Edit3 size={14} /> Editar Fecho
               </button>
             )}
           </div>
         </div>
-
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-8">
             <SoftCard className="p-8 relative overflow-hidden">
