@@ -230,12 +230,10 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     const unsubs: (() => void)[] = [];
 
     unsubs.push(onSnapshot(collection(db, COL.products), snap => {
+      // Nunca repor INITIAL_PRODUCTS — se o Firestore devolver 0 docs é lag de rede, não ausência real
       const data = snap.docs.map(d => ({ ...d.data(), id: d.id } as Product));
       if (data.length > 0) setProducts(data);
-      else {
-        INITIAL_PRODUCTS.forEach(p => setDoc(doc(db, COL.products, p.id), p));
-        setProducts(INITIAL_PRODUCTS);
-      }
+      // Se data.length === 0: ignorar — manter estado anterior, não apagar preços reais
     }));
 
     unsubs.push(onSnapshot(collection(db, COL.purchases), snap => {
@@ -847,9 +845,8 @@ if (cashCard) setDoc(doc(db, COL.cards, 'cash_in_hand'), { ...cashCard, balance:
         const diff = sanitized.stock - product.stock;
         handleStockMovement(id, diff, 'MANUAL_ADJUSTMENT', user?.name || 'Sistema', 'Ajuste via Edição de Produto');
         const { stock, ...otherUpdates } = sanitized;
-        if (Object.keys(otherUpdates).length > 0) {
-          await setDoc(doc(db, COL.products, id), { ...product, ...otherUpdates });
-        }
+        // Sempre gravar os outros campos também, mesmo que não haja alterações de preço
+        await setDoc(doc(db, COL.products, id), { ...product, ...otherUpdates });
       } else {
         await setDoc(doc(db, COL.products, id), { ...product, ...sanitized });
       }
