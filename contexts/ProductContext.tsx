@@ -863,8 +863,8 @@ if (cashCard) setDoc(doc(db, COL.cards, 'cash_in_hand'), { ...cashCard, balance:
       if (!checkPermission('inventory_product_delete')) return;
       validateAction('DELETE_PRODUCT', {});
       const product = products.find(p => p.id === id);
-      setDoc(doc(db, COL.products, id), { ...product, isArchived: true });
-      addAuditLog({ action: 'ARQUIVAR_PRODUTO', module: 'INVENTARIO', entityId: id, description: `Produto ${product?.name || id} arquivado.`, performedBy: user?.name || 'Sistema' });
+      deleteDoc(doc(db, COL.products, id));
+      addAuditLog({ action: 'ARQUIVAR_PRODUTO', module: 'INVENTARIO', entityId: id, description: `Produto ${product?.name || id} eliminado.`, performedBy: user?.name || 'Sistema' });
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Erro desconhecido';
       addLog({ action: 'ERROR' as any, module: 'INVENTARIO', description: `ERRO: ${msg}`, entityId: id }, user);
