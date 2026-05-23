@@ -14,7 +14,7 @@ import SyncStatus from '../components/SyncStatus';
 import { useAuth } from '../contexts/AuthContext';
 import { PriceHistoryLog, SavedProposal, PurchaseRecord, UserPermissions, UserRole, Product } from '../types';
 import { hasPermission } from '../src/utils/permissions';
-import { formatDisplayDate, formatDateISO, generateUUID, cleanDate } from '../src/utils';
+import { formatDisplayDate, formatDateISO, generateUUID, cleanDate, safeFormatCurrency } from '../src/utils';
 
 const CartItem = memo(({ id, qty, product, variant = 'default' }: { id: string, qty: number, product: any, variant?: 'default' | 'blue' }) => {
   if (!product) return null;
