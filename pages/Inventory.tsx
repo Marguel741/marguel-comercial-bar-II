@@ -150,7 +150,7 @@ const effectiveStock = useMemo(() => {
 
   if (!lastConfirmed) return {}; // sem fecho — usar p.stock
 
-  const lastClosureDate = (lastConfirmed.dateISO || lastConfirmed.date || '').split('T')[0];
+const lastClosureDate = (lastConfirmed.dateISO || lastConfirmed.date || '').split('T')[0];
 
   // Stock final do último fecho
   const baseStock: Record<string, number> = {};
@@ -158,7 +158,7 @@ const effectiveStock = useMemo(() => {
     baseStock[item.id] = item.end ?? 0;
   });
 
-  // Somar todas as compras após o fecho de uma só vez — sem ciclo por dia
+  // Somar compras após o fecho
   purchases
     .filter(rec => {
       const d = cleanDate(rec.date);
@@ -172,12 +172,23 @@ const effectiveStock = useMemo(() => {
         }
       });
     });
+
+  // Aplicar ajustes manuais de stock após o fecho
+  stockOperationHistory
+    .filter(log => log.type === 'MANUAL_ADJUSTMENT' && cleanDate(log.date || '') > lastClosureDate)
+    .sort((a, b) => a.timestamp - b.timestamp)
+    .forEach(log => {
+      if (baseStock[log.productId] !== undefined) {
+        baseStock[log.productId] = log.qtyAfter;
+      }
+    });
+
   products.forEach(p => {
     if (baseStock[p.id] === undefined) baseStock[p.id] = p.stock;
   });
 
   return baseStock;
-}, [salesReports, products, purchases, systemDate]);
+}, [salesReports, products, purchases, stockOperationHistory, systemDate]);
   
   const filterCategories = useMemo(() => {
     return ['Todos', ...categories];
