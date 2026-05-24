@@ -5,7 +5,8 @@ import {
   Package, Plus, Minus, ArrowRight, FileText, ChevronUp, 
   ChevronDown, MessageSquare, Copy, ArrowLeft, Lock, Trash2, FolderOpen, 
   Calendar, Folder, Clock, User, Eye, AlertTriangle, List, ArrowLeftCircle, 
-  ClipboardCheck, ShoppingBag, Paperclip, Camera, Image as ImageIcon, Truck, Calculator, Layers
+  ClipboardCheck, ShoppingBag, Paperclip, Camera, Image as ImageIcon, Truck, Calculator, Layers,
+  Maximize2, Minimize2
 } from 'lucide-react';
 import SoftCard from '../components/SoftCard';
 import { useProducts } from '../contexts/ProductContext';
@@ -102,6 +103,7 @@ const Prices: React.FC = () => {
   const [historyFilter, setHistoryFilter] = useState<'30' | '90' | 'month' | 'all'>('30');
   const [historySortAsc, setHistorySortAsc] = useState(false);
   const [isTableExpanded, setIsTableExpanded] = useState(true);
+  const [isTableFullscreen, setIsTableFullscreen] = useState(false);
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
 
   const toggleRow = (id: string) => {
@@ -640,7 +642,7 @@ const Prices: React.FC = () => {
         </div>
       </header>
 
-      <div className="flex justify-between items-center cursor-pointer group select-none" onClick={toggleTable}>
+     <div className="flex justify-between items-center cursor-pointer group select-none" onClick={toggleTable}>
         <div className="flex items-center gap-4">
           <h3 className="font-bold text-[#003366] dark:text-white text-xl flex items-center gap-2">
             <DollarSign size={24} /> Tabela de Produtos
@@ -653,9 +655,18 @@ const Prices: React.FC = () => {
             Criar Mix Match
           </button>
         </div>
-        <button className="p-2 bg-slate-100 dark:bg-slate-700 rounded-full text-slate-400 group-hover:text-[#003366] dark:group-hover:text-white transition-all">
-          {isTableExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={(e) => { e.stopPropagation(); triggerHaptic('selection'); setIsTableFullscreen(true); }}
+            className="p-2 bg-slate-100 dark:bg-slate-700 rounded-full text-slate-400 hover:text-[#003366] dark:hover:text-white transition-all"
+            title="Ver em ecrã cheio"
+          >
+            <Maximize2 size={18} />
+          </button>
+          <button className="p-2 bg-slate-100 dark:bg-slate-700 rounded-full text-slate-400 group-hover:text-[#003366] dark:group-hover:text-white transition-all">
+            {isTableExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+          </button>
+        </div>
       </div>
 
       {isTableExpanded && (
@@ -892,6 +903,63 @@ const Prices: React.FC = () => {
               </table>
             </div>
           </SoftCard>
+        </div>
+      )}
+
+      {isTableFullscreen && (
+        <div className="fixed inset-0 z-[200] bg-white dark:bg-slate-900 flex flex-col">
+          <div className="p-4 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
+            <h3 className="font-bold text-[#003366] dark:text-white flex items-center gap-2">
+              <DollarSign size={20} /> Tabela de Produtos
+            </h3>
+            <button onClick={() => { setIsTableFullscreen(false); triggerHaptic('selection'); }} className="p-2 md:p-3 bg-slate-100 dark:bg-slate-700 text-slate-500 hover:text-red-500 rounded-2xl transition-all flex items-center gap-2 font-bold uppercase text-[10px] md:text-xs">
+              <Minimize2 size={16} /> Fechar
+            </button>
+          </div>
+          <div className="flex-1 overflow-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-slate-50 dark:bg-slate-700 border-b border-slate-100 dark:border-slate-600">
+                  <th className="p-4 font-bold text-[#003366] dark:text-white text-xs uppercase tracking-wider">Produto</th>
+                  <th className="p-4 font-bold text-[#003366] dark:text-white text-xs uppercase tracking-wider">Preço Compra</th>
+                  <th className="p-4 font-bold text-[#003366] dark:text-white text-xs uppercase tracking-wider">Preço Venda</th>
+                  <th className="p-4 font-bold text-[#003366] dark:text-white text-xs uppercase tracking-wider">Lucro</th>
+                  <th className="p-4 font-bold text-[#003366] dark:text-white text-xs uppercase tracking-wider text-center">Acções</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50 dark:divide-slate-700">
+                {filteredProducts.map((p) => {
+                  const sc = getStockClasses(p.id, p.minStock);
+                  const numBuy = p.buyPrice || 0;
+                  const numSell = p.sellPrice || 0;
+                  const profit = numSell - numBuy;
+                  return (
+                    <tr key={p.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-700/50 transition-colors">
+                      <td className="p-4">
+                        <p className="font-bold text-slate-800 dark:text-white">{p.name}</p>
+                        <div className="flex gap-2 mt-1">
+                          <span className="text-[10px] uppercase font-bold text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 rounded-md">{p.category}</span>
+                          <span className={`text-[10px] font-black px-2 rounded-md ${sc.badge}`}>{sc.tip} · {sc.label}un</span>
+                        </div>
+                      </td>
+                      <td className="p-4 font-bold text-slate-700 dark:text-slate-200">{(numBuy * (p.packSize || 1)).toLocaleString('pt-AO')} Kz</td>
+                      <td className="p-4 font-bold text-slate-700 dark:text-slate-200">{numSell.toLocaleString('pt-AO')} Kz</td>
+                      <td className="p-4">
+                        <span className={`font-black text-sm px-3 py-1 rounded-xl ${profit >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                          {profit >= 0 ? '+' : ''}{profit.toLocaleString('pt-AO')} Kz
+                        </span>
+                      </td>
+                      <td className="p-4 text-center">
+                        <button onClick={() => { setViewHistoryId(p.id); setIsTableFullscreen(false); }} className="p-2 bg-slate-100 dark:bg-slate-700 text-slate-400 rounded-xl hover:text-[#003366] transition-all">
+                          <History size={18} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
