@@ -41,7 +41,7 @@ const Expenses: React.FC = () => {
 
   // --- Estados ---
   // Formulário
-  const [formData, setFormData] = useState({ title: '', amount: '', category: '', notes: '', date: formatDateISO(new Date()) });
+  const [formData, setFormData] = useState({ title: '', amount: '', category: '', notes: '', date: formatDateISO(new Date()), sourceAccount: 'main' as 'main' | 'cash_in_hand' });
   
   useEffect(() => {
     if (activeExpenseCategories.length > 0 && !formData.category) {
@@ -149,7 +149,8 @@ const Expenses: React.FC = () => {
       timestamp: now.getTime(),
       user: user?.name?.split(' ')[0] || 'Desconhecido',
       attachments: attachments,
-      notes: formData.notes
+      notes: formData.notes,
+      sourceAccount: formData.sourceAccount,
     };
 
     addExpense(newExpense);
