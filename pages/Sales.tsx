@@ -352,6 +352,7 @@ const Sales: React.FC = () => {
   })();
   const [reportDate, setReportDate] = useState(yesterdayISO);
   const [isSummaryFullscreen, setIsSummaryFullscreen] = useState(false);
+  const [isStockFullscreen, setIsStockFullscreen] = useState(false);
 
   const existingReport = salesReports.find(r => {
     const reportDateISO = (r as any).dateISO ? (r as any).dateISO.split('T')[0] : r.date;
@@ -379,8 +380,10 @@ const Sales: React.FC = () => {
   }, [reportDate, todayISO]); // SL-1: salesReports removido das deps
   
   useEffect(() => {
-    const handleEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') setIsSummaryFullscreen(false); };
-    if (isSummaryFullscreen) window.addEventListener('keydown', handleEsc);
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setIsSummaryFullscreen(false); setIsStockFullscreen(false); }
+    };
+    if (isSummaryFullscreen || isStockFullscreen) window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
   }, [isSummaryFullscreen]);
 
@@ -1071,6 +1074,45 @@ const Sales: React.FC = () => {
         </div>
       )}
 
+      {isStockFullscreen && (
+        <div className="fixed inset-0 z-[200] bg-white dark:bg-slate-900 flex flex-col">
+          <div className="p-4 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
+            <h3 className="font-bold text-[#003366] dark:text-white flex items-center gap-2"><Calculator size={20}/> Contagem de Estoque</h3>
+            <button onClick={() => { setIsStockFullscreen(false); triggerHaptic('selection'); }} className="p-2 md:p-3 bg-slate-100 dark:bg-slate-700 text-slate-500 hover:text-red-500 rounded-2xl transition-all flex items-center gap-2 font-bold uppercase text-[10px] md:text-xs">
+              <Minimize2 size={16} /> Fechar
+            </button>
+          </div>
+          <div className="flex-1 overflow-auto">
+            <table className="w-full text-sm text-left">
+              <thead>
+                <tr className="bg-slate-100 dark:bg-slate-700 text-[#003366] dark:text-white">
+                  <th className="p-3 md:p-4 font-bold min-w-[150px]">Designação</th>
+                  <th className="p-3 md:p-4 font-bold text-center w-24 bg-blue-50/50 dark:bg-blue-900/20">Inicial</th>
+                  <th className="p-3 md:p-4 font-bold text-center w-28 bg-green-50/50 dark:bg-green-900/20">Comprou</th>
+                  <th className="p-3 md:p-4 font-bold text-center w-24 bg-purple-50/50 dark:bg-purple-900/20">Stock Sist.</th>
+                  <th className="p-3 md:p-4 font-bold text-center w-24 bg-red-50/50 dark:bg-red-900/20">Final (Físico)</th>
+                  <th className="p-3 md:p-4 font-bold text-center w-24 bg-slate-200 dark:bg-slate-600">Vendido</th>
+                  <th className="p-3 md:p-4 font-bold text-right min-w-[100px]">Total (Kz)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                {calculatedData.items.map((item) => (
+                  <tr key={item.id} className={`hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors ${!item.isBalanced ? 'bg-red-50 dark:bg-red-900/20' : ''}`}>
+                    <td className="p-3 md:p-4 font-bold text-slate-700 dark:text-slate-300">{item.name}</td>
+                    <td className="p-3 md:p-4 text-center text-slate-500">{item.init}</td>
+                    <td className="p-3 md:p-4 text-center text-green-600 font-medium">+{item.buy}</td>
+                    <td className="p-3 md:p-4 text-center text-purple-600 font-bold">{item.init + item.buy - item.soldQty}</td>
+                    <td className="p-3 md:p-4 text-center font-bold text-slate-700 dark:text-slate-200">{item.end}</td>
+                    <td className="p-3 md:p-4 text-center font-black text-[#003366] dark:text-blue-300">{item.soldQty}</td>
+                    <td className="p-3 md:p-4 text-right font-bold text-slate-700 dark:text-slate-200">{item.revenue.toLocaleString('pt-AO')} Kz</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+      
       {syncState.status !== 'idle' && (
         <div className="fixed inset-0 z-[200] bg-[#001A33] flex items-center justify-center p-4 md:p-8 animate-fade-in overflow-hidden">
           <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-20">
@@ -1205,7 +1247,10 @@ const Sales: React.FC = () => {
 
       <SoftCard className="overflow-hidden p-0" id="stock-table-section">
         <div className="p-4 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
-          <h3 className="font-bold text-[#003366] dark:text-white flex items-center gap-2"><Calculator size={20}/> Contagem de Estoque</h3>
+         <h3 className="font-bold text-[#003366] dark:text-white flex items-center gap-2"><Calculator size={20}/> Contagem de Estoque</h3>
+          <button onClick={() => { setIsStockFullscreen(true); triggerHaptic('selection'); }} className="p-2 text-slate-400 hover:text-[#003366] dark:hover:text-blue-400 transition-colors" title="Ver em ecrã cheio">
+            <Maximize2 size={18} />
+          </button>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
