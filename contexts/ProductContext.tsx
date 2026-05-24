@@ -147,7 +147,7 @@ interface ProductContextType {
   addCategory: (category: string) => void;
   editCategory: (oldName: string, newName: string) => Promise<void>;
   removeCategory: (category: string) => void;
-  addPurchase: (items: Record<string, number>, source: 'Prices' | 'Inventory' | 'Sales', completedBy: string, attachments?: string[], supplier?: string, purchaseDate?: string) => void;
+  addPurchase: (items: Record<string, number>, source: 'Prices' | 'Inventory' | 'Sales', completedBy: string, attachments?: string[], supplier?: string, purchaseDate?: string, sourceAccount?: 'main' | 'cash_in_hand') => void;
   getPurchasesByDate: (dateStr: string) => Record<string, number>;
   getTodayPurchases: () => Record<string, number>;
   processTransaction: (type: 'deposit' | 'withdraw', account: 'main' | 'savings' | string, amount: number, description: string, category?: string, referenceId?: string, referenceType?: Transaction['referenceType'], performedBy?: string) => void;
@@ -740,7 +740,7 @@ if (cashCard) setDoc(doc(db, COL.cards, 'cash_in_hand'), { ...cashCard, balance:
     if (!checkPermission('expenses_execute')) return;
     setDoc(doc(db, COL.expenses, expense.id), expense);
     addAuditLog({ action: 'ADICIONAR_DESPESA', module: 'FINANCEIRO', entityId: expense.id, description: `Despesa: ${expense.title} (${expense.amount.toLocaleString('pt-AO')} Kz)`, performedBy: expense.user });
-    if (expense.amount > 0) processTransaction('withdraw', 'main', expense.amount, `Despesa: ${expense.title}`, expense.category, expense.id, 'expense', expense.user);
+    if (expense.amount > 0) processTransaction('withdraw', expense.sourceAccount || 'main', expense.amount, `Despesa: ${expense.title}`, expense.category, expense.id, 'expense', expense.user);
   }, [checkPermission, addAuditLog, processTransaction]);
 
   const deleteExpense = useCallback((id: string, deletedBy: string) => {
@@ -894,7 +894,7 @@ if (cashCard) setDoc(doc(db, COL.cards, 'cash_in_hand'), { ...cashCard, balance:
     addAuditLog({ action: 'REMOVER_CATEGORIA', module: 'INVENTARIO', description: `Categoria ${category} removida.`, performedBy: user?.name || 'Sistema' });
   }, [checkPermission, addAuditLog, user]);
 
-  const addPurchase = useCallback((items: Record<string, number>, source: 'Prices' | 'Inventory' | 'Sales', completedBy: string, attachments?: string[], supplier?: string, purchaseDate?: string) => {
+  const addPurchase = useCallback((items: Record<string, number>, source: 'Prices' | 'Inventory' | 'Sales', completedBy: string, attachments?: string[], supplier?: string, purchaseDate?: string, sourceAccount: 'main' | 'cash_in_hand' = 'main') => {
     try {
       if (!checkPermission('purchases_execute')) return;
       validateAction('PURCHASE', { date: systemDate });
@@ -911,9 +911,9 @@ if (cashCard) setDoc(doc(db, COL.cards, 'cash_in_hand'), { ...cashCard, balance:
         }
       });
       const targetDateStr = purchaseDate || getSystemDateStr();
-      const newRecord: PurchaseRecord = { id: purchaseId, name: source === 'Inventory' ? 'Ajuste de Stock (Inventário)' : source === 'Sales' ? 'Compra Rápida (Vendas)' : 'Compra Efectuada', date: targetDateStr, items, total: totalValue, completedBy, supplier, timestamp: getSystemDate().getTime(), source, attachments, synced: true };
+     const newRecord: PurchaseRecord = { id: purchaseId, name: source === 'Inventory' ? 'Ajuste de Stock (Inventário)' : source === 'Sales' ? 'Compra Rápida (Vendas)' : 'Compra Efectuada', date: targetDateStr, items, total: totalValue, completedBy, supplier, timestamp: getSystemDate().getTime(), source, attachments, synced: true, sourceAccount };
       setDoc(doc(db, COL.purchases, purchaseId), newRecord);
-      if (totalValue > 0) processTransaction('withdraw', 'main', totalValue, `Compra de estoque (${targetDateStr})`, 'Compra de Estoque', purchaseId, 'purchase', completedBy, targetDateStr);
+      if (totalValue > 0) processTransaction('withdraw', sourceAccount, totalValue, `Compra de estoque (${targetDateStr})`, 'Compra de Estoque', purchaseId, 'purchase', completedBy, targetDateStr);
       addAuditLog({ action: 'CRIAR_COMPRA', module: 'COMPRAS', entityId: purchaseId, description: `Compra: ${totalValue.toLocaleString('pt-AO')} Kz. Origem: ${source}`, performedBy: completedBy });
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Erro desconhecido';
