@@ -165,6 +165,7 @@ export interface PurchaseRecord {
   source: 'Prices' | 'Inventory' | 'Sales';
   attachments?: string[];
   synced?: boolean;
+  sourceAccount?: 'main' | 'cash_in_hand';
 }
 
 export interface ExpenseCategory {
@@ -187,6 +188,7 @@ export interface Expense {
   status?: 'ACTIVE' | 'REVERSED' | 'REVERSAL';
   isReverted?: boolean;
   isInformativeOnly?: boolean;
+  sourceAccount?: 'main' | 'cash_in_hand';
 }
 
 export interface Alert {
