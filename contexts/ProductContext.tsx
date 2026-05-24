@@ -494,12 +494,17 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
         if (c.id === 'cash_in_hand') return { ...c, balance: newCashInHand };
         return c;
       }));
-      const mainCard = cards.find(c => c.id === 'main');
-const savingsCard = cards.find(c => c.id === 'savings');
-const cashCard = cards.find(c => c.id === 'cash_in_hand');
-if (mainCard) setDoc(doc(db, COL.cards, 'main'), { ...mainCard, balance: newCB });
-if (savingsCard) setDoc(doc(db, COL.cards, 'savings'), { ...savingsCard, balance: newSB });
-if (cashCard) setDoc(doc(db, COL.cards, 'cash_in_hand'), { ...cashCard, balance: newCashInHand });
+      // Gravar apenas o cartão que foi alterado — não os 3 sempre
+      if (targetAccount === 'main' || targetAccount === 'cash' || targetAccount === 'tpa') {
+        const mainCard = cards.find(c => c.id === 'main');
+        if (mainCard) setDoc(doc(db, COL.cards, 'main'), { ...mainCard, balance: newCB });
+      } else if (targetAccount === 'savings') {
+        const savingsCard = cards.find(c => c.id === 'savings');
+        if (savingsCard) setDoc(doc(db, COL.cards, 'savings'), { ...savingsCard, balance: newSB });
+      } else if (targetAccount === 'cash_in_hand') {
+        const cashCard = cards.find(c => c.id === 'cash_in_hand');
+        if (cashCard) setDoc(doc(db, COL.cards, 'cash_in_hand'), { ...cashCard, balance: newCashInHand });
+      }
       
       const targetDate = date || formatDateISO(getSystemDate());
       const transId = existingTrans.length > 0 ? existingTrans[0].id : generateUUID();
