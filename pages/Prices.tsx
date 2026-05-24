@@ -140,6 +140,7 @@ const Prices: React.FC = () => {
   const [purchaseAttachments, setPurchaseAttachments] = useState<string[]>([]);
   const [purchaseSupplier, setPurchaseSupplier] = useState('');
   const [purchaseDate, setPurchaseDate] = useState('');
+  const [purchaseSourceAccount, setPurchaseSourceAccount] = useState<'main' | 'cash_in_hand'>('main');
   const [isProcessingPurchase, setIsProcessingPurchase] = useState(false);
   const [reportProposal, setReportProposal] = useState<SavedProposal | PurchaseRecord | null>(null);
   const [viewImageIndex, setViewImageIndex] = useState<number | null>(null);
@@ -423,12 +424,14 @@ const Prices: React.FC = () => {
         user?.name || 'Desconhecido',
         purchaseAttachments,
         purchaseSupplier || 'Sem Fornecedor',
-        purchaseDate || undefined
+        purchaseDate || undefined,
+        purchaseSourceAccount
       );
       setPurchaseCart({});
       setPurchaseAttachments([]);
       setPurchaseSupplier('');
       setPurchaseDate('');
+      setPurchaseSourceAccount('main');
       setPurchaseStep('history');
       showToast("Compra efectuada! Stock e Relatórios Actualizados.");
     } catch (error) {
@@ -1851,8 +1854,24 @@ const Prices: React.FC = () => {
               <div className="space-y-2">
                 <h3 className="text-xl font-black text-[#003366] dark:text-white uppercase tracking-tight">Finalizar Aquisição</h3>
                 <p className="text-slate-400 text-sm font-medium leading-relaxed">
-                  Esta acção irá debitar <span className="font-bold text-slate-600 dark:text-slate-200">{(purchaseTotal || 0).toLocaleString()} Kz</span> da Conta Corrente e actualizar o stock. Deseja continuar?
+                  Esta acção irá debitar <span className="font-bold text-slate-600 dark:text-slate-200">{(purchaseTotal || 0).toLocaleString()} Kz</span> e actualizar o stock. Escolhe de onde debitar:
                 </p>
+                <div className="flex gap-2 mt-2">
+                  <button
+                    type="button"
+                    onClick={() => setPurchaseSourceAccount('main')}
+                    className={`flex-1 py-3 rounded-2xl font-bold text-sm transition-all ${purchaseSourceAccount === 'main' ? 'bg-[#003366] text-white shadow-lg' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700'}`}
+                  >
+                    🏦 Conta Bancária
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPurchaseSourceAccount('cash_in_hand')}
+                    className={`flex-1 py-3 rounded-2xl font-bold text-sm transition-all ${purchaseSourceAccount === 'cash_in_hand' ? 'bg-emerald-600 text-white shadow-lg' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700'}`}
+                  >
+                    💵 Em Mão
+                  </button>
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-3 pt-4">
                 <button onClick={() => { triggerHaptic('selection'); setShowConfirmPurchase(false); }}
