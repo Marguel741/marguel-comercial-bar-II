@@ -365,6 +365,25 @@ const Expenses: React.FC = () => {
                   className="w-full p-4 bg-slate-50 rounded-2xl border-none soft-ui-inset focus:ring-2 focus:ring-[#003366] outline-none transition-all font-bold text-slate-700"
                 />
               </div>
+              <div>
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest block mb-2">Debitar de</label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setFormData(prev => ({ ...prev, sourceAccount: 'main' }))}
+                    className={`flex-1 py-3 rounded-2xl font-bold text-sm transition-all ${formData.sourceAccount === 'main' ? 'bg-[#003366] text-white shadow-lg' : 'bg-slate-100 text-slate-500 border border-slate-200'}`}
+                  >
+                    🏦 Conta Bancária
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFormData(prev => ({ ...prev, sourceAccount: 'cash_in_hand' }))}
+                    className={`flex-1 py-3 rounded-2xl font-bold text-sm transition-all ${formData.sourceAccount === 'cash_in_hand' ? 'bg-emerald-600 text-white shadow-lg' : 'bg-slate-100 text-slate-500 border border-slate-200'}`}
+                  >
+                    💵 Em Mão
+                  </button>
+                </div>
+              </div>
 
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
