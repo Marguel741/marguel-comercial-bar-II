@@ -1,4 +1,3 @@
-
 import { UserRole, UserPermissions } from '../../types';
 
 export const DEFAULT_PERMISSIONS: Record<UserRole, UserPermissions> = {
@@ -16,7 +15,8 @@ export const DEFAULT_PERMISSIONS: Record<UserRole, UserPermissions> = {
     calendar_lock: true,
     calendar_unlock: true,
     settings_edit: true, sync_manage: true, backup_manage: true, restore_system: true,
-    audit_view: true, audit_control: true
+    audit_view: true, audit_control: true,
+    reserve_view: true, reserve_transfer: true, reserve_adjust: true
   },
   [UserRole.ADMIN_GERAL]: {
     admin_users_view: true, admin_users_create: true, admin_users_edit: true, admin_users_delete: true, admin_users_permissions: true,
@@ -32,7 +32,8 @@ export const DEFAULT_PERMISSIONS: Record<UserRole, UserPermissions> = {
     calendar_lock: true,
     calendar_unlock: true,
     settings_edit: true, sync_manage: true, backup_manage: true, restore_system: true,
-    audit_view: true, audit_control: true
+    audit_view: true, audit_control: true,
+    reserve_view: true, reserve_transfer: true, reserve_adjust: true
   },
   [UserRole.GERENTE]: {
     admin_users_view: true, admin_users_create: false, admin_users_edit: false, admin_users_delete: false, admin_users_permissions: false,
@@ -48,7 +49,8 @@ export const DEFAULT_PERMISSIONS: Record<UserRole, UserPermissions> = {
     calendar_lock: true,
     calendar_unlock: true,
     settings_edit: false, sync_manage: false, backup_manage: false, restore_system: false,
-    audit_view: true, audit_control: true
+    audit_view: true, audit_control: true,
+    reserve_view: true, reserve_transfer: true, reserve_adjust: false
   },
   [UserRole.COLABORADOR_EFETIVO]: {
     admin_users_view: false, admin_users_create: false, admin_users_edit: false, admin_users_delete: false, admin_users_permissions: false,
@@ -64,7 +66,8 @@ export const DEFAULT_PERMISSIONS: Record<UserRole, UserPermissions> = {
     calendar_lock: false,
     calendar_unlock: false,
     settings_edit: false, sync_manage: false, backup_manage: false, restore_system: false,
-    audit_view: false, audit_control: false
+    audit_view: false, audit_control: false,
+    reserve_view: false, reserve_transfer: false, reserve_adjust: false
   },
   [UserRole.FUNCIONARIO]: {
     admin_users_view: false, admin_users_create: false, admin_users_edit: false, admin_users_delete: false, admin_users_permissions: false,
@@ -80,7 +83,8 @@ export const DEFAULT_PERMISSIONS: Record<UserRole, UserPermissions> = {
     calendar_lock: false,
     calendar_unlock: false,
     settings_edit: false, sync_manage: false, backup_manage: false, restore_system: false,
-    audit_view: false, audit_control: false
+    audit_view: false, audit_control: false,
+    reserve_view: false, reserve_transfer: false, reserve_adjust: false
   },
   [UserRole.COLABORADOR_REMOTO]: {
     admin_users_view: true, admin_users_create: false, admin_users_edit: false, admin_users_delete: false, admin_users_permissions: false,
@@ -96,7 +100,8 @@ export const DEFAULT_PERMISSIONS: Record<UserRole, UserPermissions> = {
     calendar_lock: false,
     calendar_unlock: false,
     settings_edit: false, sync_manage: false, backup_manage: false, restore_system: false,
-    audit_view: true, audit_control: false
+    audit_view: true, audit_control: false,
+    reserve_view: true, reserve_transfer: false, reserve_adjust: false
   }
 };
 
@@ -115,9 +120,9 @@ export const hasPermission = (user: { permissions?: UserPermissions, role: UserR
                      permission.includes('_closure') ||
                      permission.includes('_adjust') ||
                      permission.includes('_manage') ||
-                     permission.includes('_unlock') || // ADICIONADO
-                     permission.includes('_reopen') || // ADICIONADO
-                     permission.includes('_lock') ||   // ADICIONADO
+                     permission.includes('_unlock') ||
+                     permission.includes('_reopen') ||
+                     permission.includes('_lock') ||
                      permission.includes('_simulate');
 
   // 3. Se o modo "Apenas Leitura" estiver ativo, bloqueia a mutação
