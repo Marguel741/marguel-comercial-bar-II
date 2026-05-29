@@ -606,10 +606,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     });
   }, [cards, getSystemDate, currentBalance, savingsBalance, cashBalance, tpaBalance, cashInHandBalance, addAuditLog]);
 
-  const deleteProposal = useCallback((id: string) => {
-    deleteDoc(doc(db, COL.proposals, id));
-  }, []);
-
   const addNotification = useCallback((notif: any) => {
     const newNotif = { ...notif, id: generateUUID(), timestamp: Date.now(), read: false };
     // PROD-7: setDoc primeiro — onSnapshot actualiza estado automaticamente
