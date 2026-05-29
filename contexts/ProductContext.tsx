@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, ReactNode, useEffect, useCa
 import { Product, PurchaseRecord, Transaction, SalesReport, Expense, InventoryLog, PriceHistoryLog, Equipment, Card, StockOperationLog, AuditLog, ClosureStatus, ExpenseCategory, UserPermissions, UserRole, ReserveTransfer } from '../types';
 import { useAuth } from './AuthContext';
 import { useAudit } from './AuditContext';
+import { StockProvider, useStock } from './StockContext';
 import { hasPermission } from '../src/utils/permissions';
 import { cleanDate, formatDateISO, generateUUID } from '../src/utils';
 
@@ -203,21 +204,21 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     return true;
   }, [user]);
 
-  const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<string[]>(INITIAL_CATEGORIES);
+  const {
+    products, categories, purchases, inventoryHistory, stockOperationHistory, priceHistory,
+    equipments, proposals, reserveTransfers,
+    handleStockMovement, addProduct, updateProduct, deleteProduct,
+    addCategory, editCategory, removeCategory, addInventoryLog,
+    addEquipment, updateEquipment, updateEquipmentQty, removeEquipment,
+    addProposal, deleteProposal, transferReserveToBar,
+    getPurchasesByDate, getTodayPurchases,
+  } = useStock();
   const [expenseCategories, setExpenseCategories] = useState<ExpenseCategory[]>([]);
-  const [purchases, setPurchases] = useState<PurchaseRecord[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [inventoryHistory, setInventoryHistory] = useState<InventoryLog[]>([]);
-  const [stockOperationHistory, setStockOperationHistory] = useState<StockOperationLog[]>([]);
-  const [priceHistory, setPriceHistory] = useState<PriceHistoryLog[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [salesReports, setSalesReports] = useState<SalesReport[]>([]);
   const [cards, setCards] = useState<Card[]>([]);
-  const [equipments, setEquipments] = useState<Equipment[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
-  const [proposals, setProposals] = useState<any[]>([]);
-  const [reserveTransfers, setReserveTransfers] = useState<ReserveTransfer[]>([]);
   const [currentBalance, setCurrentBalance] = useState<number>(0);
   const [savingsBalance, setSavingsBalance] = useState<number>(0);
   const [cashBalance, setCashBalance] = useState<number>(0);
@@ -240,10 +241,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       // Se data.length === 0: ignorar — manter estado anterior, não apagar preços reais
     }));
 
-    unsubs.push(onSnapshot(collection(db, COL.purchases), snap => {
-      setPurchases(snap.docs.map(d => d.data() as PurchaseRecord).sort((a,b) => b.timestamp - a.timestamp));
-    }));
-
     unsubs.push(onSnapshot(collection(db, COL.expenses), snap => {
       setExpenses(snap.docs.map(d => d.data() as Expense).sort((a,b) => b.timestamp - a.timestamp));
     }));
@@ -255,18 +252,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
         INITIAL_EXPENSE_CATEGORIES.forEach(c => setDoc(doc(db, COL.expenseCategories, c.id), c));
         setExpenseCategories(INITIAL_EXPENSE_CATEGORIES);
       }
-    }));
-
-    unsubs.push(onSnapshot(collection(db, COL.inventoryHistory), snap => {
-      setInventoryHistory(snap.docs.map(d => d.data() as InventoryLog));
-    }));
-
-    unsubs.push(onSnapshot(collection(db, COL.stockOperationHistory), snap => {
-      setStockOperationHistory(snap.docs.map(d => d.data() as StockOperationLog).sort((a,b) => b.timestamp - a.timestamp));
-    }));
-
-    unsubs.push(onSnapshot(collection(db, COL.priceHistory), snap => {
-      setPriceHistory(snap.docs.map(d => d.data() as PriceHistoryLog).sort((a,b) => b.timestamp - a.timestamp));
     }));
 
     unsubs.push(onSnapshot(collection(db, COL.transactions), snap => {
@@ -300,22 +285,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       }
     }));
 
-    unsubs.push(onSnapshot(collection(db, COL.equipments), snap => {
-      const data = snap.docs.map(d => d.data() as Equipment);
-      if (data.length > 0) setEquipments(data);
-      else {
-        INITIAL_EQUIPMENTS.forEach(e => setDoc(doc(db, COL.equipments, e.id), e));
-        setEquipments(INITIAL_EQUIPMENTS);
-      }
-    }));
-
-    
-    unsubs.push(onSnapshot(collection(db, COL.proposals), snap => {
-      setProposals(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    }));
-    unsubs.push(onSnapshot(collection(db, COL.reserveTransfers), snap => {
-      setReserveTransfers(snap.docs.map(d => d.data() as ReserveTransfer).sort((a, b) => b.timestamp - a.timestamp));
-    }));
     unsubs.push(onSnapshot(collection(db, COL.notifications), snap => {
       setNotifications(snap.docs.map(d => d.data()).sort((a,b) => b.timestamp - a.timestamp));
     }));
@@ -401,52 +370,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     if (payload.price !== undefined && payload.price < 0) throw new Error('Preço inválido: O valor não pode ser negativo.');
     return true;
   }, [products, isDayLocked, getSystemDate]);
-
-  const handleStockMovement = useCallback((productId: string, quantity: number, type: 'SALE' | 'PURCHASE' | 'ADJUSTMENT' | 'MANUAL_ADJUSTMENT', performedBy: string, reason: string, referenceId?: string) => {
-    try {
-      if ((type === 'ADJUSTMENT' || type === 'MANUAL_ADJUSTMENT') && !reason) throw new Error('Um motivo é obrigatório para ajustes manuais de stock.');
-     validateAction('UPDATE_STOCK', { productId, qty: type === 'SALE' ? -quantity : quantity, isHistorical: true });
-      const product = products.find(p => p.id === productId);
-      if (!product) return;
-
-      let qtyBefore = product.stock;
-      let existingLogId: string | null = null;
-      if (referenceId) {
-        const existingLog = stockOperationHistory.find(l => l.referenceId === referenceId && l.productId === productId);
-        if (existingLog) {
-          // PC-5: verificar se já foi aplicado — se qtyAdded já está reflectido no stock actual,
-          // deduzir evita double-count. Se não está (estado stale), não deduzir.
-          const stockAfterLog = existingLog.qtyAfter;
-          const currentMatchesLog = Math.abs(product.stock - stockAfterLog) < 2; // tolerância de 1
-          if (currentMatchesLog) {
-            qtyBefore = qtyBefore - existingLog.qtyAdded;
-          }
-          existingLogId = existingLog.id;
-        }
-      }
-      let qtyAdded = type === 'SALE' ? -quantity : type === 'PURCHASE' ? quantity : quantity;
-      const qtyAfter = Math.max(0, qtyBefore + qtyAdded);
-      const isManual = type === 'ADJUSTMENT' || type === 'MANUAL_ADJUSTMENT' || (!referenceId && (type === 'SALE' || type === 'PURCHASE'));
-
-      setDoc(doc(db, COL.products, productId), { ...product, stock: qtyAfter });
-
-      const log: StockOperationLog = {
-        id: existingLogId || generateUUID(), productId, productName: product.name,
-        type: (isManual ? 'MANUAL_ADJUSTMENT' : type) as any,
-        qtyBefore, qtyAdded, qtyAfter, previousStock: qtyBefore, newStock: qtyAfter,
-        qtyChanged: qtyAdded, responsible: performedBy, timestamp: Date.now(), performedBy,
-        reason: reason || (isManual ? 'Ajuste Manual via Sistema' : 'Movimentação de Stock'),
-        referenceId: referenceId ?? null
-      };
-      setDoc(doc(db, COL.stockOperationHistory, log.id), log);
-
-      addLog({ action: isManual ? 'AJUSTE_MANUAL_STOCK' : (type === 'SALE' ? 'VENDA_STOCK' : 'COMPRA_STOCK'), module: 'STOCK', description: `${Math.abs(quantity)} unidades de ${product.name}. Stock: ${qtyBefore} -> ${qtyAfter}`, entityId: productId, previousValue: qtyBefore, newValue: qtyAfter }, user);
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : 'Erro desconhecido';
-      addLog({ action: 'ERROR' as any, module: 'STOCK', description: `ERRO: ${msg}`, entityId: productId }, user);
-      throw error;
-    }
-  }, [user, addLog, validateAction, products, stockOperationHistory]);
 
   const processTransaction = useCallback((
     type: 'deposit' | 'withdraw',
@@ -683,11 +606,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     });
   }, [cards, getSystemDate, currentBalance, savingsBalance, cashBalance, tpaBalance, cashInHandBalance, addAuditLog]);
 
-  const addProposal = useCallback((p: any) => {
-    const doc_id = p.id || generateUUID();
-    setDoc(doc(db, COL.proposals, doc_id), { ...p, id: doc_id });
-  }, []);
-
   const deleteProposal = useCallback((id: string) => {
     deleteDoc(doc(db, COL.proposals, id));
   }, []);
@@ -812,114 +730,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     addAuditLog({ action: 'REMOVER_CATEGORIA_DESPESA', module: 'FINANCEIRO', entityId: id, description: `Categoria removida: ${cat?.name || id}`, performedBy: user?.name || 'Sistema' });
   }, [checkPermission, expenseCategories, addAuditLog, user]);
 
-  const addInventoryLog = useCallback((log: InventoryLog) => {
-    try {
-      validateAction('INVENTORY_LOG', {});
-      setDoc(doc(db, COL.inventoryHistory, log.id), log);
-      addAuditLog({ action: 'REGISTRO_INVENTARIO', module: 'INVENTARIO', entityId: log.id, description: `Inventário registado. Status: ${log.status}`, performedBy: log.performedBy });
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : 'Erro desconhecido';
-      addLog({ action: 'ERROR' as any, module: 'INVENTARIO', description: `ERRO: ${msg}`, entityId: log.id }, user);
-      throw error;
-    }
-  }, [validateAction, addAuditLog, addLog, user]);
-
-  const addProduct = useCallback((product: Omit<Product, 'id'>) => {
-    try {
-      if (!checkPermission('inventory_product_create')) return;
-      validateAction('ADD_PRODUCT', {});
-      const newProduct = { ...product, id: generateUUID(), reserveStock: product.reserveStock ?? 0 };
-      setDoc(doc(db, COL.products, newProduct.id), newProduct);
-      addAuditLog({ action: 'CRIAR_PRODUTO', module: 'INVENTARIO', entityId: newProduct.id, description: `Produto ${newProduct.name} criado.`, performedBy: user?.name || 'Sistema' });
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : 'Erro desconhecido';
-      addLog({ action: 'ERROR' as any, module: 'INVENTARIO', description: `ERRO: ${msg}`, entityId: product.name }, user);
-      throw error;
-    }
-  }, [checkPermission, validateAction, addAuditLog, addLog, user]);
-
-  const updateProduct = useCallback(async (id: string, updates: Partial<Product>): Promise<void> => {
-    try {
-      if (!checkPermission('inventory_product_edit')) return;
-      validateAction('UPDATE_PRODUCT', {});
-      const product = products.find(p => p.id === id);
-      if (!product) return;
-
-      // PC-1: sanitizar NaN antes de escrever no Firestore
-      const sanitized: Partial<Product> = {};
-      for (const [k, v] of Object.entries(updates)) {
-        if (v === undefined) continue;
-        if (typeof v === 'number' && isNaN(v)) continue; // bloquear NaN
-        (sanitized as any)[k] = v;
-      }
-
-      if (
-        (sanitized.sellPrice !== undefined && sanitized.sellPrice !== product.sellPrice) ||
-        (sanitized.buyPrice !== undefined && sanitized.buyPrice !== product.buyPrice)
-      ) {
-        const priceLog: PriceHistoryLog = {
-          id: generateUUID(), productId: id, productName: product.name,
-          oldSellPrice: product.sellPrice, newSellPrice: sanitized.sellPrice ?? product.sellPrice,
-          oldBuyPrice: product.buyPrice, newBuyPrice: sanitized.buyPrice ?? product.buyPrice,
-          changedBy: user?.name || 'Sistema', timestamp: Date.now(),
-          date: formatDateISO(getSystemDate()), reason: 'Actualização manual de preço',
-        };
-        await setDoc(doc(db, COL.priceHistory, priceLog.id), priceLog);
-      }
-
-      if (sanitized.stock !== undefined && sanitized.stock !== product.stock) {
-        const diff = sanitized.stock - product.stock;
-        handleStockMovement(id, diff, 'MANUAL_ADJUSTMENT', user?.name || 'Sistema', 'Ajuste via Edição de Produto');
-        const { stock, ...otherUpdates } = sanitized;
-        // Sempre gravar os outros campos também, mesmo que não haja alterações de preço
-        await setDoc(doc(db, COL.products, id), { ...product, ...otherUpdates });
-      } else {
-        await setDoc(doc(db, COL.products, id), { ...product, ...sanitized });
-      }
-      addAuditLog({ action: 'EDITAR_PRODUTO', module: 'INVENTARIO', entityId: id, description: `Produto ${product.name} actualizado.`, performedBy: user?.name || 'Sistema' });
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : 'Erro desconhecido';
-      addLog({ action: 'ERROR' as any, module: 'INVENTARIO', description: `ERRO: ${msg}`, entityId: id }, user);
-      throw error;
-    }
-  }, [checkPermission, validateAction, products, handleStockMovement, addAuditLog, addLog, user, getSystemDate]);
-
-  const deleteProduct = useCallback((id: string) => {
-    try {
-      if (!checkPermission('inventory_product_delete')) return;
-      validateAction('DELETE_PRODUCT', {});
-      const product = products.find(p => p.id === id);
-      deleteDoc(doc(db, COL.products, id));
-      addAuditLog({ action: 'ARQUIVAR_PRODUTO', module: 'INVENTARIO', entityId: id, description: `Produto ${product?.name || id} eliminado.`, performedBy: user?.name || 'Sistema' });
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : 'Erro desconhecido';
-      addLog({ action: 'ERROR' as any, module: 'INVENTARIO', description: `ERRO: ${msg}`, entityId: id }, user);
-      throw error;
-    }
-  }, [checkPermission, validateAction, products, addAuditLog, addLog, user]);
-
-  const addCategory = useCallback((category: string) => {
-    if (!checkPermission('inventory_category_manage')) return;
-    if (!categories.includes(category)) {
-      setCategories(prev => [...prev, category].sort());
-      addAuditLog({ action: 'CRIAR_CATEGORIA', module: 'INVENTARIO', description: `Categoria ${category} criada.`, performedBy: user?.name || 'Sistema' });
-    }
-  }, [checkPermission, categories, addAuditLog, user]);
-
-  const editCategory = useCallback(async (oldName: string, newName: string) => {
-    if (!checkPermission('inventory_category_manage')) return;
-    if (!newName || oldName === newName) return;
-    setCategories(prev => prev.map(c => c === oldName ? newName : c));
-    products.filter(p => p.category === oldName).forEach(p => setDoc(doc(db, COL.products, p.id), { ...p, category: newName }));
-    addAuditLog({ action: 'EDITAR_CATEGORIA', module: 'INVENTARIO', description: `Categoria ${oldName} → ${newName}.`, performedBy: user?.name || 'Sistema' });
-  }, [checkPermission, products, addAuditLog, user]);
-
-  const removeCategory = useCallback((category: string) => {
-    if (!checkPermission('inventory_category_manage')) return;
-    setCategories(prev => prev.filter(c => c !== category));
-    addAuditLog({ action: 'REMOVER_CATEGORIA', module: 'INVENTARIO', description: `Categoria ${category} removida.`, performedBy: user?.name || 'Sistema' });
-  }, [checkPermission, addAuditLog, user]);
-
   const addPurchase = useCallback((items: Record<string, number>, source: 'Prices' | 'Inventory' | 'Sales', completedBy: string, attachments?: string[], supplier?: string, purchaseDate?: string, sourceAccount: 'main' | 'cash_in_hand' = 'main', barItemsParam?: Record<string, number>, reserveItemsParam?: Record<string, number>) => {
     try {
       if (!checkPermission('purchases_execute')) return;
@@ -965,20 +775,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       addLog({ action: 'ERROR' as any, module: 'COMPRAS', description: `ERRO: ${msg}`, entityId: source }, user);
       throw error;
     }
-  }, [checkPermission, validateAction, products, user, systemDate, getSystemDate, getSystemDateStr, handleStockMovement, processTransaction, addAuditLog, addLog]);
-
-  const getPurchasesByDate = useCallback((dateStr: string) => {
-    const totals: Record<string, number> = {};
-    purchases.filter(p => p.date === dateStr).forEach(record => {
-      Object.entries(record.items).forEach(([id, qtyPacks]) => {
-        const p = products.find(prod => prod.id === id);
-        totals[id] = (totals[id] || 0) + Number(qtyPacks) * (p?.packSize || 1);
-      });
-    });
-    return totals;
-  }, [purchases, products]);
-
-  const getTodayPurchases = useCallback(() => getPurchasesByDate(getSystemDateStr()), [getPurchasesByDate, getSystemDateStr]);
+  }, [checkPermission, validateAction, products, user, systemDate, getSystemDate, getSystemDateStr, handleStockMovement, processTransaction, addAuditLog, addLog, getPurchasesByDate]);
 
   const processCashTPADebit = useCallback((origin: 'Cash' | 'TPA', amount: number, note: string, referenceId?: string, referenceType?: Transaction['referenceType'], performedBy?: string, date?: string) => {
     if (!Number.isFinite(amount) || amount <= 0) return;
@@ -1207,61 +1004,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     addAuditLog({ action: isUnilateral ? 'CONFIRMAÇÃO_UNILATERAL_FECHO' : 'CONFIRMAÇÃO_FINAL_FECHO', module: 'VENDAS', entityId: reportId, description: `Fecho confirmado para ${reportDateStr}.`, performedBy: confirmedBy });
   }, [checkPermission, salesReports, products, getSystemDate, cashBalance, tpaBalance, currentBalance, savingsBalance, cashInHandBalance, transactions, cards, handleStockMovement, registrarAlmocoBlindado, addAuditLog]);
 
-  const addEquipment = useCallback((equipment: Omit<Equipment, 'id' | 'prevQty'>) => {
-    try {
-      validateAction('EQUIPMENT', {});
-      const newEquip: Equipment = { ...equipment, id: generateUUID(), prevQty: equipment.qty };
-      setDoc(doc(db, COL.equipments, newEquip.id), newEquip);
-      addAuditLog({ action: 'ADICIONAR_EQUIPAMENTO', module: 'INVENTARIO', entityId: newEquip.id, description: `Equipamento ${newEquip.name} adicionado.`, performedBy: user?.name || 'Sistema' });
-    } catch (error) { const msg = error instanceof Error ? error.message : 'Erro'; addLog({ action: 'ERROR' as any, module: 'INVENTARIO', description: `ERRO: ${msg}`, entityId: equipment.name }, user); throw error; }
-  }, [validateAction, addAuditLog, addLog, user]);
-
-  const updateEquipment = useCallback((id: string, updates: Partial<Equipment>) => {
-    try {
-      validateAction('EQUIPMENT', {});
-      const equip = equipments.find(e => e.id === id);
-      if (equip) {
-        setDoc(doc(db, COL.equipments, id), { ...equip, ...updates });
-        const historyLog = {
-          id: generateUUID(), timestamp: Date.now(), date: formatDateISO(new Date()),
-          performedBy: user?.name || 'Sistema', totalItems: updates.qty ?? equip.qty,
-          discrepancies: [], status: 'OK' as const,
-          justification: `Edição manual: ${equip.name} — Qtd: ${equip.qty} → ${updates.qty ?? equip.qty}`
-        };
-        setDoc(doc(db, COL.inventoryHistory, historyLog.id), historyLog);
-      }
-      addAuditLog({ action: 'EDITAR_EQUIPAMENTO', module: 'INVENTARIO', entityId: id, description: `Equipamento ${id} actualizado.`, performedBy: user?.name || 'Sistema' });
-    } catch (error) { const msg = error instanceof Error ? error.message : 'Erro'; addLog({ action: 'ERROR' as any, module: 'INVENTARIO', description: `ERRO: ${msg}`, entityId: id }, user); throw error; }
-  }, [validateAction, equipments, addAuditLog, addLog, user]);
-
-  const updateEquipmentQty = useCallback((id: string, newQty: number) => {
-    try {
-      validateAction('EQUIPMENT', {});
-      const equip = equipments.find(e => e.id === id);
-      if (equip) {
-        setDoc(doc(db, COL.equipments, id), { ...equip, prevQty: equip.qty, qty: newQty });
-        const historyLog = {
-          id: generateUUID(), timestamp: Date.now(), date: formatDateISO(new Date()),
-          performedBy: user?.name || 'Sistema', totalItems: newQty,
-          discrepancies: equip.qty !== newQty ? [{ name: equip.name, diff: newQty - equip.qty }] : [],
-          status: (equip.qty !== newQty ? 'DIVERGENTE' : 'OK') as const,
-          justification: `Contagem: ${equip.name} — ${equip.qty} → ${newQty}`
-        };
-        setDoc(doc(db, COL.inventoryHistory, historyLog.id), historyLog);
-      }
-      addAuditLog({ action: 'AJUSTE_QTD_EQUIPAMENTO', module: 'INVENTARIO', entityId: id, description: `Quantidade de ${equip?.name || id}: ${equip?.qty} → ${newQty}`, performedBy: user?.name || 'Sistema' });
-    } catch (error) { const msg = error instanceof Error ? error.message : 'Erro'; addLog({ action: 'ERROR' as any, module: 'INVENTARIO', description: `ERRO: ${msg}`, entityId: id }, user); throw error; }
-  }, [validateAction, equipments, addAuditLog, addLog, user]);
-
-  const removeEquipment = useCallback((id: string) => {
-    try {
-      validateAction('EQUIPMENT', {});
-      const equip = equipments.find(e => e.id === id);
-      deleteDoc(doc(db, COL.equipments, id));
-      addAuditLog({ action: 'REMOVER_EQUIPAMENTO', module: 'INVENTARIO', entityId: id, description: `Equipamento ${equip?.name || id} removido.`, performedBy: user?.name || 'Sistema' });
-    } catch (error) { const msg = error instanceof Error ? error.message : 'Erro'; addLog({ action: 'ERROR' as any, module: 'INVENTARIO', description: `ERRO: ${msg}`, entityId: id }, user); throw error; }
-  }, [validateAction, equipments, addAuditLog, addLog, user]);
-
   const addCard = useCallback((card: Omit<Card, 'id'>) => {
     if (!checkPermission('finance_card_create')) return;
     const newCard: Card = { ...card, id: Math.random().toString(36).substr(2, 9) };
@@ -1286,35 +1028,6 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     deleteDoc(doc(db, COL.cards, id));
     addAuditLog({ action: 'REMOVER_CARTAO', module: 'FINANCEIRO', entityId: id, description: `Cartão removido: ${card?.name || id}`, performedBy: user?.name || 'Sistema' });
   }, [checkPermission, cards, addAuditLog, user]);
-
-  const transferReserveToBar = useCallback(async (items: Record<string, number>, date: string, performedBy: string, notes?: string) => {
-    if (!checkPermission('reserve_transfer')) return;
-    const transferId = generateUUID();
-    const packSizeSnapshot: Record<string, number> = {};
-    products.forEach(p => { if (items[p.id]) packSizeSnapshot[p.id] = p.packSize || 1; });
-    const transfer: ReserveTransfer = { id: transferId, date, timestamp: Date.now(), performedBy, items, packSizeSnapshot, notes };
-    // Actualizar stock: deduz da Reserva, adiciona ao Bar (stock principal)
-    for (const [productId, qty] of Object.entries(items)) {
-      if (qty <= 0) continue;
-      const p = products.find(pr => pr.id === productId);
-      if (!p) continue;
-      const newReserveStock = Math.max(0, (p.reserveStock ?? 0) - qty);
-      const newBarStock = p.stock + qty;
-      await setDoc(doc(db, COL.products, productId), { ...p, stock: newBarStock, reserveStock: newReserveStock });
-      const log: StockOperationLog = {
-        id: generateUUID(), productId, productName: p.name,
-        type: 'RESERVE_TRANSFER_IN' as any,
-        qtyBefore: p.stock, qtyAdded: qty, qtyAfter: newBarStock,
-        previousStock: p.stock, newStock: newBarStock, qtyChanged: qty,
-        responsible: performedBy, timestamp: Date.now(), performedBy,
-        reason: `Transferência da Reserva para o Bar${notes ? ': ' + notes : ''}`,
-        referenceId: transferId, location: 'bar' as any
-      };
-      await setDoc(doc(db, COL.stockOperationHistory, log.id), log);
-    }
-    await setDoc(doc(db, COL.reserveTransfers, transferId), transfer);
-    addAuditLog({ action: 'TRANSFERENCIA_RESERVA_BAR', module: 'RESERVA', entityId: transferId, description: `Transferência da Reserva para o Bar. ${Object.keys(items).length} produto(s). Por: ${performedBy}`, performedBy });
-  }, [checkPermission, products, addAuditLog]);
 
   const resetTestData = useCallback(() => {
     if (!checkPermission('admin_global_admin')) return;
