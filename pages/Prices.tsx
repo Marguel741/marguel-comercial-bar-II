@@ -141,6 +141,7 @@ const Prices: React.FC = () => {
   const [purchaseSupplier, setPurchaseSupplier] = useState('');
   const [purchaseDate, setPurchaseDate] = useState('');
   const [purchaseSourceAccount, setPurchaseSourceAccount] = useState<'main' | 'cash_in_hand'>('main');
+  const [purchaseBarItems, setPurchaseBarItems] = useState<Record<string, number>>({});
   const [isProcessingPurchase, setIsProcessingPurchase] = useState(false);
   const [reportProposal, setReportProposal] = useState<SavedProposal | PurchaseRecord | null>(null);
   const [viewImageIndex, setViewImageIndex] = useState<number | null>(null);
@@ -428,6 +429,7 @@ const Prices: React.FC = () => {
         purchaseSourceAccount
       );
       setPurchaseCart({});
+      setPurchaseBarItems({});
       setPurchaseAttachments([]);
       setPurchaseSupplier('');
       setPurchaseDate('');
@@ -1423,9 +1425,38 @@ const Prices: React.FC = () => {
                         <List size={20} /> Itens da Compra
                       </h3>
                       <div className="space-y-4">
-                        {purchaseCartItems.map(({ id, qty, p }) => (
-                          <CartItem key={id} id={id} qty={qty} product={p} variant="blue" />
-                        ))}
+                        {purchaseCartItems.map(({ id, qty, p }) => {
+                          const barQty = purchaseBarItems[id] ?? qty;
+                          const reserveQty = qty - barQty;
+                          return (
+                            <div key={id} className="space-y-2">
+                              <CartItem id={id} qty={qty} product={p} variant="blue" />
+                              <div className="flex gap-2 pl-6">
+                                <div className="flex-1">
+                                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Para o Bar</p>
+                                  <input
+                                    type="number" min={0} max={qty}
+                                    value={barQty}
+                                    onChange={e => {
+                                      const v = Math.min(qty, Math.max(0, Number(e.target.value)));
+                                      setPurchaseBarItems(prev => ({ ...prev, [id]: v }));
+                                    }}
+                                    className="w-full p-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-black text-[#003366] dark:text-white text-center outline-none focus:ring-2 focus:ring-[#0054A6]"
+                                  />
+                                  <p className="text-[9px] text-slate-400 text-center mt-0.5">packs p/ Bar</p>
+                                </div>
+                                <div className="flex items-center pt-4 text-slate-300 font-bold">+</div>
+                                <div className="flex-1">
+                                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Para a Reserva</p>
+                                  <div className="w-full p-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-black text-emerald-600 dark:text-emerald-400 text-center">
+                                    {reserveQty}
+                                  </div>
+                                  <p className="text-[9px] text-slate-400 text-center mt-0.5">packs p/ Reserva</p>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   </div>
