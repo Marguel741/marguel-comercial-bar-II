@@ -14,7 +14,7 @@ import Footer from '../components/Footer';
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-  const { salesReports, systemDate, products, expenses, getConfirmedSalesReports, notifications, addNotification, resolveNotification, purchases } = useProducts();
+ const { salesReports, systemDate, products, expenses, getConfirmedSalesReports, notifications, addNotification, resolveNotification, purchases, reserveTransfers } = useProducts();
   const { theme, setTheme } = useTheme();
   const { toggleSidebar } = useLayout();
 
@@ -259,6 +259,38 @@ const Dashboard: React.FC = () => {
         title: 'Stock Baixo',
         message: `${lowStock.length} produtos quase acabando.`,
         details: lowStock.map(p => `${p.name} (${effectiveStock[p.id] ?? p.stock})`),
+        icon: Package,
+        color: 'amber',
+        isSystem: true,
+      });
+    }
+
+    // Alertas da Reserva
+    const criticalReserve = products.filter(p => !p.isArchived && (p.reserveStock ?? 0) <= 0 && (p.minReserveStock ?? 0) > 0);
+    const lowReserve = products.filter(p => {
+      const rs = p.reserveStock ?? 0;
+      const minRs = p.minReserveStock ?? 0;
+      return rs > 0 && minRs > 0 && rs <= minRs;
+    });
+    if (criticalReserve.length > 0) {
+      list.push({
+        id: 'critical-reserve',
+        type: 'CRITICO',
+        title: 'Reserva Esgotada',
+        message: `${criticalReserve.length} produtos sem stock na Reserva.`,
+        details: criticalReserve.map(p => p.name),
+        icon: Package,
+        color: 'red',
+        isSystem: true,
+      });
+    }
+    if (lowReserve.length > 0) {
+      list.push({
+        id: 'low-reserve',
+        type: 'SUAVE',
+        title: 'Reserva Baixa',
+        message: `${lowReserve.length} produtos com Reserva abaixo do mínimo.`,
+        details: lowReserve.map(p => `${p.name} (${p.reserveStock ?? 0}un)`),
         icon: Package,
         color: 'amber',
         isSystem: true,
