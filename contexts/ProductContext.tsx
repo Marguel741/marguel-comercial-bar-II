@@ -148,7 +148,7 @@ interface ProductContextType {
   addCategory: (category: string) => void;
   editCategory: (oldName: string, newName: string) => Promise<void>;
   removeCategory: (category: string) => void;
-  addPurchase: (items: Record<string, number>, source: 'Prices' | 'Inventory' | 'Sales', completedBy: string, attachments?: string[], supplier?: string, purchaseDate?: string, sourceAccount?: 'main' | 'cash_in_hand') => void;
+  addPurchase: (items: Record<string, number>, source: 'Prices' | 'Inventory' | 'Sales', completedBy: string, attachments?: string[], supplier?: string, purchaseDate?: string, sourceAccount?: 'main' | 'cash_in_hand', barItems?: Record<string, number>, reserveItems?: Record<string, number>) => void;
   getPurchasesByDate: (dateStr: string) => Record<string, number>;
   getTodayPurchases: () => Record<string, number>;
   processTransaction: (type: 'deposit' | 'withdraw', account: 'main' | 'savings' | string, amount: number, description: string, category?: string, referenceId?: string, referenceType?: Transaction['referenceType'], performedBy?: string) => void;
@@ -920,7 +920,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     addAuditLog({ action: 'REMOVER_CATEGORIA', module: 'INVENTARIO', description: `Categoria ${category} removida.`, performedBy: user?.name || 'Sistema' });
   }, [checkPermission, addAuditLog, user]);
 
-  const addPurchase = useCallback((items: Record<string, number>, source: 'Prices' | 'Inventory' | 'Sales', completedBy: string, attachments?: string[], supplier?: string, purchaseDate?: string, sourceAccount: 'main' | 'cash_in_hand' = 'main') => {
+  const addPurchase = useCallback((items: Record<string, number>, source: 'Prices' | 'Inventory' | 'Sales', completedBy: string, attachments?: string[], supplier?: string, purchaseDate?: string, sourceAccount: 'main' | 'cash_in_hand' = 'main', barItemsParam?: Record<string, number>, reserveItemsParam?: Record<string, number>) => {
     try {
       if (!checkPermission('purchases_execute')) return;
       validateAction('PURCHASE', { date: systemDate });
@@ -933,7 +933,16 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       Object.entries(items).forEach(([productId, qtyPacks]) => {
         if (qtyPacks > 0) {
           const p = products.find(prod => prod.id === productId);
-          if (p) handleStockMovement(productId, qtyPacks * (p.packSize || 1), 'PURCHASE', completedBy, 'Compra de Stock', purchaseId);
+          if (!p) return;
+          const barQty = barItemsParam?.[productId] ?? qtyPacks;
+          const reserveQty = (barItemsParam ? qtyPacks - barQty : 0);
+          // Stock do Bar
+          if (barQty > 0) handleStockMovement(productId, barQty * (p.packSize || 1), 'PURCHASE', completedBy, 'Compra de Stock', purchaseId);
+          // Stock da Reserva — actualiza directamente
+          if (reserveQty > 0) {
+            const newReserveStock = (p.reserveStock ?? 0) + reserveQty * (p.packSize || 1);
+            setDoc(doc(db, COL.products, productId), { ...p, reserveStock: newReserveStock });
+          }
         }
       });
       const targetDateStr = purchaseDate || getSystemDateStr();
@@ -941,10 +950,11 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       const barItemsMap: Record<string, number> = {};
       const reserveItemsMap: Record<string, number> = {};
       products.forEach(p => { if (items[p.id]) packSizeSnapshot[p.id] = p.packSize || 1; });
-      // barItems e reserveItems opcionais — se não fornecidos, tudo vai para o Bar
       Object.entries(items).forEach(([id, qty]) => {
-        barItemsMap[id] = qty;
-        reserveItemsMap[id] = 0;
+        const barQty = barItemsParam?.[id] ?? qty;
+        const reserveQty = reserveItemsParam?.[id] ?? (qty - barQty);
+        barItemsMap[id] = barQty;
+        reserveItemsMap[id] = reserveQty;
       });
       const newRecord: PurchaseRecord = { id: purchaseId, name: source === 'Inventory' ? 'Ajuste de Stock (Inventário)' : source === 'Sales' ? 'Compra Rápida (Vendas)' : 'Compra Efectuada', date: targetDateStr, items, total: totalValue, completedBy, supplier, timestamp: getSystemDate().getTime(), source, attachments, synced: true, sourceAccount, packSizeSnapshot, barItems: barItemsMap, reserveItems: reserveItemsMap };
       setDoc(doc(db, COL.purchases, purchaseId), newRecord);
