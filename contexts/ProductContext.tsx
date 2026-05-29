@@ -191,7 +191,7 @@ interface ProductContextType {
 
 const ProductContext = createContext<ProductContextType | undefined>(undefined);
 
-export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+const ProductProviderInner: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { user } = useAuth();
   const { addLog } = useAudit();
 
@@ -1088,6 +1088,17 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     </ProductContext.Provider>
   );
 };
+
+export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children }) => (
+  <StockProvider
+    getSystemDate={() => new Date()}
+    getSystemDateStr={() => new Date().toISOString().split('T')[0]}
+    validateAction={() => true}
+    addAuditLog={() => {}}
+  >
+    <ProductProviderInner>{children}</ProductProviderInner>
+  </StockProvider>
+);
 
 export const useProducts = () => {
   const context = useContext(ProductContext);
