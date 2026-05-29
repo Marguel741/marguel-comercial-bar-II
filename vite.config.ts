@@ -4,7 +4,11 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
+    const buildDate = new Date().toISOString().slice(0, 10).replace(/-/g, '.');
     return {
+      define: {
+        __APP_VERSION__: JSON.stringify(`v${buildDate}`),
+      },
       server: {
         port: 3000,
         host: '0.0.0.0',
