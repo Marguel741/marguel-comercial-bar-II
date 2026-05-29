@@ -1,7 +1,7 @@
 import { db } from '../src/firebase';
 import { doc, setDoc, getDoc, collection, onSnapshot, deleteDoc } from 'firebase/firestore';
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from 'react';
-import { Product, PurchaseRecord, Transaction, SalesReport, Expense, InventoryLog, PriceHistoryLog, Equipment, Card, StockOperationLog, AuditLog, ClosureStatus, ExpenseCategory, UserPermissions, UserRole } from '../types';
+import { Product, PurchaseRecord, Transaction, SalesReport, Expense, InventoryLog, PriceHistoryLog, Equipment, Card, StockOperationLog, AuditLog, ClosureStatus, ExpenseCategory, UserPermissions, UserRole, ReserveTransfer } from '../types';
 import { useAuth } from './AuthContext';
 import { useAudit } from './AuditContext';
 import { hasPermission } from '../src/utils/permissions';
@@ -23,6 +23,7 @@ const COL = {
   lockedDays:           'appdata/locked_days',
   notifications:        'appdata/notifications/records',
   proposals:            'appdata/proposals/records',
+  reserveTransfers:     'appdata/reserve_transfers/records',
 };
 
 const fsSet = async (path: string, id: string, data: any) => {
@@ -183,6 +184,8 @@ interface ProductContextType {
   clearNotifications: () => void;
   resolveNotification: (id: string, resolvedBy: string, note?: string) => void;
   transferBetweenCards: (fromId: string, toId: string, amount: number, note: string, performedBy: string) => void;
+  reserveTransfers: ReserveTransfer[];
+  transferReserveToBar: (items: Record<string, number>, date: string, performedBy: string, notes?: string) => void;
 }
 
 const ProductContext = createContext<ProductContextType | undefined>(undefined);
@@ -214,6 +217,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [equipments, setEquipments] = useState<Equipment[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [proposals, setProposals] = useState<any[]>([]);
+  const [reserveTransfers, setReserveTransfers] = useState<ReserveTransfer[]>([]);
   const [currentBalance, setCurrentBalance] = useState<number>(0);
   const [savingsBalance, setSavingsBalance] = useState<number>(0);
   const [cashBalance, setCashBalance] = useState<number>(0);
@@ -308,6 +312,9 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     
     unsubs.push(onSnapshot(collection(db, COL.proposals), snap => {
       setProposals(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    }));
+    unsubs.push(onSnapshot(collection(db, COL.reserveTransfers), snap => {
+      setReserveTransfers(snap.docs.map(d => d.data() as ReserveTransfer).sort((a, b) => b.timestamp - a.timestamp));
     }));
     unsubs.push(onSnapshot(collection(db, COL.notifications), snap => {
       setNotifications(snap.docs.map(d => d.data()).sort((a,b) => b.timestamp - a.timestamp));
@@ -807,7 +814,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     try {
       if (!checkPermission('inventory_product_create')) return;
       validateAction('ADD_PRODUCT', {});
-      const newProduct = { ...product, id: generateUUID() };
+      const newProduct = { ...product, id: generateUUID(), reserveStock: product.reserveStock ?? 0 };
       setDoc(doc(db, COL.products, newProduct.id), newProduct);
       addAuditLog({ action: 'CRIAR_PRODUTO', module: 'INVENTARIO', entityId: newProduct.id, description: `Produto ${newProduct.name} criado.`, performedBy: user?.name || 'Sistema' });
     } catch (error) {
@@ -916,7 +923,16 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
         }
       });
       const targetDateStr = purchaseDate || getSystemDateStr();
-     const newRecord: PurchaseRecord = { id: purchaseId, name: source === 'Inventory' ? 'Ajuste de Stock (Inventário)' : source === 'Sales' ? 'Compra Rápida (Vendas)' : 'Compra Efectuada', date: targetDateStr, items, total: totalValue, completedBy, supplier, timestamp: getSystemDate().getTime(), source, attachments, synced: true, sourceAccount };
+      const packSizeSnapshot: Record<string, number> = {};
+      const barItemsMap: Record<string, number> = {};
+      const reserveItemsMap: Record<string, number> = {};
+      products.forEach(p => { if (items[p.id]) packSizeSnapshot[p.id] = p.packSize || 1; });
+      // barItems e reserveItems opcionais — se não fornecidos, tudo vai para o Bar
+      Object.entries(items).forEach(([id, qty]) => {
+        barItemsMap[id] = qty;
+        reserveItemsMap[id] = 0;
+      });
+      const newRecord: PurchaseRecord = { id: purchaseId, name: source === 'Inventory' ? 'Ajuste de Stock (Inventário)' : source === 'Sales' ? 'Compra Rápida (Vendas)' : 'Compra Efectuada', date: targetDateStr, items, total: totalValue, completedBy, supplier, timestamp: getSystemDate().getTime(), source, attachments, synced: true, sourceAccount, packSizeSnapshot, barItems: barItemsMap, reserveItems: reserveItemsMap };
       setDoc(doc(db, COL.purchases, purchaseId), newRecord);
       if (totalValue > 0) processTransaction('withdraw', sourceAccount, totalValue, `Compra de estoque (${targetDateStr})`, 'Compra de Estoque', purchaseId, 'purchase', completedBy, targetDateStr);
       addAuditLog({ action: 'CRIAR_COMPRA', module: 'COMPRAS', entityId: purchaseId, description: `Compra: ${totalValue.toLocaleString('pt-AO')} Kz. Origem: ${source}`, performedBy: completedBy });
@@ -1247,6 +1263,35 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     addAuditLog({ action: 'REMOVER_CARTAO', module: 'FINANCEIRO', entityId: id, description: `Cartão removido: ${card?.name || id}`, performedBy: user?.name || 'Sistema' });
   }, [checkPermission, cards, addAuditLog, user]);
 
+  const transferReserveToBar = useCallback(async (items: Record<string, number>, date: string, performedBy: string, notes?: string) => {
+    if (!checkPermission('reserve_transfer')) return;
+    const transferId = generateUUID();
+    const packSizeSnapshot: Record<string, number> = {};
+    products.forEach(p => { if (items[p.id]) packSizeSnapshot[p.id] = p.packSize || 1; });
+    const transfer: ReserveTransfer = { id: transferId, date, timestamp: Date.now(), performedBy, items, packSizeSnapshot, notes };
+    // Actualizar stock: deduz da Reserva, adiciona ao Bar (stock principal)
+    for (const [productId, qty] of Object.entries(items)) {
+      if (qty <= 0) continue;
+      const p = products.find(pr => pr.id === productId);
+      if (!p) continue;
+      const newReserveStock = Math.max(0, (p.reserveStock ?? 0) - qty);
+      const newBarStock = p.stock + qty;
+      await setDoc(doc(db, COL.products, productId), { ...p, stock: newBarStock, reserveStock: newReserveStock });
+      const log: StockOperationLog = {
+        id: generateUUID(), productId, productName: p.name,
+        type: 'RESERVE_TRANSFER_IN' as any,
+        qtyBefore: p.stock, qtyAdded: qty, qtyAfter: newBarStock,
+        previousStock: p.stock, newStock: newBarStock, qtyChanged: qty,
+        responsible: performedBy, timestamp: Date.now(), performedBy,
+        reason: `Transferência da Reserva para o Bar${notes ? ': ' + notes : ''}`,
+        referenceId: transferId, location: 'bar' as any
+      };
+      await setDoc(doc(db, COL.stockOperationHistory, log.id), log);
+    }
+    await setDoc(doc(db, COL.reserveTransfers, transferId), transfer);
+    addAuditLog({ action: 'TRANSFERENCIA_RESERVA_BAR', module: 'RESERVA', entityId: transferId, description: `Transferência da Reserva para o Bar. ${Object.keys(items).length} produto(s). Por: ${performedBy}`, performedBy });
+  }, [checkPermission, products, addAuditLog]);
+
   const resetTestData = useCallback(() => {
     if (!checkPermission('admin_global_admin')) return;
     INITIAL_PRODUCTS.forEach(p => setDoc(doc(db, COL.products, p.id), p));
@@ -1281,6 +1326,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     notifications, addNotification, markNotificationRead, clearNotifications, resolveNotification,
     proposals, addProposal, deleteProposal,
     transferBetweenCards,
+    reserveTransfers, transferReserveToBar,
   }), [
     products, categories, purchases, currentBalance, savingsBalance, cashBalance, tpaBalance,
     cashInHandBalance, cards, transactions, salesReports,
@@ -1300,6 +1346,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     notifications, addNotification, markNotificationRead, clearNotifications, resolveNotification,
     proposals, addProposal, deleteProposal,
     transferBetweenCards,
+    reserveTransfers, transferReserveToBar,
   ]);
 
   return (
