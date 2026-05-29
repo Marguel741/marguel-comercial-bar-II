@@ -426,7 +426,9 @@ const Prices: React.FC = () => {
         purchaseAttachments,
         purchaseSupplier || 'Sem Fornecedor',
         purchaseDate || undefined,
-        purchaseSourceAccount
+        purchaseSourceAccount,
+        purchaseBarItems,
+        Object.fromEntries(Object.entries(purchaseCart).map(([id, qty]) => [id, qty - (purchaseBarItems[id] ?? qty)]))
       );
       setPurchaseCart({});
       setPurchaseBarItems({});
