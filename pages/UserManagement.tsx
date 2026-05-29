@@ -480,73 +480,82 @@ const UserManagement: React.FC = () => {
 
             <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
               {Object.entries({
-                "1. ADMINISTRAÇÃO DO SISTEMA": [
-                  { key: 'admin_users_view', label: 'Ver Utilizadores' },
-                  { key: 'admin_users_create', label: 'Criar Utilizador' },
-                  { key: 'admin_users_edit', label: 'Editar Utilizador' },
-                  { key: 'admin_users_delete', label: 'Eliminar Utilizador' },
-                  { key: 'admin_users_permissions', label: 'Alterar Permissões' },
-                  { key: 'admin_global_admin', label: 'Acesso Total (Super Admin)', color: 'text-red-600' },
-                  { key: 'admin_global_read_only', label: 'Modo Apenas Leitura Global' },
-                  { key: 'admin_global_block_hours', label: 'Bloquear Acesso Fora do Horário' },
-                  { key: 'admin_logs_view', label: 'Ver Logs do Sistema' },
-                  { key: 'admin_history_view', label: 'Ver Histórico de Alterações' },
+                \"1. ADMINISTRAÇÃO DO SISTEMA\": [
+                  { key: 'admin_users_view', label: 'Ver Utilizadores', note: 'Acede à lista de todos os utilizadores registados no sistema.' },
+                  { key: 'admin_users_create', label: 'Criar Utilizador', note: 'Adiciona novos utilizadores ao sistema.' },
+                  { key: 'admin_users_edit', label: 'Editar Utilizador', note: 'Altera dados de perfil (nome, email, cargo) de outros utilizadores.' },
+                  { key: 'admin_users_delete', label: 'Eliminar Utilizador', note: 'Remove definitivamente um utilizador. Os dois utilizadores fixos do sistema não podem ser eliminados.' },
+                  { key: 'admin_users_permissions', label: 'Gerir Permissões de Utilizador', note: 'Abre a matriz de permissões e altera o que cada utilizador pode fazer.' },
+                  { key: 'admin_global_admin', label: 'Acesso Total (Super Admin)', color: 'text-red-600', note: 'Ignora todas as restrições de permissão. Equivale ao proprietário. Usar com extremo cuidado.' },
+                  { key: 'admin_global_read_only', label: 'Modo Apenas Leitura Global', note: 'Bloqueia todas as acções de escrita para este utilizador. Útil para auditores externos.' },
+                  { key: 'admin_global_block_hours', label: 'Bloquear Acesso Fora do Horário', note: 'Impede o acesso ao sistema fora do horário de funcionamento definido.' },
+                  { key: 'admin_logs_view', label: 'Ver Logs do Sistema', note: 'Consulta os logs técnicos internos do sistema.' },
+                  { key: 'admin_history_view', label: 'Ver Histórico de Alterações', note: 'Acede ao histórico detalhado de todas as alterações feitas no sistema.' },
                 ],
-                "2. ATENDIMENTO DIRECTO": [
-                  { key: 'direct_service_view', label: 'Ver Atendimento Directo' },
-                  { key: 'direct_service_execute', label: 'Efectuar Atendimento Directo' },
-                  { key: 'direct_service_reports', label: 'Ver Relatórios de Atendimento' },
-                  { key: 'direct_service_void', label: 'Anular Atendimento' },
+                \"2. ATENDIMENTO DIRECTO\": [
+                  { key: 'direct_service_view', label: 'Ver Atendimento Directo', note: 'Acede à página de Serviço Directo para registo de vendas avulsas.' },
+                  { key: 'direct_service_execute', label: 'Registar Venda Avulsa', note: 'Cria novas vendas avulsas fora do fecho diário. Não afecta o stock directamente.' },
+                  { key: 'direct_service_reports', label: 'Ver Relatórios de Atendimento', note: 'Consulta o histórico de todas as vendas avulsas registadas.' },
+                  { key: 'direct_service_void', label: 'Anular Venda Avulsa', note: 'Cancela uma venda avulsa já registada.' },
                 ],
-                "3. CONTROLO DE VENDAS": [
-                  { key: 'sales_view', label: 'Ver Controlo de Vendas' },
-                  { key: 'sales_execute', label: 'Efectuar Vendas' },
-                  { key: 'sales_edit', label: 'Efectuar Alterações em Controlo de Vendas' },
-                  { key: 'sales_view_margins', label: 'Ver Margem de Lucro Global' },
-                  { key: 'sales_closure', label: 'Efectuar Fecho de Dia' },
+                \"3. CONTROLO DE VENDAS\": [
+                  { key: 'sales_view', label: 'Ver Controlo de Vendas', note: 'Acede à página principal de registo do fecho diário de vendas.' },
+                  { key: 'sales_execute', label: 'Registar Vendas do Dia', note: 'Preenche as quantidades vendidas de cada produto no fecho diário.' },
+                  { key: 'sales_edit', label: 'Editar Fecho Existente', note: 'Altera um fecho de dia já submetido (apenas se ainda não estiver confirmado).' },
+                  { key: 'sales_view_margins', label: 'Ver Margem de Lucro', note: 'Visualiza a margem de lucro por produto e os totais de rentabilidade.' },
+                  { key: 'sales_closure', label: 'Efectuar Fecho de Dia', note: 'Submete o fecho parcial e confirma o fecho final do dia (deduz stock e processa financeiros).' },
                 ],
-                "4. INVENTÁRIO": [
-                  { key: 'inventory_view', label: 'Ver Inventário' },
-                  { key: 'inventory_product_create', label: 'Criar Produto' },
-                  { key: 'inventory_product_edit', label: 'Editar Produto' },
-                  { key: 'inventory_product_delete', label: 'Eliminar Produto' },
-                  { key: 'inventory_edit', label: 'Efectuar Alterações em Inventário' },
-                  { key: 'inventory_stock_adjust', label: 'Ajuste Manual de Stock' },
-                  { key: 'inventory_category_manage', label: 'Alterar Categoria' },
+                \"4. INVENTÁRIO\": [
+                  { key: 'inventory_view', label: 'Ver Inventário', note: 'Acede à página de inventário com a lista de produtos e stocks actuais.' },
+                  { key: 'inventory_product_create', label: 'Criar Produto', note: 'Adiciona um novo produto ao catálogo do bar.' },
+                  { key: 'inventory_product_edit', label: 'Editar Produto', note: 'Altera dados de um produto (nome, categoria, pack size, stock mínimo).' },
+                  { key: 'inventory_product_delete', label: 'Eliminar Produto', note: 'Remove definitivamente um produto do sistema.' },
+                  { key: 'inventory_edit', label: 'Efectuar Alterações em Inventário', note: 'Permissão geral para modificar dados no inventário.' },
+                  { key: 'inventory_stock_adjust', label: 'Ajuste Manual de Stock', note: 'Corrige o stock de um produto manualmente (ex: contagem física revelou diferença).' },
+                  { key: 'inventory_category_manage', label: 'Gerir Categorias de Inventário', note: 'Cria, edita ou elimina categorias de produtos (ex: Cervejas, Refrigerantes).' },
                 ],
-                "5. PREÇOS & PROMOÇÕES": [
-                  { key: 'prices_view', label: 'Ver Preços & Compras' },
-                  { key: 'prices_edit', label: 'Alterar Preços' },
-                  { key: 'prices_mix_match', label: 'Configurar Mix & Match' },
-                  { key: 'prices_promo_create', label: 'Criar Promoção' },
-                  { key: 'prices_promo_delete', label: 'Eliminar Promoção' },
+                \"5. PREÇOS & PROMOÇÕES\": [
+                  { key: 'prices_view', label: 'Ver Preços', note: 'Acede à tabela de preços de compra e venda de todos os produtos.' },
+                  { key: 'prices_edit', label: 'Alterar Preços', note: 'Modifica o preço de compra ou venda de um produto. Fica registado no histórico de preços.' },
+                  { key: 'prices_mix_match', label: 'Configurar Mix & Match', note: 'Define promoções do tipo "compre X produtos de categorias diferentes por Y Kz".' },
+                  { key: 'prices_promo_create', label: 'Criar Promoção', note: 'Activa promoções de quantidade em produtos específicos.' },
+                  { key: 'prices_promo_delete', label: 'Eliminar Promoção', note: 'Remove promoções activas.' },
                 ],
-                "6. CENTRAL DE COMPRAS": [
-                  { key: 'purchases_view', label: 'Ver Compras' },
-                  { key: 'purchases_execute', label: 'Efectuar Compras' },
-                  { key: 'purchases_simulate', label: 'Efectuar Simulações de Compras' },
+                \"6. CENTRAL DE COMPRAS\": [
+                  { key: 'purchases_view', label: 'Ver Histórico de Compras', note: 'Consulta todas as compras de stock efectuadas, com datas e valores.' },
+                  { key: 'purchases_execute', label: 'Registar Compra de Stock', note: 'Cria um registo de compra real que adiciona stock e debita o cartão.' },
+                  { key: 'purchases_simulate', label: 'Simular Proposta de Compra', note: 'Cria simulações de compra para calcular custos estimados sem afectar o stock.' },
                 ],
-                "7. DESPESAS": [
-                  { key: 'expenses_view', label: 'Ver Despesas' },
-                  { key: 'expenses_execute', label: 'Efectuar Despesas' },
-                  { key: 'expenses_category_manage', label: 'Gerir Categorias de Despesas' },
+                \"7. DESPESAS\": [
+                  { key: 'expenses_view', label: 'Ver Despesas', note: 'Acede ao histórico de todas as despesas registadas (incluindo compras).' },
+                  { key: 'expenses_execute', label: 'Registar Despesa', note: 'Cria um novo registo de despesa com valor, categoria e comprovativo.' },
+                  { key: 'expenses_category_manage', label: 'Gerir Categorias de Despesas', note: 'Cria, edita ou desactiva categorias de despesas (ex: Fornecedores, Manutenção).' },
                 ],
-                "8. ESTADO DE CONTA & FINANCEIRO": [
-                  { key: 'finance_view', label: 'Ver Estado de Conta' },
-                  { key: 'finance_edit', label: 'Fazer Alterações em Estado de Conta' },
-                  { key: 'finance_card_create', label: 'Criar Cartão Corporativo' },
-                  { key: 'finance_card_delete', label: 'Eliminar Cartão' },
+                \"8. ESTADO DE CONTA & FINANCEIRO\": [
+                  { key: 'finance_view', label: 'Ver Estado de Conta', note: 'Acede aos saldos dos cartões financeiros e ao histórico de transacções.' },
+                  { key: 'finance_edit', label: 'Efectuar Movimentos Manuais', note: 'Cria depósitos ou levantamentos manuais nos cartões (fora do fluxo normal).' },
+                  { key: 'finance_card_create', label: 'Criar Cartão', note: 'Adiciona um novo cartão financeiro ao sistema.' },
+                  { key: 'finance_card_delete', label: 'Eliminar Cartão', note: 'Remove um cartão financeiro. Os cartões principais do sistema não podem ser eliminados.' },
                 ],
-                "9. CALENDÁRIO MARGUEL": [
-                  { key: 'calendar_view', label: 'Ver Calendário Marguel' },
-                  { key: 'calendar_lock', label: 'Bloquear Dia' },
-                  { key: 'calendar_unlock', label: 'Desbloquear Dia' },
+                \"9. CALENDÁRIO MARGUEL\": [
+                  { key: 'calendar_view', label: 'Ver Calendário', note: 'Acede à vista mensal com o resumo de fechos, divergências e PDFs de relatório.' },
+                  { key: 'calendar_lock', label: 'Bloquear Dia', note: 'Impede qualquer edição ao fecho de um dia específico. Acção irreversível sem desbloqueio.' },
+                  { key: 'calendar_unlock', label: 'Desbloquear Dia', note: 'Reabre um dia bloqueado para permitir correcções.' },
                 ],
-                "10. SISTEMA & CONFIGURAÇÕES": [
-                  { key: 'settings_edit', label: 'Alterar Configurações Gerais' },
-                  { key: 'sync_manage', label: 'Activar/Desactivar WiFi/Sincronização' },
-                  { key: 'backup_manage', label: 'Gerir Backup' },
-                  { key: 'restore_system', label: 'Restaurar Sistema' },
+                \"10. SISTEMA & CONFIGURAÇÕES\": [
+                  { key: 'settings_edit', label: 'Alterar Configurações Gerais', note: 'Acede e edita as Definições do sistema (tema, diagnóstico, reset).' },
+                  { key: 'sync_manage', label: 'Gerir Sincronização', note: 'Controla a sincronização de dados entre dispositivos.' },
+                  { key: 'backup_manage', label: 'Gerir Backup', note: 'Cria e gere cópias de segurança dos dados.' },
+                  { key: 'restore_system', label: 'Restaurar Sistema', note: 'Repõe o sistema a um estado anterior a partir de um backup.' },
+                ],
+                "11. AUDITORIA\": [
+                  { key: 'audit_view', label: 'Ver Registo de Auditoria', note: 'Consulta o log completo de todas as acções críticas do sistema.' },
+                  { key: 'audit_control', label: 'Controlar Auditoria', note: 'Altera o modo de auditoria (imutável vs. mutável) e apaga registos.' },
+                ],
+                "12. STOCK DA RESERVA\": [
+                  { key: 'reserve_view', label: 'Ver Stock da Reserva', note: 'Visualiza o stock guardado na Reserva (armazém), separado do Bar.' },
+                  { key: 'reserve_transfer', label: 'Transferir Reserva → Bar', note: 'Move produtos da Reserva para o Bar para reposição de stock.' },
+                  { key: 'reserve_adjust', label: 'Ajustar Stock da Reserva', note: 'Corrige manualmente as quantidades de stock na Reserva.' },
                 ]
               }).map(([section, perms]) => (
                 <div key={section} className="space-y-4">
@@ -557,7 +566,12 @@ const UserManagement: React.FC = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3">
                     {perms.map((p) => (
                       <div key={p.key} className="flex items-center justify-between p-2 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-xl transition-colors">
-                        <span className={`text-xs font-medium ${(p as any).color || 'text-slate-600 dark:text-slate-300'}`}>{p.label}</span>
+                        <div>
+                          <span className={`text-xs font-medium ${(p as any).color || 'text-slate-600 dark:text-slate-300'}`}>{p.label}</span>
+                          {(p as any).note && (
+                            <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 leading-tight max-w-[200px]">{(p as any).note}</p>
+                          )}
+                        </div>
                         <button 
                           onClick={() => handleTempPermissionToggle(p.key as keyof UserPermissions)}
                           className={`w-10 h-5 rounded-full p-1 transition-all flex items-center ${tempPermissions[p.key as keyof UserPermissions] ? 'bg-green-500' : 'bg-slate-300 dark:bg-slate-700 justify-start'}`}
