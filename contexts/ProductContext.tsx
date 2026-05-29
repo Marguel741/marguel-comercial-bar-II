@@ -516,6 +516,19 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
       const targetDate = date || formatDateISO(getSystemDate());
       const transId = existingTrans.length > 0 ? existingTrans[0].id : generateUUID();
 
+      let balanceAfter: number | undefined;
+      if (targetAccount === 'main') balanceAfter = newCB;
+      else if (targetAccount === 'savings') balanceAfter = newSB;
+      else if (targetAccount === 'cash_in_hand') balanceAfter = newCashInHand;
+      else {
+        const matchCard = cards.find(c => c.id === targetAccount);
+        if (matchCard) {
+          if (matchCard.id === 'main') balanceAfter = newCB;
+          else if (matchCard.id === 'savings') balanceAfter = newSB;
+          else if (matchCard.id === 'cash_in_hand') balanceAfter = newCashInHand;
+        }
+      }
+
       const newTrans: Transaction = {
         id: transId,
         type: type === 'deposit' ? 'entrada' : 'saida',
@@ -529,7 +542,8 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
         accountName: accountName || 'Conta Desconhecida',
         status: 'ATIVO',
         operationalDay: targetDate,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        balanceAfter
       };
       setDoc(doc(db, COL.transactions, transId), newTrans);
 
