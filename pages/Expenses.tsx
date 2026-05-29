@@ -518,7 +518,7 @@ const Expenses: React.FC = () => {
               </SoftCard>
             ))}
 
-            {expenses.length === 0 && (
+            {expenses.slice(0, 10).length === 0 && (
               <div className="text-center py-12 text-slate-400 border-2 border-dashed border-slate-200 rounded-2xl">
                 <Wallet size={48} className="mx-auto mb-2 opacity-20" />
                 <p>Nenhuma despesa registrada.</p>
