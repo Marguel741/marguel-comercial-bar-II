@@ -1,4 +1,3 @@
-
 export enum UserRole {
   PROPRIETARIO = 'PROPRIETARIO',
   ADMIN_GERAL = 'ADMIN_GERAL',
@@ -82,6 +81,11 @@ export interface UserPermissions {
   // 11. AUDITORIA GLOBAL
   audit_view: boolean;
   audit_control: boolean;
+
+  // 12. RESERVA
+  reserve_view: boolean;        // Ver stock da Reserva
+  reserve_transfer: boolean;    // Transferir da Reserva para o Bar
+  reserve_adjust: boolean;      // Ajustar stock da Reserva manualmente
 }
 
 export interface User {
@@ -110,21 +114,23 @@ export interface Product {
   name: string;
   buyPrice: number;
   sellPrice: number;
-  stock: number;
-  minStock: number;
+  stock: number;        // Stock do Bar (unidades)
+  minStock: number;     // Stock mínimo do Bar
+  reserveStock?: number;    // Stock da Reserva (unidades)
+  minReserveStock?: number; // Stock mínimo da Reserva
   category: string;
   packSize?: number;
   packType?: 'Grade' | 'Caixa' | 'Embalagem';
   isArchived?: boolean;
-  
+
   // MIX MATCH COMPLETO (obrigatório)
   isMixMatch?: boolean;
-  hasMixMatch?: boolean;       // Bug #13
-  isMixMatchActive?: boolean;  // Bug #13
-  mixMatchQty?: number;        // ex: 3
-  mixMatchPrice?: number;      // preço do pack promocional
-  discountAmount?: number;     // desconto unitário
-  isPromoActive?: boolean;     // mantido para compatibilidade
+  hasMixMatch?: boolean;
+  isMixMatchActive?: boolean;
+  mixMatchQty?: number;
+  mixMatchPrice?: number;
+  discountAmount?: number;
+  isPromoActive?: boolean;
   promoQty?: number;
   promoPrice?: number;
 }
@@ -157,7 +163,10 @@ export interface PurchaseRecord {
   id: string;
   name: string;
   date: string;
-  items: Record<string, number>;
+  items: Record<string, number>;         // Quantidade em packs (grades/caixas)
+  barItems?: Record<string, number>;     // Quantidade em packs que foi para o Bar
+  reserveItems?: Record<string, number>; // Quantidade em packs que foi para a Reserva
+  packSizeSnapshot?: Record<string, number>; // packSize de cada produto no momento da compra
   total: number;
   completedBy: string;
   supplier?: string;
@@ -203,7 +212,7 @@ export interface Equipment {
   id: string;
   name: string;
   qty: number;
-  prevQty: number; 
+  prevQty: number;
   status: 'Operacional' | 'Danificado' | 'Em Manutenção';
   category?: string;
   observations?: string;
@@ -224,7 +233,8 @@ export interface StockOperationLog {
   id: string;
   productId: string;
   productName: string;
-  type: 'PURCHASE' | 'SALE' | 'ADJUSTMENT' | 'MANUAL_ADJUSTMENT';
+  type: 'PURCHASE' | 'SALE' | 'ADJUSTMENT' | 'MANUAL_ADJUSTMENT' | 'RESERVE_TRANSFER_IN' | 'RESERVE_TRANSFER_OUT' | 'RESERVE_ADJUSTMENT';
+  location?: 'bar' | 'reserve'; // onde ocorreu a operação
   qtyBefore: number;
   qtyAdded: number;
   qtyAfter: number;
@@ -232,11 +242,22 @@ export interface StockOperationLog {
   performedBy: string;
   referenceId: string;
   reason?: string;
-  // Novos campos para compatibilidade com o pedido do utilizador
   previousStock?: number;
   newStock?: number;
   qtyChanged?: number;
   responsible?: string;
+}
+
+// Transferência da Reserva para o Bar
+export interface ReserveTransfer {
+  id: string;
+  date: string;              // YYYY-MM-DD — data operacional
+  timestamp: number;
+  performedBy: string;
+  items: Record<string, number>; // productId → quantidade em unidades transferida
+  packSizeSnapshot: Record<string, number>; // packSize no momento da transferência
+  notes?: string;
+  sourceAccount?: 'main' | 'cash_in_hand'; // não usado mas mantido para consistência
 }
 
 export interface InventoryLog {
@@ -266,6 +287,7 @@ export interface Transaction {
   operationalDay?: string;
   isTransfer?: boolean;
   transferCounterpartId?: string;
+  balanceAfter?: number; // Saldo do cartão após este movimento
 }
 
 export enum ClosureStatus {
@@ -294,12 +316,11 @@ export interface SalesReport {
   lunchExpense: number;
   notes: string;
   closedBy: string;
-  itemsSummary: { 
-    productId?: string; 
-    name: string; 
-    qty: number; 
+  itemsSummary: {
+    productId?: string;
+    name: string;
+    qty: number;
     total: number;
-    // NOVOS CAMPOS – agora todos os utilizadores veem o desconto
     isMixMatch?: boolean;
     discountAmount?: number;
     mixMatchQtyUsed?: number;
@@ -309,7 +330,6 @@ export interface SalesReport {
     initial: Record<string, string>;
     final: Record<string, string>;
   };
-  // Double confirmation fields
   status: ClosureStatus;
   confirmedBy?: string;
   confirmationTimestamp?: number;
@@ -319,8 +339,6 @@ export interface SalesReport {
   lunchProcessed?: boolean;
   isFinalClosure?: boolean;
   type?: 'PARTIAL' | 'FINAL';
-  
-  // Extended fields for detailed reporting
   dateISO?: string;
   displayDate?: string;
   weekday?: string;
@@ -350,6 +368,8 @@ export interface SalesReport {
     hora: number;
   };
   _deltaApplied?: boolean;
+  // Transferências da Reserva para o Bar registadas neste dia
+  reserveTransferIds?: string[];
 }
 
 export interface Notification {
@@ -360,12 +380,10 @@ export interface Notification {
   timestamp: number;
   date: string;
   read: boolean;
-  // PROD-7: campos de resolução
   resolved?: boolean;
   resolvedBy?: string;
   resolvedAt?: number;
   resolvedNote?: string;
-  // Referência opcional
   referenceId?: string;
   referenceType?: string;
   color?: 'red' | 'amber' | 'blue' | 'green';
@@ -382,7 +400,7 @@ export interface AuditLog {
   newValue: any;
   performedBy: string;
   userRole: string;
-  timestamp: number; // Unix timestamp
+  timestamp: number;
   date: string; // YYYY-MM-DD
   time: string; // HH:MM:SS
   ipAddress?: string;
