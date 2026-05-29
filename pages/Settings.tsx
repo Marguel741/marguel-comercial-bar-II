@@ -28,6 +28,8 @@ import { useProducts } from '../contexts/ProductContext';
 import SoftCard from '../components/SoftCard';
 import Footer from '../components/Footer';
 
+declare const __APP_VERSION__: string;
+
 const Settings: React.FC = () => {
   const { user, updateUser } = useAuth();
   const [toast, setToast] = React.useState<{show: boolean; message: string; type: 'success' | 'error' | 'info'}>({ show: false, message: '', type: 'info' });
@@ -494,7 +496,7 @@ const Settings: React.FC = () => {
 
           <div className="space-y-4">
             {[
-              { icon: <Zap size={14} />, label: 'Versão do Sistema', value: '2.0.1-stable' },
+              { icon: <Zap size={14} />, label: 'Versão do Sistema', value: (typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'v2.0.1-stable') },
               { icon: <RefreshCw size={14} />, label: 'Última Sincronização', value: lastSyncDate },
               { icon: isOnline ? <Wifi size={14} /> : <WifiOff size={14} />, label: 'Modo Actual', value: isOnline ? 'Online' : 'Offline', colored: true },
               { icon: <Database size={14} />, label: 'Base de Dados', value: 'Sincronizada', blue: true },
