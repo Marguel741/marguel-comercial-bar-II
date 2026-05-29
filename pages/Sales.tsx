@@ -335,7 +335,7 @@ const Sales: React.FC = () => {
     getPurchasesByDate, getTodayPurchases, addPurchase,
     salesReports: contextSalesReports,
     addSalesReport, updateSalesReport, updateSalesReportJustification, confirmSalesReport,
-    isDayLocked, getSystemDate, stockOperationHistory
+    isDayLocked, getSystemDate, stockOperationHistory, reserveTransfers
   } = useProducts();
   const { sidebarMode, triggerHaptic } = useLayout();
   const { user } = useAuth();
@@ -392,8 +392,22 @@ const Sales: React.FC = () => {
 
   const purchasedStock = useMemo(() => {
     const d = new Date(reportDate + 'T12:00:00');
-    return getPurchasesByDate(formatDateISO(d));
-  }, [getPurchasesByDate, products, reportDate]);
+    const purchaseTotals = getPurchasesByDate(formatDateISO(d));
+    // Somar transferências da Reserva para o Bar no mesmo dia
+    const transferTotals: Record<string, number> = {};
+    reserveTransfers
+      .filter(t => t.date === formatDateISO(d))
+      .forEach(t => {
+        Object.entries(t.items).forEach(([pid, qty]) => {
+          transferTotals[pid] = (transferTotals[pid] || 0) + qty;
+        });
+      });
+    const combined: Record<string, number> = { ...purchaseTotals };
+    Object.entries(transferTotals).forEach(([pid, qty]) => {
+      combined[pid] = (combined[pid] || 0) + qty;
+    });
+    return combined;
+  }, [getPurchasesByDate, reserveTransfers, products, reportDate]);
 
   useEffect(() => {
     if (hasManuallyOpened) return;
