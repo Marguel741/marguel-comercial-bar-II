@@ -654,6 +654,11 @@ const AccountStatus: React.FC = () => {
                         <p className="text-[10px] font-bold text-slate-400 uppercase flex items-center justify-end gap-1">
                           <Calendar size={10} /> {t.date}
                         </p>
+                        {t.balanceAfter !== undefined && (
+                          <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+                            Saldo: {(t.balanceAfter).toLocaleString('pt-AO')} Kz
+                          </p>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -701,7 +706,8 @@ const AccountStatus: React.FC = () => {
                   { icon: Calendar, label: 'Dia Operacional', value: selectedTransaction.operationalDay || selectedTransaction.date.split(',')[0] },
                   { icon: History, label: 'Tipo de Movimento', value: selectedTransaction.isTransfer ? 'Transferência' : selectedTransaction.type === 'entrada' ? 'Entrada' : 'Saída' },
                   { icon: CreditCard, label: 'Conta / Cartão', value: selectedTransaction.accountName || 'N/A' },
-                  { icon: CheckCircle, label: 'Responsável', value: selectedTransaction.performedBy || 'N/A' },
+                 { icon: CheckCircle, label: 'Responsável', value: selectedTransaction.performedBy || 'N/A' },
+                  ...(selectedTransaction.balanceAfter !== undefined ? [{ icon: CreditCard, label: 'Saldo Após Movimento', value: `${(selectedTransaction.balanceAfter).toLocaleString('pt-AO')} Kz` }] : []),
                   { icon: Info, label: 'Origem', value:
                     selectedTransaction.referenceType === 'purchase' ? 'Compra' :
                     selectedTransaction.referenceType === 'expense' ? 'Despesa' :
