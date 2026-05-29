@@ -2,8 +2,8 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { motion } from 'motion/react';
 import { 
   Plus, Wallet, FileText, Camera, Tag, X, Trash2, Calendar, 
-  User, Paperclip, Check, Eye, Search, StickyNote, 
-  CheckCircle, Edit2, Save, ArrowLeft, Image as ImageIcon 
+  User, Paperclip, Check, Eye, Search, StickyNote, Package,
+  CheckCircle, Edit2, Save, ArrowLeft, Image as ImageIcon
 } from 'lucide-react';
 import SoftCard from '../components/SoftCard';
 import { useLayout } from '../contexts/LayoutContext';
@@ -30,6 +30,7 @@ const Expenses: React.FC = () => {
     updateExpenseCategory,
     deleteExpenseCategory,
     purchases,
+    products,
   } = useProducts();
 
   const isLocked = isDayLocked(systemDate);
@@ -688,6 +689,49 @@ const Expenses: React.FC = () => {
                   </div>
                 )}
               </div>
+
+              {/* Breakdown de produtos — só para compras */}
+              {(selectedExpense as any).origin === 'COMPRA' && (() => {
+                const record = purchases.find(p => p.id === selectedExpense.id);
+                if (!record) return null;
+                return (
+                  <div>
+                    <p className="text-sm font-bold text-[#003366] flex items-center gap-2 mb-3">
+                      <Package size={16} /> Produtos Comprados
+                    </p>
+                    <div className="space-y-2">
+                      {Object.entries(record.items).map(([pid, qtyPacks]) => {
+                        const prod = products.find(p => p.id === pid);
+                        if (!prod || !qtyPacks) return null;
+                        const packSize = record.packSizeSnapshot?.[pid] ?? prod.packSize ?? 1;
+                        const totalUnits = Number(qtyPacks) * packSize;
+                        const barQty = record.barItems?.[pid] ?? qtyPacks;
+                        const reserveQty = record.reserveItems?.[pid] ?? 0;
+                        return (
+                          <div key={pid} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                            <div>
+                              <p className="font-bold text-sm text-slate-800">{prod.name}</p>
+                              <p className="text-[10px] text-slate-400 font-bold uppercase">{prod.category}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-black text-[#003366]">{totalUnits} <span className="text-xs font-bold">un</span></p>
+                              {(reserveQty > 0) && (
+                                <div className="flex gap-1 mt-0.5 justify-end">
+                                  <span className="text-[9px] px-1.5 py-0.5 bg-blue-100 text-blue-600 rounded font-bold">Bar: {barQty * packSize}un</span>
+                                  <span className="text-[9px] px-1.5 py-0.5 bg-emerald-100 text-emerald-600 rounded font-bold">Reserva: {reserveQty * packSize}un</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {record.supplier && (
+                      <p className="text-xs text-slate-400 mt-2 font-medium">Fornecedor: <span className="font-bold text-slate-600">{record.supplier}</span></p>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Botões de Ação */}
               <div className="flex gap-3 pt-2">
