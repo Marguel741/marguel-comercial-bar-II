@@ -37,6 +37,8 @@ const Inventory: React.FC = () => {
     addNotification,
     salesReports,
     purchases,
+    reserveTransfers,
+    transferReserveToBar,
   } = useProducts();
   const { user } = useAuth();
   const { sidebarMode, triggerHaptic } = useLayout();
@@ -54,6 +56,9 @@ const Inventory: React.FC = () => {
   const canAdjustStock = hasPermission(user, 'inventory_stock_adjust');
   const canManageCategories = hasPermission(user, 'inventory_category_manage');
   const canEditInventory = hasPermission(user, 'inventory_edit');
+  const canViewReserve = hasPermission(user, 'reserve_view');
+  const canTransferReserve = hasPermission(user, 'reserve_transfer');
+  const canAdjustReserve = hasPermission(user, 'reserve_adjust');
   
   // Monitor de Rede: Tenta sincronizar assim que a rede volta
   // Auto-sync Effect - Disabled to focus on manual user actions
@@ -115,6 +120,11 @@ const Inventory: React.FC = () => {
   
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showStockLogModal, setShowStockLogModal] = useState(false);
+  const [reserveExpanded, setReserveExpanded] = useState(true);
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [transferItems, setTransferItems] = useState<Record<string, number>>({});
+  const [transferNotes, setTransferNotes] = useState('');
+  const [isProcessingTransfer, setIsProcessingTransfer] = useState(false);
   const [showDateEditModal, setShowDateEditModal] = useState(false);
 
   // Counting Process States
@@ -973,6 +983,154 @@ const lastClosureDate = (lastConfirmed.dateISO || lastConfirmed.date || '').spli
              )}
           </div>
         </div>
+
+        {/* RESERVA */}
+        {canViewReserve && (
+          <div className="flex flex-col gap-4">
+            <div
+              className="flex justify-between items-center cursor-pointer group"
+              onClick={() => setReserveExpanded(!reserveExpanded)}
+            >
+              <div className="flex items-center gap-4">
+                <h3 className="font-bold text-[#003366] dark:text-white flex items-center gap-2 text-xl">
+                  <span>🏪</span> Stock da Reserva
+                </h3>
+                {canTransferReserve && (
+                  <button
+                    onClick={e => { e.stopPropagation(); setTransferItems({}); setTransferNotes(''); setShowTransferModal(true); }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-lg hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors text-xs font-bold"
+                  >
+                    ↕ Transferir para o Bar
+                  </button>
+                )}
+              </div>
+              <button className="p-2 bg-slate-100 dark:bg-slate-700 rounded-full text-slate-400 group-hover:text-[#003366] dark:group-hover:text-white transition-all">
+                {reserveExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+              </button>
+            </div>
+
+            {reserveExpanded && (
+              <div className="animate-fade-in space-y-3">
+                {products.filter(p => !p.isArchived && (p.reserveStock ?? 0) > 0).length === 0 ? (
+                  <div className="text-center py-8 text-slate-400 text-sm font-medium">
+                    Nenhum produto na Reserva ainda.
+                  </div>
+                ) : (
+                  products.filter(p => !p.isArchived && (p.reserveStock ?? 0) > 0).map(item => {
+                    const reserveUnits = item.reserveStock ?? 0;
+                    const packSize = item.packSize || 1;
+                    const packs = Math.floor(reserveUnits / packSize);
+                    const remainder = reserveUnits % packSize;
+                    return (
+                      <div key={item.id} className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700 flex items-center justify-between">
+                        <div>
+                          <p className="font-bold text-[#003366] dark:text-white">{item.name}</p>
+                          <p className="text-xs text-slate-400 uppercase font-bold">{item.category}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xl font-black text-emerald-600 dark:text-emerald-400">{reserveUnits} <span className="text-xs font-bold">un</span></p>
+                          {packs > 0 && (
+                            <p className="text-[10px] text-slate-400 font-bold">
+                              {packs} {item.packType || 'pack'}{remainder > 0 ? ` + ${remainder}un` : ''}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+
+                {/* Histórico de transferências */}
+                {reserveTransfers.length > 0 && (
+                  <div className="mt-4">
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Últimas Transferências</p>
+                    <div className="space-y-2">
+                      {reserveTransfers.slice(0, 5).map(t => (
+                        <div key={t.id} className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-3 text-xs">
+                          <div className="flex justify-between items-center">
+                            <span className="font-bold text-slate-600 dark:text-slate-300">{t.date}</span>
+                            <span className="text-slate-400">{t.performedBy}</span>
+                          </div>
+                          {t.notes && <p className="text-slate-400 mt-0.5 italic">{t.notes}</p>}
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {Object.entries(t.items).map(([pid, qty]) => {
+                              const prod = products.find(p => p.id === pid);
+                              return prod ? (
+                                <span key={pid} className="px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 rounded-lg font-bold">
+                                  {prod.name}: {qty}un
+                                </span>
+                              ) : null;
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* MODAL: TRANSFERIR RESERVA → BAR */}
+        {showTransferModal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-[32px] shadow-2xl overflow-hidden border border-slate-100 dark:border-slate-800 max-h-[90vh] flex flex-col">
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800">
+                <h3 className="text-lg font-black text-[#003366] dark:text-white">Transferir Reserva → Bar</h3>
+                <p className="text-xs text-slate-400 mt-1">Indique quantas unidades de cada produto transferir.</p>
+              </div>
+              <div className="flex-1 overflow-y-auto p-6 space-y-3">
+                {products.filter(p => !p.isArchived && (p.reserveStock ?? 0) > 0).map(item => {
+                  const max = item.reserveStock ?? 0;
+                  const val = transferItems[item.id] ?? 0;
+                  return (
+                    <div key={item.id} className="flex items-center justify-between gap-4">
+                      <div className="flex-1">
+                        <p className="font-bold text-sm text-[#003366] dark:text-white">{item.name}</p>
+                        <p className="text-[10px] text-slate-400">Disponível: {max}un</p>
+                      </div>
+                      <input
+                        type="number" min={0} max={max} value={val}
+                        onChange={e => setTransferItems(prev => ({ ...prev, [item.id]: Math.min(max, Math.max(0, Number(e.target.value))) }))}
+                        className="w-20 p-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-black text-center outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+                  );
+                })}
+                <div className="pt-2">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Nota (opcional)</p>
+                  <input
+                    type="text" value={transferNotes} onChange={e => setTransferNotes(e.target.value)}
+                    placeholder="Ex: Reposição fim de semana"
+                    className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-medium dark:text-white outline-none"
+                  />
+                </div>
+              </div>
+              <div className="p-6 border-t border-slate-100 dark:border-slate-800 grid grid-cols-2 gap-3">
+                <button onClick={() => setShowTransferModal(false)} className="py-3 bg-slate-100 dark:bg-slate-800 text-slate-500 rounded-2xl font-bold">Cancelar</button>
+                <button
+                  onClick={async () => {
+                    const filtered = Object.fromEntries(Object.entries(transferItems).filter(([, v]) => v > 0));
+                    if (Object.keys(filtered).length === 0) return;
+                    setIsProcessingTransfer(true);
+                    try {
+                      await transferReserveToBar(filtered, formatDateISO(getSystemDate()), user?.name || 'Sistema', transferNotes || undefined);
+                      setShowTransferModal(false);
+                    } finally {
+                      setIsProcessingTransfer(false);
+                    }
+                  }}
+                  disabled={isProcessingTransfer || Object.values(transferItems).every(v => v === 0)}
+                  className="py-3 bg-emerald-600 text-white rounded-2xl font-black disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isProcessingTransfer ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : '↕'}
+                  Transferir
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* EQUIPMENT & FURNITURE COLUMN */}
         <div className="space-y-6">
