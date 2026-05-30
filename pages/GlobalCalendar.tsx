@@ -421,7 +421,7 @@ const GlobalCalendar: React.FC = () => {
                         </div>
                      </div>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 flex-shrink-0">
                      {canManageLocks && (
                         <button 
                            onClick={(e) => {
@@ -436,13 +436,13 @@ const GlobalCalendar: React.FC = () => {
                                  lockDay(selectedDayDetail, user?.name || "Admin");
                               }
                            }}
-                           className={`h-12 px-6 rounded-2xl font-black text-sm transition-all flex items-center gap-2 ${isDayLocked(selectedDayDetail) ? 'bg-amber-500 text-white shadow-lg shadow-amber-900/20' : 'bg-red-600 text-white shadow-lg shadow-red-900/20'}`}
+                           className={`h-9 px-3 rounded-xl font-bold text-xs whitespace-nowrap transition-all flex items-center gap-1.5 ${isDayLocked(selectedDayDetail) ? 'bg-amber-500 text-white' : 'bg-red-600 text-white'}`}
                         >
-                           {isDayLocked(selectedDayDetail) ? <><Unlock size={18} /> Desbloquear dia</> : <><Lock size={18} /> Bloquear dia</>}
+                           {isDayLocked(selectedDayDetail) ? <><Unlock size={14} /> Desbloquear</> : <><Lock size={14} /> Bloquear</>}
                         </button>
                      )}
-                     <button onClick={() => setSelectedDayDetail(null)} className="p-3 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors">
-                        <X size={24} className="text-slate-400" />
+                     <button onClick={() => setSelectedDayDetail(null)} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors flex-shrink-0">
+                        <X size={22} className="text-slate-400" />
                      </button>
                   </div>
                </div>
