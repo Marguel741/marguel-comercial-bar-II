@@ -97,6 +97,7 @@ export interface User {
   isApproved: boolean;
   isBanned?: boolean;
   pin?: string;
+  firebaseUid?: string;
   permissions?: UserPermissions;
   avatar?: string;
   isOnline?: boolean;
