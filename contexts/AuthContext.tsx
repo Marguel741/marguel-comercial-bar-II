@@ -106,25 +106,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return () => { unsubscribe(); clearTimeout(timeout); };
   }, []);
 
-  // ── Listener Firebase Auth ──────────────────────────────────
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (!firebaseUser) return; // Logout tratado em logout()
-      // Sincronizar com o utilizador Firestore via firebaseUid ou email
-      const found = allUsers.find(u =>
-        u.firebaseUid === firebaseUser.uid ||
-        u.email.toLowerCase() === firebaseUser.email?.toLowerCase()
-      );
-      if (found && !found.isBanned && found.isApproved) {
-        // Guardar firebaseUid se ainda não estiver
-        if (!found.firebaseUid) {
-          const updated = { ...found, firebaseUid: firebaseUser.uid };
-          await saveUser(updated);
-        }
-      }
-    });
-    return () => unsub();
-  }, [allUsers]);
+  // Firebase Auth listener removido — login gerido pelo Firestore directamente
 
   const refreshUser = useCallback(() => {
     setUser(prev => {
