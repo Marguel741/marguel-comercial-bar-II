@@ -148,35 +148,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (found.isBanned) { setIsLoading(false); const msg = 'O teu acesso foi revogado. Contacta o administrador.'; setLoginError(msg); return msg; }
     if (!found.isApproved) { setIsLoading(false); const msg = 'A tua conta está aguardando aprovação pelo administrador.'; setLoginError(msg); return msg; }
 
-    try {
-      // Firebase Auth — password é o PIN
-      await signInWithEmailAndPassword(auth, email.toLowerCase(), pass.length < 6 ? pass + '_mg' : pass);
-    } catch (firebaseError: any) {
-      // Fallback: se Firebase Auth falhar mas PIN bate (utilizador não migrado ainda)
-      if (found.pin && found.pin === pass) {
-        // Utilizador existe no Firestore mas não no Firebase Auth — criar conta agora
-        try {
-          const cred = await createUserWithEmailAndPassword(auth, email.toLowerCase(), pass.length < 6 ? pass + '_mg' : pass);
-          const updated: User = { ...found, firebaseUid: cred.user.uid, lastLogin: makeTimestamp() };
-          await saveUser(updated);
-          localStorage.setItem('mg_user', JSON.stringify(updated));
-          setUser(updated);
-          setLoginError('');
-          addLog({ action: 'LOGIN', module: 'UTILIZADORES', description: `${updated.name} iniciou sessão (migração automática)`, entityId: updated.id, previousValue: null, newValue: 'LOGGED_IN' }, updated);
-          setIsLoading(false);
-          return null;
-        } catch {
-          setIsLoading(false);
-          const msg = 'Erro ao criar conta Firebase. Contacta o administrador.';
-          setLoginError(msg); return msg;
-        }
-      }
+    // Verificar PIN directamente no Firestore (método primário — sempre funciona)
+    if (!found.pin || found.pin !== pass) {
       setIsLoading(false);
-      const msg = firebaseError.code === 'auth/wrong-password' || firebaseError.code === 'auth/invalid-credential'
-        ? 'Senha incorrecta. Tenta novamente.'
-        : 'Erro de autenticação. Tenta novamente.';
+      const msg = 'Senha incorrecta. Tenta novamente.';
       setLoginError(msg); return msg;
     }
+    // Firebase Auth em background (opcional — não bloqueia o login)
+    signInWithEmailAndPassword(auth, email.toLowerCase(), pass.length < 6 ? pass + '_mg' : pass)
+      .catch(() => {
+        createUserWithEmailAndPassword(auth, email.toLowerCase(), pass.length < 6 ? pass + '_mg' : pass)
+          .catch(() => {}); // falha silenciosa — Firebase Auth é secundário
+      });
 
     const updated: User = { ...found, firebaseUid: auth.currentUser?.uid, lastLogin: makeTimestamp() };
     await saveUser(updated);
@@ -204,27 +187,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const found = pinMatches[0];
 
-    try {
-      await signInWithEmailAndPassword(auth, found.email.toLowerCase(), pin.length < 6 ? pin + '_mg' : pin);
-    } catch (firebaseError: any) {
-      // Fallback para utilizadores não migrados
-      try {
-        const cred = await createUserWithEmailAndPassword(auth, found.email.toLowerCase(), pin.length < 6 ? pin + '_mg' : pin);
-        const updated: User = { ...found, firebaseUid: cred.user.uid, lastLogin: makeTimestamp() };
-        await saveUser(updated);
-        localStorage.setItem('mg_user', JSON.stringify(updated));
-        setUser(updated);
-        setLoginError('');
-        addLog({ action: 'LOGIN', module: 'UTILIZADORES', description: `${updated.name} iniciou sessão via PIN (migração automática)`, entityId: updated.id, previousValue: null, newValue: 'LOGGED_IN_PIN' }, updated);
-        setIsLoading(false);
-        return null;
-      } catch {
-        // Se createUser falhar é porque já existe — tentar signIn novamente
-        setIsLoading(false);
-        const msg = 'PIN inválido. Tenta novamente.';
-        setLoginError(msg); return msg;
-      }
-    }
+    // Firebase Auth em background (opcional)
+    signInWithEmailAndPassword(auth, found.email.toLowerCase(), pin.length < 6 ? pin + '_mg' : pin)
+      .catch(() => {
+        createUserWithEmailAndPassword(auth, found.email.toLowerCase(), pin.length < 6 ? pin + '_mg' : pin)
+          .catch(() => {});
+      });
 
     const updated: User = { ...found, firebaseUid: auth.currentUser?.uid, lastLogin: makeTimestamp() };
     await saveUser(updated);
