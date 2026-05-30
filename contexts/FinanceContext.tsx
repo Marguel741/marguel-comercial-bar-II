@@ -230,23 +230,27 @@ export const FinanceProvider: React.FC<{
         }
       }
 
-      setCurrentBalance(newCB); setSavingsBalance(newSB); setCashBalance(newCash);
-      setTPABalance(newTPA); setCashInHandBalance(newCashInHand);
+      if (newCB !== currentBalance) setCurrentBalance(newCB);
+      if (newSB !== savingsBalance) setSavingsBalance(newSB);
+      if (newCash !== cashBalance) setCashBalance(newCash);
+      if (newTPA !== tpaBalance) setTPABalance(newTPA);
+      if (newCashInHand !== cashInHandBalance) setCashInHandBalance(newCashInHand);
       setDoc(doc(db, 'appdata', 'balances'), { currentBalance: newCB, savingsBalance: newSB, cashBalance: newCash, tpaBalance: newTPA, cashInHandBalance: newCashInHand });
+      // Actualiza só o cartão afectado
+      const cardId = targetAccount === 'cash' || targetAccount === 'tpa' ? 'main' : targetAccount;
       setCards(prev => prev.map(c => {
-        if (c.id === 'main') return { ...c, balance: newCB };
-        if (c.id === 'savings') return { ...c, balance: newSB };
-        if (c.id === 'cash_in_hand') return { ...c, balance: newCashInHand };
+        if (c.id === 'main' && (cardId === 'main')) return { ...c, balance: newCB };
+        if (c.id === 'savings' && cardId === 'savings') return { ...c, balance: newSB };
+        if (c.id === 'cash_in_hand' && cardId === 'cash_in_hand') return { ...c, balance: newCashInHand };
         return c;
       }));
-      // Gravar apenas o cartão que foi alterado
-      if (account === 'main' || account === 'cash' || account === 'tpa') {
+      if (cardId === 'main') {
         const mainCard = cards.find(c => c.id === 'main');
         if (mainCard) setDoc(doc(db, COL_FIN.cards, 'main'), { ...mainCard, balance: newCB });
-      } else if (account === 'savings') {
+      } else if (cardId === 'savings') {
         const savingsCard = cards.find(c => c.id === 'savings');
         if (savingsCard) setDoc(doc(db, COL_FIN.cards, 'savings'), { ...savingsCard, balance: newSB });
-      } else if (account === 'cash_in_hand') {
+      } else if (cardId === 'cash_in_hand') {
         const cashCard = cards.find(c => c.id === 'cash_in_hand');
         if (cashCard) setDoc(doc(db, COL_FIN.cards, 'cash_in_hand'), { ...cashCard, balance: newCashInHand });
       }
