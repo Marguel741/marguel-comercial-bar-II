@@ -150,13 +150,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     try {
       // Firebase Auth — password é o PIN
-      await signInWithEmailAndPassword(auth, email.toLowerCase(), pass);
+      await signInWithEmailAndPassword(auth, email.toLowerCase(), pass.length < 6 ? pass + '_mg' : pass);
     } catch (firebaseError: any) {
       // Fallback: se Firebase Auth falhar mas PIN bate (utilizador não migrado ainda)
       if (found.pin && found.pin === pass) {
         // Utilizador existe no Firestore mas não no Firebase Auth — criar conta agora
         try {
-          const cred = await createUserWithEmailAndPassword(auth, email.toLowerCase(), pass);
+          const cred = await createUserWithEmailAndPassword(auth, email.toLowerCase(), pass.length < 6 ? pass + '_mg' : pass);
           const updated: User = { ...found, firebaseUid: cred.user.uid, lastLogin: makeTimestamp() };
           await saveUser(updated);
           localStorage.setItem('mg_user', JSON.stringify(updated));
@@ -205,11 +205,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const found = pinMatches[0];
 
     try {
-      await signInWithEmailAndPassword(auth, found.email.toLowerCase(), pin);
+      await signInWithEmailAndPassword(auth, found.email.toLowerCase(), pin.length < 6 ? pin + '_mg' : pin);
     } catch (firebaseError: any) {
       // Fallback para utilizadores não migrados
       try {
-        const cred = await createUserWithEmailAndPassword(auth, found.email.toLowerCase(), pin);
+        const cred = await createUserWithEmailAndPassword(auth, found.email.toLowerCase(), pin.length < 6 ? pin + '_mg' : pin);
         const updated: User = { ...found, firebaseUid: cred.user.uid, lastLogin: makeTimestamp() };
         await saveUser(updated);
         localStorage.setItem('mg_user', JSON.stringify(updated));
@@ -319,7 +319,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     let firebaseUid: string | undefined;
     try {
-      const cred = await createUserWithEmailAndPassword(auth, data.email.toLowerCase(), data.pin);
+      const cred = await createUserWithEmailAndPassword(auth, data.email.toLowerCase(), data.pin.length < 6 ? data.pin + '_mg' : data.pin);
       firebaseUid = cred.user.uid;
       // Desligar sessão imediatamente — o registo não faz login automático
       await signOut(auth);
