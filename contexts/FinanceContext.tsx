@@ -237,7 +237,7 @@ export const FinanceProvider: React.FC<{
       if (newCashInHand !== cashInHandBalance) setCashInHandBalance(newCashInHand);
       setDoc(doc(db, 'appdata', 'balances'), { currentBalance: newCB, savingsBalance: newSB, cashBalance: newCash, tpaBalance: newTPA, cashInHandBalance: newCashInHand });
       // Actualiza só o cartão afectado
-      const cardId = targetAccount === 'cash' || targetAccount === 'tpa' ? 'main' : targetAccount;
+      const cardId = account === 'cash' || account === 'tpa' ? 'main' : account;
       setCards(prev => prev.map(c => {
         if (c.id === 'main' && (cardId === 'main')) return { ...c, balance: newCB };
         if (c.id === 'savings' && cardId === 'savings') return { ...c, balance: newSB };
