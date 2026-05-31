@@ -1,4 +1,3 @@
-// contexts/AuthContext.tsx
 import React, {
   createContext, useContext, useState, useEffect, ReactNode, useCallback,
 } from 'react';
@@ -6,17 +5,8 @@ import { User, UserRole } from '../types';
 import { saveUser, onUsersSnapshot } from '../src/services/userStore';
 import { DEFAULT_PERMISSIONS } from '../src/utils/permissions';
 import { useAudit } from './AuditContext';
-import { db, auth } from '../src/firebase';
-import {
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  signOut,
-  onAuthStateChanged,
-  updatePassword,
-  EmailAuthProvider,
-  reauthenticateWithCredential,
-} from 'firebase/auth';
-import { collection, addDoc, query, where, getDocs, deleteDoc, doc, updateDoc } from 'firebase/firestore';
+import { db } from '../src/firebase';
+import { collection, addDoc, query, where, getDocs, deleteDoc, doc } from 'firebase/firestore';
 
 interface AuthContextType {
   user: User | null;
@@ -69,7 +59,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       if (!usersReady && users.length > 0) {
         setUsersReady(true);
-        // Sessão local (fallback enquanto Firebase Auth carrega)
         const raw = localStorage.getItem('mg_user');
         if (raw) {
           try {
@@ -87,7 +76,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setIsLoading(false);
       }
 
-      // Manter utilizador sincronizado com Firestore
       setUser(prev => {
         if (!prev) return null;
         const found = users.find(u => u.id === prev.id);
@@ -106,8 +94,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return () => { unsubscribe(); clearTimeout(timeout); };
   }, []);
 
-  // Firebase Auth listener removido — login gerido pelo Firestore directamente
-
   const refreshUser = useCallback(() => {
     setUser(prev => {
       if (!prev) return null;
@@ -115,7 +101,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     });
   }, [allUsers]);
 
-  // ── LOGIN (email + PIN/password) ────────────────────────────
+  // ── LOGIN (email + PIN) ─────────────────────────────────────
   const login = useCallback(async (email: string, pass: string): Promise<string | null> => {
     setIsLoading(true);
 
@@ -128,22 +114,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const found = allUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
     if (!found) { setIsLoading(false); const msg = 'Email não encontrado.'; setLoginError(msg); return msg; }
     if (found.isBanned) { setIsLoading(false); const msg = 'O teu acesso foi revogado. Contacta o administrador.'; setLoginError(msg); return msg; }
-    if (!found.isApproved) { setIsLoading(false); const msg = 'A tua conta está aguardando aprovação pelo administrador.'; setLoginError(msg); return msg; }
-
-    // Verificar PIN directamente no Firestore (método primário — sempre funciona)
+    if (!found.isApproved) { setIsLoading(false); const msg = 'A tua conta está a aguardar aprovação pelo administrador.'; setLoginError(msg); return msg; }
     if (!found.pin || found.pin !== pass) {
       setIsLoading(false);
       const msg = 'Senha incorrecta. Tenta novamente.';
       setLoginError(msg); return msg;
     }
-    // Firebase Auth em background (opcional — não bloqueia o login)
-    signInWithEmailAndPassword(auth, email.toLowerCase(), pass.length < 6 ? pass + '_mg' : pass)
-      .catch(() => {
-        createUserWithEmailAndPassword(auth, email.toLowerCase(), pass.length < 6 ? pass + '_mg' : pass)
-          .catch(() => {}); // falha silenciosa — Firebase Auth é secundário
-      });
 
-    const updated: User = { ...found, firebaseUid: auth.currentUser?.uid, lastLogin: makeTimestamp() };
+    const updated: User = { ...found, lastLogin: makeTimestamp() };
     await saveUser(updated);
     localStorage.setItem('mg_user', JSON.stringify(updated));
     setUser(updated);
@@ -168,15 +146,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (pinMatches.length > 1) { setIsLoading(false); const msg = 'PIN ambíguo. Usa o login por email.'; setLoginError(msg); return msg; }
 
     const found = pinMatches[0];
-
-    // Firebase Auth em background (opcional)
-    signInWithEmailAndPassword(auth, found.email.toLowerCase(), pin.length < 6 ? pin + '_mg' : pin)
-      .catch(() => {
-        createUserWithEmailAndPassword(auth, found.email.toLowerCase(), pin.length < 6 ? pin + '_mg' : pin)
-          .catch(() => {});
-      });
-
-    const updated: User = { ...found, firebaseUid: auth.currentUser?.uid, lastLogin: makeTimestamp() };
+    const updated: User = { ...found, lastLogin: makeTimestamp() };
     await saveUser(updated);
     localStorage.setItem('mg_user', JSON.stringify(updated));
     setUser(updated);
@@ -185,6 +155,72 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setIsLoading(false);
     return null;
   }, [allUsers, addLog]);
+
+  // ── REGISTER ────────────────────────────────────────────────
+  const register = useCallback(async (data: { name: string; email: string; pin: string; phoneNumber?: string }): Promise<{ success: boolean; message: string }> => {
+    if (allUsers.find(u => u.email.toLowerCase() === data.email.toLowerCase())) {
+      return { success: false, message: 'Este email já está registado.' };
+    }
+    if (data.pin.length < 4) {
+      return { success: false, message: 'O PIN deve ter pelo menos 4 dígitos.' };
+    }
+
+    const newUser: User = {
+      id: `usr_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+      name: data.name.trim(),
+      email: data.email.toLowerCase().trim(),
+      pin: data.pin,
+      role: UserRole.FUNCIONARIO,
+      isApproved: false,
+      isBanned: false,
+      permissions: DEFAULT_PERMISSIONS[UserRole.FUNCIONARIO],
+      createdAt: new Date().toLocaleDateString('pt-AO'),
+      lastLogin: '',
+      phoneNumber: data.phoneNumber || '',
+      secondaryPhoneNumber: '',
+      associatedEmail: data.email.toLowerCase().trim(),
+      status: 'Ativo',
+    };
+    await saveUser(newUser);
+    return { success: true, message: 'Conta criada. Aguarda aprovação do Administrador.' };
+  }, [allUsers]);
+
+  // ── LOGOUT ──────────────────────────────────────────────────
+  const logout = useCallback(() => {
+    if (user) {
+      addLog({ action: 'LOGOUT', module: 'UTILIZADORES', description: `${user.name} terminou sessão`, entityId: user.id, previousValue: 'LOGGED_IN', newValue: 'LOGGED_OUT' }, user);
+    }
+    setUser(null);
+    localStorage.removeItem('mg_user');
+    localStorage.removeItem('mg_biometric_user');
+    localStorage.setItem('biometric_enabled', 'false');
+  }, [user, addLog]);
+
+  // ── UPDATE USER ─────────────────────────────────────────────
+  const updateUser = useCallback(async (updates: Partial<User>): Promise<boolean> => {
+    if (!user) return false;
+    const updated: User = { ...user, ...updates };
+    await saveUser(updated);
+    setUser(updated);
+    localStorage.setItem('mg_user', JSON.stringify(updated));
+    if (updates.pin) {
+      addLog({ action: 'USER_PIN_CHANGED', module: 'SEGURANÇA', description: `PIN alterado por ${user.name}`, entityId: user.id, previousValue: '****', newValue: '****' }, user);
+      const bio = localStorage.getItem('mg_biometric_user');
+      if (bio) {
+        try { localStorage.setItem('mg_biometric_user', JSON.stringify({ ...JSON.parse(bio), pin: updates.pin })); } catch {}
+      }
+    }
+    return true;
+  }, [user, addLog]);
+
+  // ── SWITCH USER (debug) ─────────────────────────────────────
+  const switchUser = useCallback((role: UserRole, name?: string): boolean => {
+    const target = name
+      ? allUsers.find(u => u.role === role && u.name?.toLowerCase().includes(name.toLowerCase()))
+      : allUsers.find(u => u.role === role);
+    if (target) { setUser(target); localStorage.setItem('mg_user', JSON.stringify(target)); return true; }
+    return false;
+  }, [allUsers]);
 
   // ── RECUPERAÇÃO DE CREDENCIAIS ──────────────────────────────
   const generateRecoveryCode = useCallback(async (userId: string, userName: string): Promise<string | null> => {
@@ -218,7 +254,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         await deleteDoc(doc(db, 'recovery_codes', docRef.id));
         return { valid: false, userId: null, message: 'Código expirado. Pede um novo ao administrador.' };
       }
-      await updateDoc(doc(db, 'recovery_codes', docRef.id), { used: true, usedAt: Date.now() });
+      // Marcar como usado
+      const { setDoc } = await import('firebase/firestore');
+      await setDoc(doc(db, 'recovery_codes', docRef.id), { ...data, used: true, usedAt: Date.now() });
       return { valid: true, userId: data.userId, message: 'Código válido!' };
     } catch (error) {
       console.error('Erro ao validar código:', error);
@@ -232,19 +270,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const targetUser = allUsers.find(u => u.id === userId);
       if (!targetUser) return 'Utilizador não encontrado.';
 
-      // Apagar código usado
       const q = query(collection(db, 'recovery_codes'), where('code', '==', code.toUpperCase()));
       const snapshot = await getDocs(q);
       if (!snapshot.empty) await deleteDoc(doc(db, 'recovery_codes', snapshot.docs[0].id));
-
-      // Actualizar password no Firebase Auth se utilizador tem firebaseUid
-      if (targetUser.firebaseUid && auth.currentUser?.uid === targetUser.firebaseUid) {
-        try {
-          await updatePassword(auth.currentUser, newPin);
-        } catch {
-          // Se não conseguir re-autenticar, continua — o PIN no Firestore serve de fallback
-        }
-      }
 
       const updated: User = { ...targetUser, pin: newPin, lastLogin: makeTimestamp() };
       await saveUser(updated);
@@ -257,109 +285,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return 'Erro ao redefinir PIN. Tenta novamente.';
     }
   }, [allUsers, addLog]);
-
-  // ── REGISTER ────────────────────────────────────────────────
-  const register = useCallback(async (data: { name: string; email: string; pin: string; phoneNumber?: string }): Promise<{ success: boolean; message: string }> => {
-    if (allUsers.find(u => u.email.toLowerCase() === data.email.toLowerCase())) {
-      return { success: false, message: 'Este email já está registado.' };
-    }
-    if (data.pin.length < 4) {
-      return { success: false, message: 'O PIN deve ter pelo menos 4 dígitos.' };
-    }
-
-    let firebaseUid: string | undefined;
-    try {
-      const cred = await createUserWithEmailAndPassword(auth, data.email.toLowerCase(), data.pin.length < 6 ? data.pin + '_mg' : data.pin);
-      firebaseUid = cred.user.uid;
-      // Desligar sessão imediatamente — o registo não faz login automático
-      await signOut(auth);
-    } catch (firebaseError: any) {
-      if (firebaseError.code === 'auth/email-already-in-use') {
-        // Conta Firebase já existe (utilizador foi migrado) — continuar sem criar
-        const existing = allUsers.find(u => u.email.toLowerCase() === data.email.toLowerCase());
-        if (existing) return { success: false, message: 'Este email já está registado.' };
-      } else {
-        return { success: false, message: 'Erro ao criar conta. Tenta novamente.' };
-      }
-    }
-
-    const newUser: User = {
-      id: `usr_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-      name: data.name.trim(),
-      email: data.email.toLowerCase().trim(),
-      pin: data.pin,
-      firebaseUid,
-      role: UserRole.FUNCIONARIO,
-      isApproved: false,
-      isBanned: false,
-      permissions: DEFAULT_PERMISSIONS[UserRole.FUNCIONARIO],
-      createdAt: new Date().toLocaleDateString('pt-AO'),
-      lastLogin: '',
-      phoneNumber: data.phoneNumber || '',
-      secondaryPhoneNumber: '',
-      associatedEmail: data.email.toLowerCase().trim(),
-      status: 'Ativo',
-    };
-    await saveUser(newUser);
-    return { success: true, message: 'Conta criada. Aguarda aprovação do Administrador.' };
-  }, [allUsers]);
-
-  // ── LOGOUT ──────────────────────────────────────────────────
-  const logout = useCallback(() => {
-    if (user) {
-      addLog({ action: 'LOGOUT', module: 'UTILIZADORES', description: `${user.name} terminou sessão`, entityId: user.id, previousValue: 'LOGGED_IN', newValue: 'LOGGED_OUT' }, user);
-    }
-    setUser(null);
-    localStorage.removeItem('mg_user');
-    localStorage.removeItem('mg_biometric_user');
-    localStorage.setItem('biometric_enabled', 'false');
-    signOut(auth).catch(() => {});
-  }, [user, addLog]);
-
-  // ── UPDATE USER ─────────────────────────────────────────────
-  const updateUser = useCallback(async (updates: Partial<User>): Promise<boolean> => {
-    if (!user) return false;
-    const updated: User = { ...user, ...updates };
-
-    // Se o PIN mudou, actualizar também no Firebase Auth
-    if (updates.pin && auth.currentUser && auth.currentUser.uid === user.firebaseUid) {
-      try {
-        await updatePassword(auth.currentUser, updates.pin);
-      } catch (e: any) {
-        if (e.code === 'auth/requires-recent-login') {
-          // Re-autenticar com o PIN antigo antes de actualizar
-          try {
-            const cred = EmailAuthProvider.credential(user.email, user.pin || '');
-            await reauthenticateWithCredential(auth.currentUser, cred);
-            await updatePassword(auth.currentUser, updates.pin);
-          } catch {
-            // Continua — Firebase Auth será actualizado no próximo login
-          }
-        }
-      }
-    }
-
-    await saveUser(updated);
-    setUser(updated);
-    localStorage.setItem('mg_user', JSON.stringify(updated));
-    if (updates.pin) {
-      addLog({ action: 'USER_PIN_CHANGED', module: 'SEGURANÇA', description: `PIN alterado por ${user.name}`, entityId: user.id, previousValue: '****', newValue: '****' }, user);
-      const bio = localStorage.getItem('mg_biometric_user');
-      if (bio) {
-        try { localStorage.setItem('mg_biometric_user', JSON.stringify({ ...JSON.parse(bio), pin: updates.pin })); } catch {}
-      }
-    }
-    return true;
-  }, [user, addLog]);
-
-  // ── SWITCH USER (dev/debug) ─────────────────────────────────
-  const switchUser = useCallback((role: UserRole, name?: string): boolean => {
-    const target = name
-      ? allUsers.find(u => u.role === role && u.name?.toLowerCase().includes(name.toLowerCase()))
-      : allUsers.find(u => u.role === role);
-    if (target) { setUser(target); localStorage.setItem('mg_user', JSON.stringify(target)); return true; }
-    return false;
-  }, [allUsers]);
 
   const value = React.useMemo(() => ({
     user, isLoading, usersReady, login, loginByPin, loginError, register, logout, refreshUser, updateUser, switchUser,
