@@ -1,7 +1,5 @@
-
 import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
 
 const prodConfig = {
   apiKey: "AIzaSyAgjxTNrME13qW_BsieJ6nziY9_2yDsxPU",
@@ -25,4 +23,3 @@ const isProd = import.meta.env.VITE_ENV === 'production';
 const app = initializeApp(isProd ? prodConfig : testConfig);
 
 export const db = getFirestore(app);
-export const auth = getAuth(app);
