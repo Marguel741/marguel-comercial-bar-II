@@ -47,12 +47,12 @@ const buildHeader = (period: ReportPeriod, startStr: string, endStr: string) => 
         <div class="logo-row">
           <div class="logo-mg">MG</div>
           <div class="logo-text">
-            <div class="logo-title">MARGUEL</div>
-            <div class="logo-sub">Sistema de Gestão Interna</div>
+            <div class="logo-title">MARGUEL CGPS (SU) Lda</div>
+            <div class="logo-sub">Sistema de Gestão Interna — Relatório Oficial</div>
           </div>
         </div>
         <div class="period-badge">${escapeHtml(PERIOD_LABELS[period])}</div>
-        <h1 class="hero-title">Relatório de Gestão</h1>
+        <h1 class="hero-title">Relatório de Gestão Marguel</h1>
         <p class="hero-period">${escapeHtml(periodText)}</p>
       </div>
     </div>`;
