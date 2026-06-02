@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { 
   DollarSign, History, Save, Info, Search, CheckCircle, X, ShoppingCart, 
   Package, Plus, Minus, ArrowRight, FileText, ChevronUp, 
-  ChevronDown, MessageSquare, Copy, ArrowLeft, Lock, Trash2, FolderOpen, 
+  ChevronDown, MessageSquare, Copy, ArrowLeft, Lock, Share2, Pencil, Trash2, FolderOpen, 
   Calendar, Folder, Clock, User, Eye, AlertTriangle, List, ArrowLeftCircle, 
   ClipboardCheck, ShoppingBag, Paperclip, Camera, Image as ImageIcon, Truck, Calculator, Layers,
   Maximize2, Minimize2
@@ -130,6 +130,8 @@ const Prices: React.FC = () => {
   const [showAlreadySavedModal, setShowAlreadySavedModal] = useState(false);
   const [previewProposal, setPreviewProposal] = useState<SavedProposal | null>(null);
   const [showPreviewDetails, setShowPreviewDetails] = useState(false);
+  const [editingProposal, setEditingProposal] = useState<SavedProposal | null>(null);
+  const [editingProposalName, setEditingProposalName] = useState('');
   const [generatedMessage, setGeneratedMessage] = useState('');
 
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
@@ -1127,6 +1129,38 @@ const Prices: React.FC = () => {
         </div>
       )}
 
+      {/* MODAL EDITAR PROPOSTA */}
+        {editingProposal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[120] flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-[32px] shadow-2xl border border-slate-100 dark:border-slate-800 p-6 space-y-4">
+              <h3 className="text-lg font-black text-[#003366] dark:text-white">Editar Proposta</h3>
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Nome</p>
+                <input
+                  type="text"
+                  value={editingProposalName}
+                  onChange={e => setEditingProposalName(e.target.value)}
+                  className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-bold dark:text-white outline-none focus:ring-2 focus:ring-[#0054A6]"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <button onClick={() => setEditingProposal(null)} className="py-3 bg-slate-100 dark:bg-slate-800 text-slate-500 rounded-2xl font-bold">Cancelar</button>
+                <button
+                  onClick={() => {
+                    if (!editingProposalName.trim()) return;
+                    addProposal({ ...editingProposal, name: editingProposalName.trim() });
+                    setEditingProposal(null);
+                    showToast('Proposta actualizada!');
+                  }}
+                  className="py-3 bg-[#003366] text-white rounded-2xl font-black"
+                >
+                  Guardar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
       {/* MODAL: SIMULADOR */}
       {showSimulationModal && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-fade-in">
@@ -1299,9 +1333,40 @@ const Prices: React.FC = () => {
                           </div>
                           <div className="flex justify-between items-center">
                             <span className="text-lg font-black text-[#003366] dark:text-blue-400">{(prop.total || 0).toLocaleString()} Kz</span>
-                            <button onClick={() => handleOpenReport(prop)} className="px-4 py-2 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl text-xs font-bold hover:bg-[#003366] hover:text-white transition-all">
-                              Ver Detalhes
-                            </button>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => {
+                                  const lines = [`📋 *${prop.name}*`, `📅 ${prop.date}`, `👤 ${prop.createdBy}`, ``];
+                                  Object.entries(prop.items).forEach(([id, qty]) => {
+                                    const p = products.find(pr => pr.id === id);
+                                    if (p) lines.push(`• ${p.name}: ${qty} pack(s) — ${((p.buyPrice * (p.packSize || 1) * qty)).toLocaleString('pt-AO')} Kz`);
+                                  });
+                                  lines.push(``);
+                                  lines.push(`💰 *Total: ${(prop.total || 0).toLocaleString('pt-AO')} Kz*`);
+                                  const text = lines.join('\n');
+                                  if (navigator.share) {
+                                    navigator.share({ title: prop.name, text });
+                                  } else {
+                                    navigator.clipboard.writeText(text);
+                                    showToast('Proposta copiada para a área de transferência!');
+                                  }
+                                }}
+                                className="p-2 bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-xl hover:bg-green-100 transition-all"
+                                title="Partilhar"
+                              >
+                                <Share2 size={16} />
+                              </button>
+                              <button
+                                onClick={() => { setEditingProposal(prop); setEditingProposalName(prop.name); }}
+                                className="p-2 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl hover:bg-blue-100 transition-all"
+                                title="Editar"
+                              >
+                                <Pencil size={16} />
+                              </button>
+                              <button onClick={() => handleOpenReport(prop)} className="px-4 py-2 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl text-xs font-bold hover:bg-[#003366] hover:text-white transition-all">
+                                Ver
+                              </button>
+                            </div>
                           </div>
                         </div>
                       ))}
