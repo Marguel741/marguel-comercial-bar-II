@@ -100,7 +100,20 @@ const Expenses: React.FC = () => {
         return;
       }
       reader.onloadend = () => {
-        setAttachments(prev => [...prev, reader.result as string]);
+        // Comprimir imagem antes de guardar (reduz base64 de ~500KB para ~50KB)
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX = 800;
+          const ratio = Math.min(MAX / img.width, MAX / img.height, 1);
+          canvas.width = img.width * ratio;
+          canvas.height = img.height * ratio;
+          const ctx = canvas.getContext('2d')!;
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          const compressed = canvas.toDataURL('image/jpeg', 0.7);
+          setAttachments(prev => [...prev, compressed]);
+        };
+        img.src = reader.result as string;
       };
       reader.readAsDataURL(file);
     }
