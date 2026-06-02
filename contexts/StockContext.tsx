@@ -195,7 +195,14 @@ export const StockProvider: React.FC<{ children: ReactNode; getSystemDate: () =>
     try {
       if (!checkPermission('inventory_product_create')) return;
       validateAction('ADD_PRODUCT', {});
-      const newProduct = { ...product, id: generateUUID(), reserveStock: product.reserveStock ?? 0 };
+      const slugId = product.name
+        .toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_|_$/g, '')
+        .slice(0, 40);
+      const uniqueId = products.some(p => p.id === slugId) ? `${slugId}_${Date.now().toString(36)}` : slugId;
+      const newProduct = { ...product, id: uniqueId, reserveStock: product.reserveStock ?? 0 };
       setDoc(doc(db, COL_STOCK.products, newProduct.id), newProduct);
       addAuditLog({ action: 'CRIAR_PRODUTO', module: 'INVENTARIO', entityId: newProduct.id, description: `Produto ${newProduct.name} criado.`, performedBy: user?.name || 'Sistema' });
     } catch (error) {
@@ -230,9 +237,13 @@ export const StockProvider: React.FC<{ children: ReactNode; getSystemDate: () =>
         };
         await setDoc(doc(db, COL_STOCK.priceHistory, priceLog.id), priceLog);
       }
-      if (sanitized.stock !== undefined && sanitized.stock !== product.stock) {
-        const diff = sanitized.stock - product.stock;
-        handleStockMovement(id, diff, 'MANUAL_ADJUSTMENT', user?.name || 'Sistema', 'Ajuste via Edição de Produto');
+      // packSize não deve desencadear recálculo de stock
+      const stockChanged = sanitized.stock !== undefined && sanitized.stock !== product.stock;
+      const onlyPackSizeChanged = sanitized.packSize !== undefined && !stockChanged;
+
+      if (stockChanged) {
+        const diff = sanitized.stock! - product.stock;
+        handleStockMovement(id, Math.abs(diff), 'MANUAL_ADJUSTMENT', user?.name || 'Sistema', 'Ajuste via Edição de Produto');
         const { stock, ...otherUpdates } = sanitized;
         await setDoc(doc(db, COL_STOCK.products, id), { ...product, ...otherUpdates });
       } else {
