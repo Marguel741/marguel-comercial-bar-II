@@ -1,5 +1,5 @@
 import { db } from '../src/firebase';
-import { doc, setDoc, collection, onSnapshot, deleteDoc } from 'firebase/firestore';
+import { doc, setDoc, collection, onSnapshot, deleteDoc, runTransaction } from 'firebase/firestore';
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
 import {
   Transaction, SalesReport, Expense, Card,
@@ -235,7 +235,19 @@ export const FinanceProvider: React.FC<{
       if (newCash !== cashBalance) setCashBalance(newCash);
       if (newTPA !== tpaBalance) setTPABalance(newTPA);
       if (newCashInHand !== cashInHandBalance) setCashInHandBalance(newCashInHand);
-      setDoc(doc(db, 'appdata', 'balances'), { currentBalance: newCB, savingsBalance: newSB, cashBalance: newCash, tpaBalance: newTPA, cashInHandBalance: newCashInHand });
+      runTransaction(db, async (tx) => {
+        const balRef = doc(db, 'appdata', 'balances');
+        const balDoc = await tx.get(balRef);
+        const prev = balDoc.exists() ? balDoc.data() : { currentBalance: 0, savingsBalance: 0, cashBalance: 0, tpaBalance: 0, cashInHandBalance: 0 };
+        const delta = type === 'deposit' ? amount : -amount;
+        tx.set(balRef, {
+          currentBalance: account === 'main' || account === 'cash' || account === 'tpa' ? (prev.currentBalance ?? 0) + (account === 'main' ? delta : account === 'tpa' ? delta : 0) : newCB,
+          savingsBalance: account === 'savings' ? (prev.savingsBalance ?? 0) + delta : newSB,
+          cashBalance: account === 'cash' ? (prev.cashBalance ?? 0) + delta : newCash,
+          tpaBalance: account === 'tpa' ? (prev.tpaBalance ?? 0) + delta : newTPA,
+          cashInHandBalance: account === 'cash_in_hand' ? (prev.cashInHandBalance ?? 0) + delta : newCashInHand,
+        });
+      }).catch(e => console.error('runTransaction balances:', e));
       // Actualiza só o cartão afectado
       const cardId = account === 'cash' || account === 'tpa' ? 'main' : account;
       setCards(prev => prev.map(c => {
