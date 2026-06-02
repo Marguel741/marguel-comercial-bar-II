@@ -34,7 +34,8 @@ export interface DirectSale {
 // Substituição directa das funções IndexedDB por Firestore
 
 export const dbAddSale = async (sale: DirectSale): Promise<void> => {
-  await setDoc(doc(db, COL_DIRECT_SALES, sale.uuid), {
+  const docId = sale.uuid || sale.id;
+  await setDoc(doc(db, COL_DIRECT_SALES, docId), {
     ...sale,
     statusSync: 'synced',
     syncedAt: Date.now(),
