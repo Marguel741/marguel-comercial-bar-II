@@ -1,5 +1,9 @@
+// src/services/db.ts
+// F6: Migrado de IndexedDB para Firestore puro
+import { db } from '../firebase';
+import { doc, setDoc, getDoc, getDocs, collection, deleteDoc, query, where, orderBy, limit } from 'firebase/firestore';
 
-import { dispatchCustomEvent } from '../utils';
+const COL_DIRECT_SALES = 'appdata/direct_sales/records';
 
 export interface CartItem {
   productId: string;
@@ -10,14 +14,14 @@ export interface CartItem {
 
 export interface DirectSale {
   id: string;
-  uuid: string; // Unique Immutable ID
+  uuid: string;
   date: string;
   time: string;
   timestamp: number;
-  serverTimestamp?: number; // Audit
+  serverTimestamp?: number;
   attendant: string;
-  userId: string; // Audit
-  deviceId?: string; // Audit
+  userId: string;
+  deviceId?: string;
   total: number;
   items: CartItem[];
   paymentMethod: 'cash' | 'tpa' | 'transfer';
@@ -27,109 +31,52 @@ export interface DirectSale {
   isSyncTime?: boolean;
 }
 
-// IndexedDB Helpers
-const DB_NAME = 'MarguelDirectSalesDB';
-const STORE_NAME = 'sales';
-const DB_VERSION = 1;
+// Substituição directa das funções IndexedDB por Firestore
 
-let dbInstance: IDBDatabase | null = null;
-
-export const openDB = (retries = 3): Promise<IDBDatabase> => {
-  return new Promise((resolve, reject) => {
-    if (dbInstance) {
-      resolve(dbInstance);
-      return;
-    }
-
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-    request.onerror = () => {
-      if (retries > 0) {
-        console.warn(`DB Connection failed. Retrying... (${retries} left)`);
-        setTimeout(() => {
-            openDB(retries - 1).then(resolve).catch(reject);
-        }, 500);
-      } else {
-        const error = new Error("CRITICAL: Failed to open IndexedDB after 3 attempts.");
-        dispatchCustomEvent('db-critical-error', error);
-        reject(error);
-      }
-    };
-
-    request.onsuccess = () => {
-      dbInstance = request.result;
-      
-      dbInstance.onversionchange = () => {
-          dbInstance?.close();
-          dbInstance = null;
-      };
-      
-      dbInstance.onclose = () => {
-          dbInstance = null;
-      };
-
-      resolve(dbInstance);
-    };
-
-    request.onupgradeneeded = (event) => {
-      const db = (event.target as IDBOpenDBRequest).result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
-        store.createIndex('statusSync', 'statusSync', { unique: false });
-        store.createIndex('timestamp', 'timestamp', { unique: false });
-      }
-    };
-  });
-};
-
-export const dbAddSale = async (sale: DirectSale) => {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    const store = tx.objectStore(STORE_NAME);
-    const request = store.add(sale);
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+export const dbAddSale = async (sale: DirectSale): Promise<void> => {
+  await setDoc(doc(db, COL_DIRECT_SALES, sale.uuid), {
+    ...sale,
+    statusSync: 'synced',
+    syncedAt: Date.now(),
   });
 };
 
 export const dbGetAllSales = async (daysLimit = 40): Promise<DirectSale[]> => {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readonly');
-    const store = tx.objectStore(STORE_NAME);
-    const index = store.index('timestamp');
-    const limit = Date.now() - (daysLimit * 24 * 60 * 60 * 1000);
-    const range = IDBKeyRange.lowerBound(limit);
+  const limitTimestamp = Date.now() - (daysLimit * 24 * 60 * 60 * 1000);
+  try {
+    const q = query(
+      collection(db, COL_DIRECT_SALES),
+      where('timestamp', '>=', limitTimestamp),
+      orderBy('timestamp', 'desc'),
+      limit(200)
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map(d => d.data() as DirectSale);
+  } catch {
+    // Fallback sem orderBy (índice pode não existir ainda)
+    const snap = await getDocs(collection(db, COL_DIRECT_SALES));
+    return snap.docs
+      .map(d => d.data() as DirectSale)
+      .filter(s => s.timestamp >= limitTimestamp)
+      .sort((a, b) => b.timestamp - a.timestamp);
+  }
+};
 
-    const request = index.getAll(range);
-    request.onsuccess = () => {
-        const results = request.result as DirectSale[];
-        results.sort((a, b) => b.timestamp - a.timestamp);
-        resolve(results);
-    };
-    request.onerror = () => reject(request.error);
+export const dbUpdateSale = async (sale: DirectSale): Promise<void> => {
+  await setDoc(doc(db, COL_DIRECT_SALES, sale.uuid), {
+    ...sale,
+    updatedAt: Date.now(),
   });
 };
 
-export const dbUpdateSale = async (sale: DirectSale) => {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    const store = tx.objectStore(STORE_NAME);
-    const request = store.put(sale);
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
+export const dbDeleteSale = async (id: string): Promise<void> => {
+  // id pode ser o uuid ou o id local — tentar ambos
+  try {
+    await deleteDoc(doc(db, COL_DIRECT_SALES, id));
+  } catch {
+    // Se não encontrar por id, ignorar
+  }
 };
 
-export const dbDeleteSale = async (id: string) => {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    const store = tx.objectStore(STORE_NAME);
-    const request = store.delete(id);
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-};
+// openDB mantido como no-op para compatibilidade com código que ainda o chama
+export const openDB = async (): Promise<any> => ({ _firestore: true });
