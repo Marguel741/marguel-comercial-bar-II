@@ -689,9 +689,15 @@ const Dashboard: React.FC = () => {
                 <YAxis
                   axisLine={false}
                   tickLine={false}
-                  tick={{ fill: '#94a3b8', fontSize: 12 }}
-                  tickFormatter={(value) => `${(value / 1000).toFixed(0)}k`}
-                  width={40}
+                  tick={{ fill: '#94a3b8', fontSize: 10 }}
+                  tickFormatter={(value) => {
+                    if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
+                    if (value >= 1000) return `${(value / 1000).toFixed(0)}k`;
+                    return `${value}`;
+                  }}
+                  width={48}
+                  tickCount={5}
+                />
                 />
                 <Tooltip
                   contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
