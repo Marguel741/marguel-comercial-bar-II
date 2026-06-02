@@ -391,6 +391,56 @@ export interface Notification {
   icon?: string;
 }
 
+// ─── Manual de Uso ────────────────────────────────────────────
+export interface QuizQuestion {
+  id: string;
+  question: string;
+  options: string[];
+  correctIndex: number;
+  explanation?: string;
+}
+
+export interface ManualStep {
+  id: string;
+  text: string;
+  imageUrl?: string;
+  videoUrl?: string;
+  note?: string;
+}
+
+export interface ManualSection {
+  id: string;
+  order: number;
+  pageLabel: string;
+  route: string;
+  icon: string;
+  description: string;
+  steps: ManualStep[];
+  importantNotes: string[];
+  quiz: QuizQuestion[];
+  updatedAt: number;
+  updatedBy: string;
+}
+
+// ─── O que há de novo (Changelog) ────────────────────────────
+export type ChangelogCategory = 'Bug' | 'Melhoria' | 'Nova funcionalidade';
+
+export interface ChangelogItem {
+  id: string;
+  text: string;
+  category: ChangelogCategory;
+}
+
+export interface ChangelogEntry {
+  id: string;
+  version: string;
+  date: string;
+  title: string;
+  items: ChangelogItem[];
+  publishedBy: string;
+  publishedAt: number;
+}
+
 export interface AuditLog {
   id: string;
   action: string;
