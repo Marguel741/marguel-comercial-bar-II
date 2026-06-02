@@ -476,7 +476,7 @@ const Expenses: React.FC = () => {
           </div>
           
           <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4 max-h-[600px] pr-2">
-            {expenses.slice(0, 10).map((ex) => (
+            {allHistoryEntries.slice(0, 10).map((ex) => (
               <SoftCard 
                 key={ex.id} 
                 onClick={() => {
@@ -532,7 +532,7 @@ const Expenses: React.FC = () => {
               </SoftCard>
             ))}
 
-            {expenses.slice(0, 10).length === 0 && (
+            {allHistoryEntries.slice(0, 10).length === 0 && (
               <div className="text-center py-12 text-slate-400 border-2 border-dashed border-slate-200 rounded-2xl">
                 <Wallet size={48} className="mx-auto mb-2 opacity-20" />
                 <p>Nenhuma despesa registrada.</p>
