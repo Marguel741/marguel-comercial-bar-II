@@ -64,7 +64,8 @@ export const dbGetAllSales = async (daysLimit = 40): Promise<DirectSale[]> => {
 };
 
 export const dbUpdateSale = async (sale: DirectSale): Promise<void> => {
-  await setDoc(doc(db, COL_DIRECT_SALES, sale.uuid), {
+  const docId = sale.uuid || sale.id;
+  await setDoc(doc(db, COL_DIRECT_SALES, docId), {
     ...sale,
     updatedAt: Date.now(),
   });
