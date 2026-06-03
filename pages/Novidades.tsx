@@ -20,7 +20,7 @@ const CATEGORY_CONFIG: Record<ChangelogCategory, { label: string; color: string;
   'Nova funcionalidade': { label: 'Nova funcionalidade', color: 'bg-emerald-100 text-emerald-700 border border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700', icon: Star },
 };
 
-const SEEN_COL = 'appdata/user_seen_versions';
+const SEEN_COL = 'user_seen_versions';
 
 // ─── Pop-up de novidades ───────────────────────────────────────────────────────
 export const NovidadesPopup: React.FC<{
