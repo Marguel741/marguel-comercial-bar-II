@@ -52,11 +52,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [usersReady, setUsersReady] = useState(false);
   const [allUsers, setAllUsers] = useState<User[]>([]);
 
-  // ── Listener Firestore (utilizadores) ──────────────────────
   useEffect(() => {
     const unsubscribe = onUsersSnapshot((users) => {
       setAllUsers(users);
-
       if (!usersReady && users.length > 0) {
         setUsersReady(true);
         const raw = localStorage.getItem('mg_user');
@@ -75,7 +73,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
         setIsLoading(false);
       }
-
       setUser(prev => {
         if (!prev) return null;
         const found = users.find(u => u.id === prev.id);
@@ -86,11 +83,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return found;
       });
     });
-
-    const timeout = setTimeout(() => {
-      if (!usersReady) setIsLoading(false);
-    }, 5000);
-
+    const timeout = setTimeout(() => { if (!usersReady) setIsLoading(false); }, 5000);
     return () => { unsubscribe(); clearTimeout(timeout); };
   }, []);
 
@@ -101,26 +94,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     });
   }, [allUsers]);
 
-  // ── LOGIN (email + PIN) ─────────────────────────────────────
   const login = useCallback(async (email: string, pass: string): Promise<string | null> => {
     setIsLoading(true);
-
-    if (allUsers.length === 0) {
-      setIsLoading(false);
-      const msg = 'Sistema a carregar. Tenta novamente em segundos.';
-      setLoginError(msg); return msg;
-    }
-
+    if (allUsers.length === 0) { setIsLoading(false); const msg = 'Sistema a carregar. Tenta novamente em segundos.'; setLoginError(msg); return msg; }
     const found = allUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
     if (!found) { setIsLoading(false); const msg = 'Email não encontrado.'; setLoginError(msg); return msg; }
     if (found.isBanned) { setIsLoading(false); const msg = 'O teu acesso foi revogado. Contacta o administrador.'; setLoginError(msg); return msg; }
     if (!found.isApproved) { setIsLoading(false); const msg = 'A tua conta está a aguardar aprovação pelo administrador.'; setLoginError(msg); return msg; }
-    if (!found.pin || found.pin !== pass) {
-      setIsLoading(false);
-      const msg = 'Senha incorrecta. Tenta novamente.';
-      setLoginError(msg); return msg;
-    }
-
+    if (!found.pin || found.pin !== pass) { setIsLoading(false); const msg = 'Senha incorrecta. Tenta novamente.'; setLoginError(msg); return msg; }
     const updated: User = { ...found, lastLogin: makeTimestamp() };
     await saveUser(updated);
     localStorage.setItem('mg_user', JSON.stringify(updated));
@@ -131,20 +112,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return null;
   }, [allUsers, addLog]);
 
-  // ── LOGIN POR PIN ───────────────────────────────────────────
   const loginByPin = useCallback(async (pin: string): Promise<string | null> => {
     setIsLoading(true);
-
-    if (allUsers.length === 0) {
-      setIsLoading(false);
-      const msg = 'Sistema a carregar. Tenta novamente em segundos.';
-      setLoginError(msg); return msg;
-    }
-
+    if (allUsers.length === 0) { setIsLoading(false); const msg = 'Sistema a carregar. Tenta novamente em segundos.'; setLoginError(msg); return msg; }
+    // Verificar banidos antes de verificar PIN
+    const bannedMatch = allUsers.find(u => u.pin === pin && u.isBanned);
+    if (bannedMatch) { setIsLoading(false); const msg = 'O teu acesso foi revogado. Contacta o administrador.'; setLoginError(msg); return msg; }
     const pinMatches = allUsers.filter(u => u.pin === pin && !u.isBanned && u.isApproved);
     if (pinMatches.length === 0) { setIsLoading(false); const msg = 'PIN inválido. Tenta novamente.'; setLoginError(msg); return msg; }
     if (pinMatches.length > 1) { setIsLoading(false); const msg = 'PIN ambíguo. Usa o login por email.'; setLoginError(msg); return msg; }
-
     const found = pinMatches[0];
     const updated: User = { ...found, lastLogin: makeTimestamp() };
     await saveUser(updated);
@@ -156,47 +132,30 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return null;
   }, [allUsers, addLog]);
 
-  // ── REGISTER ────────────────────────────────────────────────
   const register = useCallback(async (data: { name: string; email: string; pin: string; phoneNumber?: string }): Promise<{ success: boolean; message: string }> => {
-    if (allUsers.find(u => u.email.toLowerCase() === data.email.toLowerCase())) {
-      return { success: false, message: 'Este email já está registado.' };
-    }
-    if (data.pin.length < 4) {
-      return { success: false, message: 'O PIN deve ter pelo menos 4 dígitos.' };
-    }
-
+    if (allUsers.find(u => u.email.toLowerCase() === data.email.toLowerCase())) return { success: false, message: 'Este email já está registado.' };
+    if (data.pin.length < 4) return { success: false, message: 'O PIN deve ter pelo menos 4 dígitos.' };
     const newUser: User = {
       id: `usr_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-      name: data.name.trim(),
-      email: data.email.toLowerCase().trim(),
-      pin: data.pin,
-      role: UserRole.FUNCIONARIO,
-      isApproved: false,
-      isBanned: false,
+      name: data.name.trim(), email: data.email.toLowerCase().trim(), pin: data.pin,
+      role: UserRole.FUNCIONARIO, isApproved: false, isBanned: false,
       permissions: DEFAULT_PERMISSIONS[UserRole.FUNCIONARIO],
-      createdAt: new Date().toLocaleDateString('pt-AO'),
-      lastLogin: '',
-      phoneNumber: data.phoneNumber || '',
-      secondaryPhoneNumber: '',
-      associatedEmail: data.email.toLowerCase().trim(),
-      status: 'Ativo',
+      createdAt: new Date().toLocaleDateString('pt-AO'), lastLogin: '',
+      phoneNumber: data.phoneNumber || '', secondaryPhoneNumber: '',
+      associatedEmail: data.email.toLowerCase().trim(), status: 'Ativo',
     };
     await saveUser(newUser);
     return { success: true, message: 'Conta criada. Aguarda aprovação do Administrador.' };
   }, [allUsers]);
 
-  // ── LOGOUT ──────────────────────────────────────────────────
   const logout = useCallback(() => {
-    if (user) {
-      addLog({ action: 'LOGOUT', module: 'UTILIZADORES', description: `${user.name} terminou sessão`, entityId: user.id, previousValue: 'LOGGED_IN', newValue: 'LOGGED_OUT' }, user);
-    }
+    if (user) addLog({ action: 'LOGOUT', module: 'UTILIZADORES', description: `${user.name} terminou sessão`, entityId: user.id, previousValue: 'LOGGED_IN', newValue: 'LOGGED_OUT' }, user);
     setUser(null);
     localStorage.removeItem('mg_user');
     localStorage.removeItem('mg_biometric_user');
     localStorage.setItem('biometric_enabled', 'false');
   }, [user, addLog]);
 
-  // ── UPDATE USER ─────────────────────────────────────────────
   const updateUser = useCallback(async (updates: Partial<User>): Promise<boolean> => {
     if (!user) return false;
     const updated: User = { ...user, ...updates };
@@ -206,14 +165,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (updates.pin) {
       addLog({ action: 'USER_PIN_CHANGED', module: 'SEGURANÇA', description: `PIN alterado por ${user.name}`, entityId: user.id, previousValue: '****', newValue: '****' }, user);
       const bio = localStorage.getItem('mg_biometric_user');
-      if (bio) {
-        try { localStorage.setItem('mg_biometric_user', JSON.stringify({ ...JSON.parse(bio), pin: updates.pin })); } catch {}
-      }
+      if (bio) { try { localStorage.setItem('mg_biometric_user', JSON.stringify({ ...JSON.parse(bio), pin: updates.pin })); } catch {} }
     }
     return true;
   }, [user, addLog]);
 
-  // ── SWITCH USER (debug) ─────────────────────────────────────
   const switchUser = useCallback((role: UserRole, name?: string): boolean => {
     const target = name
       ? allUsers.find(u => u.role === role && u.name?.toLowerCase().includes(name.toLowerCase()))
@@ -222,7 +178,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return false;
   }, [allUsers]);
 
-  // ── RECUPERAÇÃO DE CREDENCIAIS ──────────────────────────────
   const generateRecoveryCode = useCallback(async (userId: string, userName: string): Promise<string | null> => {
     try {
       const q = query(collection(db, 'recovery_codes'), where('userId', '==', userId));
@@ -230,16 +185,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       await Promise.all(existing.docs.map(d => deleteDoc(doc(db, 'recovery_codes', d.id))));
       const code = generateCode();
       const expiresAt = Date.now() + 30 * 60 * 1000;
-      await addDoc(collection(db, 'recovery_codes'), {
-        userId, userName, code, expiresAt, used: false,
-        generatedBy: user?.name || 'Admin', generatedAt: Date.now(),
-      });
+      await addDoc(collection(db, 'recovery_codes'), { userId, userName, code, expiresAt, used: false, generatedBy: user?.name || 'Admin', generatedAt: Date.now() });
       addLog({ action: 'RECOVERY_CODE_GENERATED', module: 'SEGURANÇA', description: `Código de recuperação gerado para ${userName} por ${user?.name}`, entityId: userId, previousValue: null, newValue: code }, user!);
       return code;
-    } catch (error) {
-      console.error('Erro ao gerar código:', error);
-      return null;
-    }
+    } catch { return null; }
   }, [user, addLog]);
 
   const validateRecoveryCode = useCallback(async (userName: string, code: string): Promise<{ valid: boolean; userId: string | null; message: string }> => {
@@ -250,18 +199,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const docRef = snapshot.docs[0];
       const data = docRef.data();
       if (!data.userName.toLowerCase().includes(userName.toLowerCase())) return { valid: false, userId: null, message: 'Nome não corresponde ao código.' };
-      if (Date.now() > data.expiresAt) {
-        await deleteDoc(doc(db, 'recovery_codes', docRef.id));
-        return { valid: false, userId: null, message: 'Código expirado. Pede um novo ao administrador.' };
-      }
-      // Marcar como usado
-      const { setDoc } = await import('firebase/firestore');
-      await setDoc(doc(db, 'recovery_codes', docRef.id), { ...data, used: true, usedAt: Date.now() });
+      if (Date.now() > data.expiresAt) { await deleteDoc(doc(db, 'recovery_codes', docRef.id)); return { valid: false, userId: null, message: 'Código expirado. Pede um novo ao administrador.' }; }
+      const { setDoc: fsSet } = await import('firebase/firestore');
+      await fsSet(doc(db, 'recovery_codes', docRef.id), { ...data, used: true, usedAt: Date.now() });
       return { valid: true, userId: data.userId, message: 'Código válido!' };
-    } catch (error) {
-      console.error('Erro ao validar código:', error);
-      return { valid: false, userId: null, message: 'Erro ao validar. Tenta novamente.' };
-    }
+    } catch { return { valid: false, userId: null, message: 'Erro ao validar. Tenta novamente.' }; }
   }, []);
 
   const resetPinWithCode = useCallback(async (userId: string, code: string, newPin: string): Promise<string | null> => {
@@ -269,21 +211,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (newPin.length < 4) return 'O PIN deve ter pelo menos 4 dígitos.';
       const targetUser = allUsers.find(u => u.id === userId);
       if (!targetUser) return 'Utilizador não encontrado.';
-
       const q = query(collection(db, 'recovery_codes'), where('code', '==', code.toUpperCase()));
       const snapshot = await getDocs(q);
       if (!snapshot.empty) await deleteDoc(doc(db, 'recovery_codes', snapshot.docs[0].id));
-
       const updated: User = { ...targetUser, pin: newPin, lastLogin: makeTimestamp() };
       await saveUser(updated);
       localStorage.setItem('mg_user', JSON.stringify(updated));
       setUser(updated);
       addLog({ action: 'PIN_RESET_VIA_CODE', module: 'SEGURANÇA', description: `PIN de ${targetUser.name} redefinido via código de recuperação`, entityId: userId, previousValue: '****', newValue: '****' }, updated);
       return null;
-    } catch (error) {
-      console.error('Erro ao redefinir PIN:', error);
-      return 'Erro ao redefinir PIN. Tenta novamente.';
-    }
+    } catch { return 'Erro ao redefinir PIN. Tenta novamente.'; }
   }, [allUsers, addLog]);
 
   const value = React.useMemo(() => ({
