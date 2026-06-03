@@ -28,6 +28,9 @@ const Login          = lazy(() => import('./pages/Login'));
 const Register       = lazy(() => import('./pages/Register'));
 const PendingApproval = lazy(() => import('./pages/PendingApproval'));
 const Banned         = lazy(() => import('./pages/Banned'));
+const Manual         = lazy(() => import('./pages/Manual'));
+const Novidades      = lazy(() => import('./pages/Novidades'));
+// ─────────────────────────────────────────────────────────────
 // ─────────────────────────────────────────────────────────────
 
 // ── LOADING FALLBACK ──────────────────────────────────────────
@@ -233,6 +236,8 @@ const AppContent: React.FC = () => {
                       <Route path="/users" element={<ProtectedRoute permission="admin_users_view"><UserManagement /></ProtectedRoute>} />
                       <Route path="/audit" element={<ProtectedRoute permission="audit_view"><Audit /></ProtectedRoute>} />
                       <Route path="/settings" element={<Settings />} />
+                      <Route path="/manual" element={<Manual />} />
+                      <Route path="/novidades" element={<Novidades />} />
                       <Route path="*" element={<Navigate to="/" replace />} />
                     </Routes>
                   </Suspense>
