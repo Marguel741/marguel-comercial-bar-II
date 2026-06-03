@@ -14,7 +14,7 @@ import Footer from '../components/Footer';
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
- const { salesReports, systemDate, products, expenses, getConfirmedSalesReports, notifications, addNotification, resolveNotification, purchases, reserveTransfers } = useProducts();
+ const { salesReports, systemDate, products, expenses, getConfirmedSalesReports, notifications, addNotification, resolveNotification, purchases, reserveTransfers, stockOperationHistory } = useProducts();
   const { theme, setTheme } = useTheme();
   const { toggleSidebar } = useLayout();
 
@@ -71,11 +71,18 @@ const Dashboard: React.FC = () => {
           }
         });
       });
+    // Ajustes manuais após o fecho
+    stockOperationHistory
+      .filter(log => (log.type === 'MANUAL_ADJUSTMENT' || log.type === 'RESERVE_TRANSFER_IN') && cleanDate(log.date || new Date(log.timestamp).toISOString().slice(0,10)) > lastClosureDate)
+      .sort((a, b) => a.timestamp - b.timestamp)
+      .forEach(log => {
+        if (baseStock[log.productId] !== undefined) baseStock[log.productId] = log.qtyAfter;
+      });
     products.forEach(p => {
       if (baseStock[p.id] === undefined) baseStock[p.id] = p.stock;
     });
     return baseStock;
-  }, [salesReports, products, purchases, systemDate]);
+  }, [salesReports, products, purchases, stockOperationHistory, systemDate]);
 
   const isAdmin = user?.role === UserRole.ADMIN_GERAL || user?.role === UserRole.PROPRIETARIO;
 
