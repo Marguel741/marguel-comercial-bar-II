@@ -180,7 +180,8 @@ export const StockProvider: React.FC<{ children: ReactNode; getSystemDate: () =>
         qtyBefore, qtyAdded, qtyAfter, previousStock: qtyBefore, newStock: qtyAfter,
         qtyChanged: qtyAdded, responsible: performedBy, timestamp: Date.now(), performedBy,
         reason: reason || (isManual ? 'Ajuste Manual via Sistema' : 'Movimentação de Stock'),
-        referenceId: referenceId ?? null
+        referenceId: referenceId ?? null,
+        date: formatDateISO(new Date())
       };
       setDoc(doc(db, COL_STOCK.stockOperationHistory, log.id), log);
       addLog({ action: isManual ? 'AJUSTE_MANUAL_STOCK' : (type === 'SALE' ? 'VENDA_STOCK' : 'COMPRA_STOCK'), module: 'STOCK', description: `${Math.abs(quantity)} unidades de ${product.name}. Stock: ${qtyBefore} -> ${qtyAfter}`, entityId: productId, previousValue: qtyBefore, newValue: qtyAfter }, user);
@@ -243,7 +244,10 @@ export const StockProvider: React.FC<{ children: ReactNode; getSystemDate: () =>
 
       if (stockChanged) {
         const diff = sanitized.stock! - product.stock;
-        handleStockMovement(id, Math.abs(diff), 'MANUAL_ADJUSTMENT', user?.name || 'Sistema', 'Ajuste via Edição de Produto');
+        // diff negativo = redução de stock; positivo = aumento
+        const absQty = Math.abs(diff);
+        const movType = diff > 0 ? 'PURCHASE' : 'SALE';
+        handleStockMovement(id, absQty, movType, user?.name || 'Sistema', 'Ajuste via Edição de Produto');
         const { stock, ...otherUpdates } = sanitized;
         await setDoc(doc(db, COL_STOCK.products, id), { ...product, ...otherUpdates });
       } else {
@@ -389,7 +393,9 @@ export const StockProvider: React.FC<{ children: ReactNode; getSystemDate: () =>
   const getPurchasesByDate = useCallback((dateStr: string) => {
     const totals: Record<string, number> = {};
     purchases.filter(p => p.date === dateStr).forEach(record => {
-      Object.entries(record.items).forEach(([id, qtyPacks]) => {
+      // Usar barItems se existir (compra dividida Bar/Reserva); caso contrário usar items (compra total para Bar)
+      const sourceItems = record.barItems || record.items;
+      Object.entries(sourceItems).forEach(([id, qtyPacks]) => {
         const p = products.find(prod => prod.id === id);
         totals[id] = (totals[id] || 0) + Number(qtyPacks) * (p?.packSize || 1);
       });
