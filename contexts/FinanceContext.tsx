@@ -235,10 +235,19 @@ export const FinanceProvider: React.FC<{
       if (newCash !== cashBalance) setCashBalance(newCash);
       if (newTPA !== tpaBalance) setTPABalance(newTPA);
       if (newCashInHand !== cashInHandBalance) setCashInHandBalance(newCashInHand);
+      const cardId = account === 'cash' || account === 'tpa' ? 'main' : account;
+      setCards(prev => prev.map(c => {
+        if (c.id === 'main' && cardId === 'main') return { ...c, balance: newCB };
+        if (c.id === 'savings' && cardId === 'savings') return { ...c, balance: newSB };
+        if (c.id === 'cash_in_hand' && cardId === 'cash_in_hand') return { ...c, balance: newCashInHand };
+        return c;
+      }));
       runTransaction(db, async (tx) => {
         const balRef = doc(db, 'appdata', 'balances');
-        const balDoc = await tx.get(balRef);
+        const cardRef = doc(db, COL_FIN.cards, cardId === 'main' ? 'main' : cardId === 'savings' ? 'savings' : 'cash_in_hand');
+        const [balDoc, cardDoc] = await Promise.all([tx.get(balRef), tx.get(cardRef)]);
         const prev = balDoc.exists() ? balDoc.data() : { currentBalance: 0, savingsBalance: 0, cashBalance: 0, tpaBalance: 0, cashInHandBalance: 0 };
+        const prevCard = cardDoc.exists() ? cardDoc.data() : null;
         const delta = type === 'deposit' ? amount : -amount;
         tx.set(balRef, {
           currentBalance: account === 'main' || account === 'cash' || account === 'tpa' ? (prev.currentBalance ?? 0) + (account === 'main' ? delta : account === 'tpa' ? delta : 0) : newCB,
@@ -247,25 +256,12 @@ export const FinanceProvider: React.FC<{
           tpaBalance: account === 'tpa' ? (prev.tpaBalance ?? 0) + delta : newTPA,
           cashInHandBalance: account === 'cash_in_hand' ? (prev.cashInHandBalance ?? 0) + delta : newCashInHand,
         });
-      }).catch(e => console.error('runTransaction balances:', e));
-      // Actualiza só o cartão afectado
-      const cardId = account === 'cash' || account === 'tpa' ? 'main' : account;
-      setCards(prev => prev.map(c => {
-        if (c.id === 'main' && (cardId === 'main')) return { ...c, balance: newCB };
-        if (c.id === 'savings' && cardId === 'savings') return { ...c, balance: newSB };
-        if (c.id === 'cash_in_hand' && cardId === 'cash_in_hand') return { ...c, balance: newCashInHand };
-        return c;
-      }));
-      if (cardId === 'main') {
-        const mainCard = cards.find(c => c.id === 'main');
-        if (mainCard) setDoc(doc(db, COL_FIN.cards, 'main'), { ...mainCard, balance: newCB });
-      } else if (cardId === 'savings') {
-        const savingsCard = cards.find(c => c.id === 'savings');
-        if (savingsCard) setDoc(doc(db, COL_FIN.cards, 'savings'), { ...savingsCard, balance: newSB });
-      } else if (cardId === 'cash_in_hand') {
-        const cashCard = cards.find(c => c.id === 'cash_in_hand');
-        if (cashCard) setDoc(doc(db, COL_FIN.cards, 'cash_in_hand'), { ...cashCard, balance: newCashInHand });
-      }
+        // Cartão actualizado na mesma transacção atómica
+        if (prevCard) {
+          const newCardBalance = cardId === 'main' ? newCB : cardId === 'savings' ? newSB : newCashInHand;
+          tx.set(cardRef, { ...prevCard, balance: newCardBalance });
+        }
+      }).catch(e => console.error('runTransaction balances+card:', e));
 
       const targetDate = date || formatDateISO(getSystemDate());
       const transId = existingTrans.length > 0 ? existingTrans[0].id : generateUUID();
