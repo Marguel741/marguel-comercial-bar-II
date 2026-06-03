@@ -414,7 +414,16 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     return _lockedDays.map(d => cleanDate(d)).includes(cleanDate(dateStr));
   }, [_lockedDays]);
 
-  const _validateAction = useCallback(() => true, []);
+  const _validateAction = useCallback((type: string, payload: any) => {
+    // Operações históricas (fechos passados) nunca são bloqueadas
+    if (payload?.isHistorical === true) return true;
+    // Bloquear operações no dia actual se estiver bloqueado
+    const today = formatDateISO(_getSystemDate());
+    if (_isDayLocked(today)) {
+      throw new Error('Operação Negada: O dia actual está bloqueado.');
+    }
+    return true;
+  }, [_isDayLocked, _getSystemDate]);
 
   const _addAuditLog = useCallback((log: any) => {
     addLog({ action: log.action || 'ACÇÃO', module: log.module || 'SISTEMA', entityId: log.entityId || null, description: log.description || '', previousValue: null, newValue: null }, user);
