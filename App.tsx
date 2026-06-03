@@ -10,6 +10,7 @@ import { ProductProvider } from './contexts/ProductContext';
 import { LayoutProvider } from './contexts/LayoutContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { SettingsProvider } from './contexts/SettingsContext';
+import { NovidadesPopup, useNovidadesBadge } from './pages/Novidades';
 
 // ── LAZY PAGES ────────────────────────────────────────────────
 const Dashboard      = lazy(() => import('./pages/Dashboard'));
@@ -160,6 +161,12 @@ const ProtectedRoute: React.FC<{
   return <>{children}</>;
 };
 
+const NovidadesPopupWrapper: React.FC = () => {
+  const { latestUnseen, showPopup, markAllSeen } = useNovidadesBadge();
+  if (!showPopup || !latestUnseen) return null;
+  return <NovidadesPopup entry={latestUnseen} onClose={markAllSeen} />;
+};
+
 const AppContent: React.FC = () => {
   const [showSplash, setShowSplash] = useState(true);
   const { user, isLoading } = useAuth();
@@ -219,6 +226,7 @@ const AppContent: React.FC = () => {
             <Router>
               <div className="flex h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-300 overflow-hidden">
                 <Sidebar />
+                <NovidadesPopupWrapper />
                 <div id="main-content" className="flex-1 overflow-y-auto custom-scrollbar relative">
                   <Suspense fallback={<PageLoader />}>
                     <Routes>
