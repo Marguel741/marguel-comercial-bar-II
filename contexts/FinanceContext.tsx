@@ -475,7 +475,7 @@ export const FinanceProvider: React.FC<{
     setDoc(doc(db, COL_FIN.expenses, id), { ...expense, status: 'REVERSED', isReverted: true });
     const reversalExpense: Expense = { ...expense, id: `rev_${expense.id}_${generateUUID()}`, title: `ESTORNO: ${expense.title}`, amount: -expense.amount, notes: `Estorno por ${deletedBy}. Ref: ${expense.id}`, timestamp: getSystemDate().getTime(), user: deletedBy, status: 'REVERSAL', isReverted: true };
     setDoc(doc(db, COL_FIN.expenses, reversalExpense.id), reversalExpense);
-    if (expense.amount > 0) processTransaction('deposit', 'main', expense.amount, `Estorno: ${expense.title}`, 'Estorno', expense.id, 'reversal', deletedBy);
+    if (expense.amount > 0) processTransaction('deposit', expense.sourceAccount || 'main', expense.amount, `Estorno: ${expense.title}`, 'Estorno', expense.id, 'reversal', deletedBy);
     addAuditLog({ action: 'ESTORNO_DESPESA', module: 'FINANCEIRO', entityId: id, description: `Estorno de ${expense.title} por ${deletedBy}`, performedBy: deletedBy });
   }, [checkPermission, expenses, getSystemDate, processTransaction, addAuditLog]);
 
@@ -660,7 +660,8 @@ export const FinanceProvider: React.FC<{
         const p = products.find((prod: any) => (item.productId && item.productId === prod.id) || item.id === prod.id || item.name === prod.name);
         const qty = item.soldQty ?? item.qty ?? 0;
         if (p && qty > 0) {
-          const stockRefId = `confirm_${reportId}_${p.id}_${finalReport.confirmationTimestamp}`;
+          // ID estável: não depende de timestamp — garante idempotência
+          const stockRefId = `confirm_${reportId}_${p.id}`;
           handleStockMovement(p.id, qty, 'SALE', confirmedBy, `Fecho Confirmado: ${reportDateStr}`, stockRefId);
         }
       });
