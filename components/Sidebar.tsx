@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -18,6 +18,8 @@ import {
   History,
   Pin,
   PinOff,
+  BookOpen,
+  Sparkles,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { UserRole } from '../types';
@@ -25,6 +27,7 @@ import { useLayout } from '../contexts/LayoutContext';
 import { useProducts } from '../contexts/ProductContext';
 import { hasPermission } from '../src/utils/permissions';
 import { formatDateISO, formatDisplayDate } from '../src/utils';
+import { useNovidadesBadge } from '../pages/Novidades';
 
 const Sidebar: React.FC = () => {
   const { user, logout } = useAuth();
@@ -38,7 +41,7 @@ const Sidebar: React.FC = () => {
   } = useLayout();
   const { systemDate } = useProducts();
   const navigate = useNavigate();
-
+  const { unreadCount, latestUnseen, showPopup, markAllSeen } = useNovidadesBadge();
   const navItems = [
     {
       to: '/',
@@ -246,6 +249,45 @@ const Sidebar: React.FC = () => {
             ))}
 
             <NavLink
+              to="/manual"
+              onClick={handleLinkClick}
+              className={({ isActive }) => `
+                flex items-center gap-4 px-4 py-3.5 rounded-xl transition-all font-medium text-sm
+                ${
+                  isActive
+                    ? 'bg-white dark:bg-slate-800 text-[#003366] dark:text-white shadow-sm border-l-4 border-[#003366] dark:border-blue-500'
+                    : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-slate-200'
+                }
+              `}
+            >
+              <BookOpen size={20} />
+              <span className="flex-1">Manual de Uso</span>
+              <ChevronRight size={16} className="opacity-30" />
+            </NavLink>
+
+            <NavLink
+              to="/novidades"
+              onClick={handleLinkClick}
+              className={({ isActive }) => `
+                flex items-center gap-4 px-4 py-3.5 rounded-xl transition-all font-medium text-sm
+                ${
+                  isActive
+                    ? 'bg-white dark:bg-slate-800 text-[#003366] dark:text-white shadow-sm border-l-4 border-[#003366] dark:border-blue-500'
+                    : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-slate-200'
+                }
+              `}
+            >
+              <Sparkles size={20} />
+              <span className="flex-1">O que há de novo</span>
+              {unreadCount > 0 && (
+                <span className="min-w-[18px] h-[18px] bg-[#E3007E] text-white text-[10px] font-black rounded-full flex items-center justify-center px-1">
+                  {unreadCount}
+                </span>
+              )}
+              <ChevronRight size={16} className="opacity-30" />
+            </NavLink>
+
+            <NavLink
               to="/settings"
               onClick={handleLinkClick}
               className={({ isActive }) => `
@@ -381,6 +423,43 @@ const Sidebar: React.FC = () => {
               <span className="flex-1">{item.label}</span>
             </NavLink>
           ))}
+
+          <NavLink
+            to="/manual"
+            onClick={handleLinkClick}
+            className={({ isActive }) => `
+              flex items-center gap-3 px-3 py-3 rounded-xl transition-all font-medium text-xs
+              ${
+                isActive
+                  ? 'bg-white dark:bg-slate-800 text-[#003366] dark:text-white shadow-sm border-l-4 border-[#003366]'
+                  : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-800'
+              }
+            `}
+          >
+            <BookOpen size={18} />
+            <span className="flex-1">Manual de Uso</span>
+          </NavLink>
+
+          <NavLink
+            to="/novidades"
+            onClick={handleLinkClick}
+            className={({ isActive }) => `
+              flex items-center gap-3 px-3 py-3 rounded-xl transition-all font-medium text-xs
+              ${
+                isActive
+                  ? 'bg-white dark:bg-slate-800 text-[#003366] dark:text-white shadow-sm border-l-4 border-[#003366]'
+                  : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-800'
+              }
+            `}
+          >
+            <Sparkles size={18} />
+            <span className="flex-1">O que há de novo</span>
+            {unreadCount > 0 && (
+              <span className="min-w-[18px] h-[18px] bg-[#E3007E] text-white text-[10px] font-black rounded-full flex items-center justify-center px-1">
+                {unreadCount}
+              </span>
+            )}
+          </NavLink>
 
           <NavLink
             to="/settings"
