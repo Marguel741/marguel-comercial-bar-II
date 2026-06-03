@@ -240,8 +240,7 @@ export const StockProvider: React.FC<{ children: ReactNode; getSystemDate: () =>
       }
       // packSize não deve desencadear recálculo de stock
       const stockChanged = sanitized.stock !== undefined && sanitized.stock !== product.stock;
-      const onlyPackSizeChanged = sanitized.packSize !== undefined && !stockChanged;
-
+      
       if (stockChanged) {
         const diff = sanitized.stock! - product.stock;
         // diff negativo = redução de stock; positivo = aumento
