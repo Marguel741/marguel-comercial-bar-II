@@ -288,7 +288,9 @@ const ProductProviderInner: React.FC<{ children: ReactNode }> = ({ children }) =
           if (barQty > 0) handleStockMovement(productId, barQty * (p.packSize || 1), 'PURCHASE', completedBy, 'Compra de Stock', purchaseId);
           if (reserveQty > 0) {
             const newReserveStock = (p.reserveStock ?? 0) + reserveQty * (p.packSize || 1);
-            setDoc(doc(db, COL_SYS.products, productId), { ...p, reserveStock: newReserveStock });
+            // Calcular também o novo stock do Bar para não sobrescrever o que handleStockMovement gravou
+            const newBarStock = p.stock + barQty * (p.packSize || 1);
+            setDoc(doc(db, COL_SYS.products, productId), { ...p, stock: newBarStock, reserveStock: newReserveStock });
           }
         }
       });
