@@ -535,8 +535,8 @@ export const FinanceProvider: React.FC<{
   // ── Relatórios de Vendas ──────────────────────────────────────────────────
   const registrarAlmocoBlindado = useCallback((report: SalesReport) => {
     const lunchVal = report.lunchExpense ?? (report as any).financials?.lunch ?? 0;
-    const isFinal = report.isFinalClosure || report.type === 'FINAL' || report.status === ClosureStatus.FECHO_CONFIRMADO;
-    if (lunchVal > 0 && isFinal && !report.lunchProcessed) {
+    // Regista almoço em qualquer fecho (parcial ou confirmado) — ID fixo garante que não duplica
+    if (lunchVal > 0 && !report.lunchProcessed) {
       const dateKey = new Date(report.dateISO || report.date).toISOString().split('T')[0];
       const lunchRefId = `LUNCH_EXPENSE_${dateKey}`;
       if (!expenses.find(e => e.id === lunchRefId)) {
