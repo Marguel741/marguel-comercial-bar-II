@@ -378,6 +378,25 @@ const Sales: React.FC = () => {
       setViewHistoryReport(null);
     }
   }, [reportDate, todayISO]); // SL-1: salesReports removido das deps
+
+  // SL-2: actualizar financials quando salesReports muda (sem loop)
+  useEffect(() => {
+    if (hasManuallyOpened) return;
+    const report = salesReports.find(r => {
+      const rDate = r.dateISO ? r.dateISO.split('T')[0] : r.date;
+      return rDate === reportDate;
+    });
+    if (!report) return;
+    const ts = report.timestamp || 0;
+    if (ts <= prevReportTimestampRef.current) return; // sem alterações reais
+    prevReportTimestampRef.current = ts;
+    const fin = report.financials || {
+      cash: report.cash || 0, transfer: report.transfer || 0,
+      ticket: report.tpa || 0, lunch: report.lunchExpense || 0,
+      justification: report.notes || ''
+    };
+    setFinancials({ cash: fin.cash.toString(), transfer: fin.transfer.toString(), ticket: fin.ticket.toString(), lunch: fin.lunch.toString(), discrepancyJustification: fin.justification || '' });
+  }, [salesReports, reportDate, hasManuallyOpened]);
   
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
@@ -518,6 +537,7 @@ const Sales: React.FC = () => {
   const [financials, setFinancials] = useState({ cash: '', transfer: '', ticket: '', lunch: '', discrepancyJustification: '' });
   const [formValues, setFormValues] = useState({ cash: 0, tpa: 0, transfer: 0, lunch: 0, justification: '' });
   const prevDateRef = useRef(reportDate);
+  const prevReportTimestampRef = useRef<number>(0);
   const [isFinancialsConfirmed, setIsFinancialsConfirmed] = useState(false);
   const [syncState, setSyncState] = useState<{ status: 'idle' | 'syncing' | 'success' | 'error'; currentStep: number; completedSteps: string[]; }>({ status: 'idle', currentStep: -1, completedSteps: [] });
   const [currentReportId, setCurrentReportId] = useState<string | null>(null);
