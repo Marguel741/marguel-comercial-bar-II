@@ -141,8 +141,20 @@ export const StockProvider: React.FC<{ children: ReactNode; getSystemDate: () =>
     }));
     unsubs.push(onSnapshot(collection(db, COL_STOCK.equipments), snap => {
       const data = snap.docs.map(d => d.data() as Equipment);
-      if (data.length > 0) setEquipments(data);
-      else { INITIAL_EQUIPMENTS.forEach(e => setDoc(doc(db, COL_STOCK.equipments, e.id), e)); setEquipments(INITIAL_EQUIPMENTS); }
+      if (data.length > 0) {
+        setEquipments(data);
+      }
+      // Se data.length === 0: pode ser lag de rede ou utilizador apagou tudo intencionalmente.
+      // Só repõe os defaults se for a primeira carga (estado ainda vazio).
+      else {
+        setEquipments(prev => {
+          if (prev.length === 0) {
+            INITIAL_EQUIPMENTS.forEach(e => setDoc(doc(db, COL_STOCK.equipments, e.id), e));
+            return INITIAL_EQUIPMENTS;
+          }
+          return prev; // Já tinha dados — lag de rede ou eliminação intencional, não repor
+        });
+      }
     }));
     unsubs.push(onSnapshot(collection(db, COL_STOCK.proposals), snap => {
       setProposals(snap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -322,7 +334,8 @@ export const StockProvider: React.FC<{ children: ReactNode; getSystemDate: () =>
       validateAction('EQUIPMENT', {});
       const equip = equipments.find(e => e.id === id);
       if (equip) {
-        setDoc(doc(db, COL_STOCK.equipments, id), { ...equip, ...updates });
+        const prevQty = equip.qty;
+        setDoc(doc(db, COL_STOCK.equipments, id), { ...equip, ...updates, prevQty: updates.qty !== undefined && updates.qty !== equip.qty ? prevQty : equip.prevQty });
         const historyLog = { id: generateUUID(), timestamp: Date.now(), date: formatDateISO(new Date()), performedBy: user?.name || 'Sistema', totalItems: updates.qty ?? equip.qty, discrepancies: [], status: 'OK' as const, justification: `Edição manual: ${equip.name} — Qtd: ${equip.qty} → ${updates.qty ?? equip.qty}` };
         setDoc(doc(db, COL_STOCK.inventoryHistory, historyLog.id), historyLog);
       }
