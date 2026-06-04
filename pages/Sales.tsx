@@ -1295,8 +1295,14 @@ const Sales: React.FC = () => {
                       </div>
                     </td>
                     <td className="p-2 bg-blue-50/30 dark:bg-blue-900/10">
-                      <input type="text" inputMode="decimal" disabled={!canEditInitialStock || isReadOnly} placeholder="0"
+                      <input type="text" inputMode="decimal" disabled={!canEditInitialStock || isReadOnly} placeholder={String(item.stock)}
                         value={initialStock[item.id] ?? ''} onChange={(e) => handleStockChange(setInitialStock, item.id, e.target.value)}
+                        onBlur={(e) => {
+                          // Se o campo ficar vazio ao sair, preenche com o stock do sistema
+                          if (e.target.value === '' && !isReadOnly && canEditInitialStock) {
+                            handleStockChange(setInitialStock, item.id, String(item.stock));
+                          }
+                        }}
                         className="w-full text-center border rounded-lg py-2 focus:ring-2 focus:ring-blue-500 outline-none font-medium dark:bg-slate-700 dark:text-white" />
                     </td>
                     <td className="p-2 bg-green-50/30 dark:bg-green-900/10">
@@ -1455,7 +1461,7 @@ const Sales: React.FC = () => {
       </div>
 
       {showCloseModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-fade-in">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[400] flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-white dark:bg-slate-800 rounded-[32px] p-8 w-full max-w-md shadow-2xl relative max-h-[90vh] overflow-y-auto">
             <div className="text-center mb-6">
               <div className="w-16 h-16 bg-blue-50 dark:bg-blue-900/30 text-[#003366] dark:text-blue-400 rounded-full flex items-center justify-center mx-auto mb-4"><CheckCircle size={32} /></div>
