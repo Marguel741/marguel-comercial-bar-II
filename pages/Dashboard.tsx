@@ -171,14 +171,17 @@ const Dashboard: React.FC = () => {
           return rDate === dateStr;
         });
         const dayExpenses = expenses
-          .filter(e => e.date === dateStr)
-          .reduce((sum, e) => sum + e.amount, 0);
+          .filter(e => e.date === dateStr && !e.isReverted && e.status !== 'REVERSED')
+          .reduce((sum, e) => sum + (e.amount > 0 ? e.amount : 0), 0);
+        const dayPurchases = purchases
+          .filter(p => p.date === dateStr)
+          .reduce((sum, p) => sum + (p.total || 0), 0);
         dataPoints.push({
           name: weekDayMap[d.getDay()],
           fullName: d.toLocaleDateString('pt-AO', { weekday: 'long', day: 'numeric', month: 'long' }),
           date: dateStr,
           sales: report ? (report.totalLifted || report.totals?.lifted || 0) : 0,
-          expenses: dayExpenses,
+          expenses: dayExpenses + dayPurchases,
           details: {
             report,
             expenseList: expenses.filter(e => e.date === dateStr)
@@ -195,14 +198,17 @@ const Dashboard: React.FC = () => {
           return rDate === dateStr;
         });
         const dayExpenses = expenses
-          .filter(e => e.date === dateStr)
-          .reduce((sum, e) => sum + e.amount, 0);
+          .filter(e => e.date === dateStr && !e.isReverted && e.status !== 'REVERSED')
+          .reduce((sum, e) => sum + (e.amount > 0 ? e.amount : 0), 0);
+        const dayPurchases = purchases
+          .filter(p => p.date === dateStr)
+          .reduce((sum, p) => sum + (p.total || 0), 0);
         dataPoints.push({
           name: d.getDate().toString(),
           fullName: d.toLocaleDateString('pt-AO', { weekday: 'long', day: 'numeric', month: 'long' }),
           date: dateStr,
           sales: report ? (report.totalLifted || report.totals?.lifted || 0) : 0,
-          expenses: dayExpenses,
+          expenses: dayExpenses + dayPurchases,
           details: {
             report,
             expenseList: expenses.filter(e => e.date === dateStr)
@@ -221,20 +227,25 @@ const Dashboard: React.FC = () => {
           return (pd.m === month && pd.y === year) ? acc + (r.totalLifted || r.totals?.lifted || 0) : acc;
         }, 0);
         const monthExpenses = expenses.reduce((acc, e) => {
+          if (e.isReverted || e.status === 'REVERSED' || e.amount <= 0) return acc;
           const pd = parseDateStr(e.date);
           return (pd.m === month && pd.y === year) ? acc + e.amount : acc;
+        }, 0);
+        const monthPurchases = purchases.reduce((acc, p) => {
+          const d = new Date(p.timestamp || 0);
+          return (d.getMonth() === month && d.getFullYear() === year) ? acc + (p.total || 0) : acc;
         }, 0);
         dataPoints.push({
           name: d.toLocaleDateString('pt-AO', { month: 'short' }).replace('.', ''),
           fullName: d.toLocaleDateString('pt-AO', { month: 'long', year: 'numeric' }),
           sales: monthSales,
-          expenses: monthExpenses,
+          expenses: monthExpenses + monthPurchases,
           details: null
         });
       }
     }
     return dataPoints;
-  }, [getConfirmedSalesReports, expenses, systemDate, timeRange, timeOffset]);
+  }, [getConfirmedSalesReports, expenses, purchases, systemDate, timeRange, timeOffset]);
 
   const alerts = useMemo(() => {
     const list: any[] = [];
