@@ -492,8 +492,8 @@ const lastClosureDate = (lastConfirmed.dateISO || lastConfirmed.date || '').spli
       setProductModal({ isOpen: true, data: { ...product, originalStock: product.stock, reason: '' } });
     } else {
       setProductModal({ 
-        isOpen: true, 
-        data: { name: '', category: 'Geral', stock: '', minStock: '', packSize: 24, packType: 'Grade', originalStock: 0, reason: '' } 
+        isOpen: true,
+        data: { name: '', category: categories[0] || 'Geral', stock: '', minStock: '', packSize: 24, packType: 'Grade', originalStock: 0, reason: '', sellPrice: '', buyPrice: '' } 
       });
     }
   };
@@ -539,8 +539,8 @@ const lastClosureDate = (lastConfirmed.dateISO || lastConfirmed.date || '').spli
           category: data.category,
           stock: newStock,
           minStock: parseInt(data.minStock) || 10,
-          sellPrice: 0,
-          buyPrice: 0,
+          sellPrice: parseFloat(data.sellPrice) || 0,
+          buyPrice: parseFloat(data.buyPrice) || 0,
           packSize: data.packSize,
           packType: data.packType
         });
@@ -1805,6 +1805,29 @@ const lastClosureDate = (lastConfirmed.dateISO || lastConfirmed.date || '').spli
                 </div>
               </div>
               
+              {!productModal.data.id && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-bold text-slate-400 uppercase">Preço Venda (Kz)</label>
+                    <input
+                      type="text" inputMode="decimal"
+                      value={productModal.data.sellPrice ?? ''}
+                      onChange={e => setProductModal({ ...productModal, data: { ...productModal.data, sellPrice: e.target.value } })}
+                      className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border-none soft-ui-inset dark:text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-400 uppercase">Preço Compra (Kz)</label>
+                    <input
+                      type="text" inputMode="decimal"
+                      value={productModal.data.buyPrice ?? ''}
+                      onChange={e => setProductModal({ ...productModal, data: { ...productModal.data, buyPrice: e.target.value } })}
+                      className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border-none soft-ui-inset dark:text-white"
+                    />
+                  </div>
+                </div>
+              )}
+
               <div className="bg-blue-50 dark:bg-blue-900/30 p-3 rounded-xl border border-blue-100 dark:border-blue-800">
                 <p className="text-[10px] font-bold text-blue-500 dark:text-blue-300 uppercase mb-2">Adicionar Stock Físico (Não é Compra)</p>
                 <div className="flex gap-2">
@@ -1833,13 +1856,13 @@ const lastClosureDate = (lastConfirmed.dateISO || lastConfirmed.date || '').spli
                     onChange={e => setProductModal({ ...productModal, data: { ...productModal.data, reason: e.target.value } })}
                     className="w-full p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-800 text-sm font-bold text-amber-900 dark:text-amber-200 outline-none focus:ring-2 focus:ring-amber-300"
                   >
-                    <option value="">Selecione um motivo...</option>
-                    <option value="Quebra">Quebra / Dano</option>
-                    <option value="Validade">Validade / Estragado</option>
-                    <option value="Inventário">Correção de Inventário</option>
+                    <option value="">Seleccione um motivo...</option>
+                    <option value="Quebra / Dano">Quebra / Dano</option>
+                    <option value="Validade / Estragado">Validade / Estragado</option>
+                    <option value="Correcção de Inventário">Correcção de Inventário</option>
                     <option value="Consumo Interno">Consumo Interno</option>
-                    <option value="Oferta">Oferta / Cortesia</option>
-                    <option value="Outro">Outro (Especificar nas notas)</option>
+                    <option value="Oferta / Cortesia">Oferta / Cortesia</option>
+                    <option value="Outro">Outro (especificar)</option>
                   </select>
                 </div>
               )}
