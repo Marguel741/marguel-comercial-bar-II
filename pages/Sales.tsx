@@ -377,7 +377,8 @@ const Sales: React.FC = () => {
     } else {
       setViewHistoryReport(null);
     }
-  
+  }, [reportDate, todayISO]);
+
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { setIsSummaryFullscreen(false); setIsStockFullscreen(false); }
