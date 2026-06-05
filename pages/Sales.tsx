@@ -377,8 +377,6 @@ const Sales: React.FC = () => {
     } else {
       setViewHistoryReport(null);
     }
-  }, [reportDate, todayISO]); // SL-1: salesReports removido das deps
-
   // SL-2: actualizar financials quando salesReports muda (sem loop)
   useEffect(() => {
     if (hasManuallyOpened) return;
@@ -538,6 +536,7 @@ const Sales: React.FC = () => {
   const [formValues, setFormValues] = useState({ cash: 0, tpa: 0, transfer: 0, lunch: 0, justification: '' });
   const prevDateRef = useRef(reportDate);
   const prevReportTimestampRef = useRef<number>(0);
+  // (declarações mantidas aqui — os useEffects SL-1 e SL-2 acima referenciam estas refs)
   const [isFinancialsConfirmed, setIsFinancialsConfirmed] = useState(false);
   const [syncState, setSyncState] = useState<{ status: 'idle' | 'syncing' | 'success' | 'error'; currentStep: number; completedSteps: string[]; }>({ status: 'idle', currentStep: -1, completedSteps: [] });
   const [currentReportId, setCurrentReportId] = useState<string | null>(null);
