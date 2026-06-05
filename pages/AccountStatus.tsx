@@ -32,6 +32,7 @@ const AccountStatus: React.FC = () => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<{isOpen: boolean, cardId: string | null}>({isOpen: false, cardId: null});
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [transferFromId, setTransferFromId] = useState<string>('cash_in_hand');
+  const [transferToId, setTransferToId] = useState<string>('main');
   const [transferAmount, setTransferAmount] = useState('');
   const [transferNote, setTransferNote] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
@@ -155,8 +156,8 @@ const AccountStatus: React.FC = () => {
     if (!transferAmount || !transferNote.trim()) return;
     if (isLocked) { triggerHaptic('error'); showToast('Operação Negada: O dia actual está bloqueado.'); return; }
     const val = parseFloat(transferAmount.replace(/\s/g, ''));
-    const toId = transferFromId === 'cash_in_hand' ? 'main' : 'cash_in_hand';
-    transferBetweenCards(transferFromId, toId, val, transferNote, user?.name || 'Desconhecido');
+    if (transferFromId === transferToId) { showToast('Não é possível transferir para o mesmo cartão.'); return; }
+    transferBetweenCards(transferFromId, transferToId, val, transferNote, user?.name || 'Desconhecido');
     triggerHaptic('success');
     setShowTransferModal(false);
     setTransferAmount('');
@@ -356,7 +357,7 @@ const AccountStatus: React.FC = () => {
                   {/* PROD-3: botão transferência para cartão Em Mão */}
                   {card.id === 'cash_in_hand' && (
                     <button
-                      onClick={() => { if (isLocked) { triggerHaptic('error'); return; } setTransferFromId('cash_in_hand'); setShowTransferModal(true); triggerHaptic('selection'); }}
+                     onClick={() => { if (isLocked) { triggerHaptic('error'); return; } setTransferFromId('cash_in_hand'); setTransferToId('main'); setShowTransferModal(true); triggerHaptic('selection'); }}
                       disabled={isLocked}
                       className={`p-3 rounded-2xl flex items-center justify-center active:scale-95 transition-all shadow-sm ${
                         isLocked ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
@@ -369,7 +370,7 @@ const AccountStatus: React.FC = () => {
                   )}
                   {card.id === 'main' && (
                     <button
-                      onClick={() => { if (isLocked) { triggerHaptic('error'); return; } setTransferFromId('main'); setShowTransferModal(true); triggerHaptic('selection'); }}
+                     onClick={() => { if (isLocked) { triggerHaptic('error'); return; } setTransferFromId('main'); setTransferToId('cash_in_hand'); setShowTransferModal(true); triggerHaptic('selection'); }}
                       disabled={isLocked}
                       className={`p-3 rounded-2xl flex items-center justify-center active:scale-95 transition-all shadow-sm ${
                         isLocked ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
@@ -455,11 +456,22 @@ const AccountStatus: React.FC = () => {
             <h2 className="text-2xl font-bold text-[#003366] dark:text-white mb-1 flex items-center gap-2">
               <ArrowRightLeft /> Transferência
             </h2>
-            <p className="text-slate-500 dark:text-slate-400 text-sm mb-6">
-              {transferFromId === 'cash_in_hand'
-                ? 'Em Mão → Conta Bancária'
-                : 'Conta Bancária → Em Mão'}
-            </p>
+            <div className="mb-6 space-y-3">
+              <div>
+                <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">De</label>
+                <select value={transferFromId} onChange={e => { setTransferFromId(e.target.value); if (e.target.value === transferToId) setTransferToId(cards.find(c => c.id !== e.target.value)?.id || 'main'); }}
+                  className="w-full p-3 bg-slate-50 dark:bg-slate-700 rounded-xl text-sm font-bold dark:text-white outline-none">
+                  {cards.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Para</label>
+                <select value={transferToId} onChange={e => { setTransferToId(e.target.value); if (e.target.value === transferFromId) setTransferFromId(cards.find(c => c.id !== e.target.value)?.id || 'cash_in_hand'); }}
+                  className="w-full p-3 bg-slate-50 dark:bg-slate-700 rounded-xl text-sm font-bold dark:text-white outline-none">
+                  {cards.filter(c => c.id !== transferFromId).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+            </div>
             <form onSubmit={handleTransfer} className="space-y-5">
               <div>
                 <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Valor a Transferir (Kz)</label>
